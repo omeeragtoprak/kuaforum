@@ -82,6 +82,25 @@ export type PendingReview = {
   createdAt: string;
 };
 
+export type AdminUser = {
+  id: string;
+  phoneE164?: string;
+  email?: string;
+  displayName?: string;
+  role: number;
+  status: number;
+  createdAt: string;
+  lastLoginAt?: string;
+  deletedAt?: string;
+};
+
+export type UsersAdminPage = {
+  items: AdminUser[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+};
+
 export const adminApi = {
   async login(email: string, password: string, totpCode: string) {
     return apiFetch<{ accessToken: string; refreshToken: string; user: { id: string; role: string } }>(
@@ -113,6 +132,24 @@ export const adminApi = {
       method: 'POST',
       body: JSON.stringify({ reason }),
     });
+  },
+  async listUsers(params: { search?: string; role?: number; status?: number; page?: number; pageSize?: number } = {}): Promise<UsersAdminPage> {
+    const qs = new URLSearchParams();
+    if (params.search) qs.set('search', params.search);
+    if (params.role !== undefined) qs.set('role', String(params.role));
+    if (params.status !== undefined) qs.set('status', String(params.status));
+    qs.set('page', String(params.page ?? 1));
+    qs.set('pageSize', String(params.pageSize ?? 20));
+    return apiFetch<UsersAdminPage>(`/v1/admin/users?${qs}`);
+  },
+  async suspendUser(userId: string, reason: string) {
+    return apiFetch(`/v1/admin/users/${userId}/suspend`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+  async unsuspendUser(userId: string) {
+    return apiFetch(`/v1/admin/users/${userId}/unsuspend`, { method: 'POST' });
   },
 };
 

@@ -13,6 +13,7 @@ export default function BarberLayout() {
     >
       <Tabs.Screen name="today" options={{ title: 'Bugün' }} />
       <Tabs.Screen name="calendar" options={{ title: 'Takvim' }} />
+      <Tabs.Screen name="services" options={{ title: 'Hizmetler' }} />
       <Tabs.Screen name="profile" options={{ title: 'Profil' }} />
     </Tabs>
   );

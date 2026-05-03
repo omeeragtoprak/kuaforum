@@ -98,4 +98,28 @@ export const BarberApi = {
     });
     return res.data;
   },
+
+  // Owner self-service
+  async getMyShop(): Promise<BarberShop | null> {
+    try {
+      const res = await apiClient.get<BarberShop>('/v1/owner/barber-shop');
+      return res.data;
+    } catch (err) {
+      return null;
+    }
+  },
+  async createService(shopId: string, body: {
+    name: string;
+    gender: number;
+    durationMinutes: number;
+    priceMinor: number;
+    bufferMinutes: number;
+    description?: string;
+  }): Promise<{ id: string }> {
+    const res = await apiClient.post<{ id: string }>(`/v1/owner/barber-shop/${shopId}/services`, body);
+    return res.data;
+  },
+  async toggleStylistWalkIn(stylistId: string, available: boolean): Promise<void> {
+    await apiClient.post(`/v1/stylists/${stylistId}/walk-in`, { available });
+  },
 };

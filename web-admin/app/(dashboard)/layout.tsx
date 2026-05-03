@@ -7,6 +7,7 @@ import { adminAuth } from '@/lib/api';
 
 const NAV = [
   { href: '/', label: 'Dashboard' },
+  { href: '/users', label: 'Kullanıcılar' },
   { href: '/kyc', label: 'KYC Kuyruğu' },
   { href: '/reviews', label: 'Yorum Moderasyonu' },
 ];
