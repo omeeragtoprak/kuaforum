@@ -1,5 +1,6 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
+using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Geography;
 using Kuaforum.Domain.Modules.Identity;
 using MediatR;
@@ -30,6 +31,14 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<City> Cities => Set<City>();
     public DbSet<District> Districts => Set<District>();
     public DbSet<Neighborhood> Neighborhoods => Set<Neighborhood>();
+    public DbSet<BarberShop> BarberShops => Set<BarberShop>();
+    public DbSet<Stylist> Stylists => Set<Stylist>();
+    public DbSet<ServiceCatalog> ServiceCatalogs => Set<ServiceCatalog>();
+    public DbSet<StylistService> StylistServices => Set<StylistService>();
+    public DbSet<WorkingHours> WorkingHours => Set<WorkingHours>();
+    public DbSet<TimeOff> TimeOffs => Set<TimeOff>();
+    public DbSet<KycSubmission> KycSubmissions => Set<KycSubmission>();
+    public DbSet<KycDocument> KycDocuments => Set<KycDocument>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
