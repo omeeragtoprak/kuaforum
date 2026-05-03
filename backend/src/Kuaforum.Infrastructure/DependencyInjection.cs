@@ -49,10 +49,15 @@ public static class DependencyInjection
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
         services.Configure<GoogleOAuthOptions>(configuration.GetSection(GoogleOAuthOptions.SectionName));
         services.Configure<AppleOAuthOptions>(configuration.GetSection(AppleOAuthOptions.SectionName));
+        services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
+        services.Configure<Persistence.Seeding.AdminSeederOptions>(configuration.GetSection(Persistence.Seeding.AdminSeederOptions.SectionName));
 
         services.AddHttpClient();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IOtpService, OtpService>();
+        services.AddSingleton<IPasswordHasher, PasswordHasherService>();
+        services.AddSingleton<ITotpService, TotpService>();
+        services.AddSingleton<ISymmetricEncryption, AesEncryptionService>();
         services.AddScoped<IRateLimiter, RedisRateLimiter>();
         services.AddSingleton<IDistributedLock, RedisDistributedLock>();
         services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
@@ -96,6 +101,7 @@ public static class DependencyInjection
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<GeographySeeder>();
         services.AddScoped<DemoBarberSeeder>();
+        services.AddScoped<AdminSeeder>();
 
         return services;
     }
@@ -105,6 +111,9 @@ public static class DependencyInjection
         await using var scope = services.CreateAsyncScope();
         var geo = scope.ServiceProvider.GetRequiredService<GeographySeeder>();
         await geo.SeedAsync(ct);
+
+        var adminSeeder = scope.ServiceProvider.GetRequiredService<AdminSeeder>();
+        await adminSeeder.SeedAsync(ct);
 
         if (seedDemoBarbers)
         {

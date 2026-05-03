@@ -35,7 +35,28 @@ public static class AuthEndpoints
             .WithName("OAuthLogin")
             .AllowAnonymous();
 
+        group.MapPost("/admin/login", AdminLoginAsync)
+            .WithName("AdminLogin")
+            .AllowAnonymous();
+
         return app;
+    }
+
+    private static async Task<IResult> AdminLoginAsync(
+        [FromBody] AdminLoginRequest request,
+        HttpContext httpContext,
+        IMediator mediator,
+        CancellationToken ct)
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString();
+        var deviceFingerprint = request.DeviceFingerprint
+            ?? $"web-admin-{httpContext.Connection.Id}";
+        var result = await mediator.Send(
+            new AdminLoginCommand(request.Email, request.Password, request.TotpCode,
+                deviceFingerprint, request.DeviceName ?? "Web Admin", ip), ct);
+        return result.IsSuccess
+            ? Results.Ok(result.Value)
+            : Results.Problem(detail: result.Error.Message, statusCode: 401, title: result.Error.Code);
     }
 
     private static async Task<IResult> OAuthLoginAsync(
@@ -122,4 +143,5 @@ public static class AuthEndpoints
     public sealed record RefreshRequest(string RefreshToken, string DeviceFingerprint);
     public sealed record LogoutRequest(string RefreshToken);
     public sealed record OAuthLoginRequest(string IdToken, string DeviceFingerprint, string? DeviceName);
+    public sealed record AdminLoginRequest(string Email, string Password, string TotpCode, string? DeviceFingerprint, string? DeviceName);
 }
