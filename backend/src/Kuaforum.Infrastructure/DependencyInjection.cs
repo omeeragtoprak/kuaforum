@@ -72,14 +72,28 @@ public static class DependencyInjection
 
         services.AddScoped<INotificationChannelHandler, MockPushChannel>();
         services.AddScoped<INotificationChannelHandler, MockSmsChannel>();
-        services.AddScoped<INotificationChannelHandler, MockEmailChannel>();
         services.AddScoped<INotificationChannelHandler, InAppNotificationChannel>();
+
+        // Email channel: Resend if API key configured, else fallback to log-only mock.
+        services.Configure<ResendOptions>(configuration.GetSection(ResendOptions.SectionName));
+        var emailProvider = configuration.GetValue<string>("Email:Provider")?.ToLowerInvariant() ?? "mock";
+        if (emailProvider == "resend")
+        {
+            services.AddScoped<INotificationChannelHandler, ResendEmailChannel>();
+        }
+        else
+        {
+            services.AddScoped<INotificationChannelHandler, MockEmailChannel>();
+        }
+
         services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 
+        // SMS: NetGSM if configured, else Mock for dev.
+        services.Configure<NetGsmOptions>(configuration.GetSection(NetGsmOptions.SectionName));
         var smsProvider = configuration.GetValue<string>("Sms:Provider")?.ToLowerInvariant() ?? "mock";
-        if (smsProvider == "mock")
+        if (smsProvider == "netgsm")
         {
-            services.AddSingleton<ISmsService, MockSmsService>();
+            services.AddSingleton<ISmsService, NetGsmSmsService>();
         }
         else
         {

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
@@ -8,6 +8,7 @@ import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
+import { ReviewApi } from '@/api/review';
 import { formatDuration, formatTime, formatTry } from '@/lib/format';
 
 export default function BarberDetailScreen() {
@@ -20,6 +21,30 @@ export default function BarberDetailScreen() {
   const shopQuery = useQuery({ queryKey: ['barber', id], queryFn: () => BarberApi.getById(id!) });
   const stylistsQuery = useQuery({ queryKey: ['stylists', id], queryFn: () => BarberApi.getStylists(id!) });
   const servicesQuery = useQuery({ queryKey: ['services', id], queryFn: () => BarberApi.getServices(id!) });
+  const reviewsQuery = useQuery({
+    queryKey: ['shop-reviews', id],
+    queryFn: () => ReviewApi.getShopReviews(id!, 1, 5),
+  });
+
+  function openDirections() {
+    const shop = shopQuery.data;
+    if (!shop?.latitude || !shop?.longitude) {
+      Alert.alert('Konum yok', 'Bu kuaförün konumu tanımlı değil.');
+      return;
+    }
+    // FREE deep link — no API call, no key required
+    const lat = shop.latitude;
+    const lng = shop.longitude;
+    const label = encodeURIComponent(shop.name);
+    const url = Platform.select({
+      ios: `https://maps.apple.com/?daddr=${lat},${lng}&q=${label}`,
+      android: `geo:${lat},${lng}?q=${lat},${lng}(${label})`,
+      default: `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`,
+    })!;
+    Linking.openURL(url).catch(() => {
+      Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
+    });
+  }
 
   const today = new Date().toISOString().slice(0, 10);
   const week = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
@@ -87,6 +112,16 @@ export default function BarberDetailScreen() {
           <Text style={styles.shopName}>{shopQuery.data.name}</Text>
           {shopQuery.data.description ? <Text style={styles.shopDesc}>{shopQuery.data.description}</Text> : null}
           {shopQuery.data.addressLine1 ? <Text style={styles.shopAddr}>📍 {shopQuery.data.addressLine1}</Text> : null}
+          {reviewsQuery.data && reviewsQuery.data.summary.count > 0 ? (
+            <Text style={styles.ratingLine}>
+              ⭐ {reviewsQuery.data.summary.average.toFixed(1)} ({reviewsQuery.data.summary.count} yorum)
+            </Text>
+          ) : null}
+          {shopQuery.data.latitude && shopQuery.data.longitude ? (
+            <Pressable onPress={openDirections} style={styles.directionsBtn}>
+              <Text style={styles.directionsText}>🗺  Yol tarifi al</Text>
+            </Pressable>
+          ) : null}
         </View>
 
         <Section title="Hizmetler">
@@ -119,6 +154,28 @@ export default function BarberDetailScreen() {
             ))}
           </View>
         </Section>
+
+        {reviewsQuery.data && reviewsQuery.data.items.length > 0 ? (
+          <Section title={`Yorumlar (${reviewsQuery.data.summary.count})`}>
+            {reviewsQuery.data.items.map((r) => (
+              <Card key={r.id} style={styles.reviewCard}>
+                <View style={styles.reviewHead}>
+                  <Text style={styles.reviewStars}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</Text>
+                  <Text style={styles.reviewDate}>
+                    {new Date(r.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
+                  </Text>
+                </View>
+                {r.body ? <Text style={styles.reviewBody}>{r.body}</Text> : null}
+                {r.replyBody ? (
+                  <View style={styles.replyBox}>
+                    <Text style={styles.replyLabel}>Kuaförün cevabı:</Text>
+                    <Text style={styles.replyBody}>{r.replyBody}</Text>
+                  </View>
+                ) : null}
+              </Card>
+            ))}
+          </Section>
+        ) : null}
 
         {selectedStylist && selectedServices.size > 0 ? (
           <Section title="Müsait saatler">
@@ -179,6 +236,31 @@ const styles = StyleSheet.create({
   shopName: { fontSize: FontSize.xxl, fontWeight: '700', color: Colors.text },
   shopDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
   shopAddr: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: Spacing.sm },
+  ratingLine: { fontSize: FontSize.sm, color: Colors.text, marginTop: Spacing.xs, fontWeight: '600' },
+  directionsBtn: {
+    marginTop: Spacing.md,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    backgroundColor: 'rgba(107, 79, 79, 0.1)',
+    alignSelf: 'flex-start',
+  },
+  directionsText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600' },
+  reviewCard: { gap: Spacing.xs },
+  reviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reviewStars: { fontSize: FontSize.md, color: Colors.accent, letterSpacing: 2 },
+  reviewDate: { fontSize: FontSize.xs, color: Colors.textMuted },
+  reviewBody: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
+  replyBox: {
+    marginTop: Spacing.sm,
+    padding: Spacing.sm,
+    backgroundColor: Colors.background,
+    borderRadius: Radius.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.primary,
+  },
+  replyLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '700', marginBottom: 2 },
+  replyBody: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 18 },
   section: { padding: Spacing.lg, paddingTop: 0, gap: Spacing.sm },
   sectionTitle: { fontSize: FontSize.lg, fontWeight: '600', color: Colors.text, marginBottom: Spacing.sm },
   serviceCard: { borderColor: Colors.border },
