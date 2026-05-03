@@ -1222,6 +1222,177 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Payment.Payment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AuthorizedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("authorized_at");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateTimeOffset?>("CapturedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("captured_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<long>("GrossAmountMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("gross_amount_minor");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<long>("NetToBarberMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("net_to_barber_minor");
+
+                    b.Property<long>("PlatformCommissionMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("platform_commission_minor");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderPaymentToken")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("provider_payment_token");
+
+                    b.Property<string>("ProviderTransactionId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("provider_transaction_id");
+
+                    b.Property<long>("PspMdrMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("psp_mdr_minor");
+
+                    b.Property<DateTimeOffset?>("SettledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("settled_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("SubMerchantBarberShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sub_merchant_barber_shop_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_payments_booking");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_payments_customer");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_payments_idempotency")
+                        .HasFilter("idempotency_key IS NOT NULL");
+
+                    b.HasIndex("ProviderTransactionId")
+                        .HasDatabaseName("ix_payments_provider_tx");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_payments_status");
+
+                    b.HasIndex("SubMerchantBarberShopId")
+                        .HasDatabaseName("ix_payments_shop");
+
+                    b.ToTable("payments", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Payment.Refund", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("AmountMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_minor");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("PaymentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_id");
+
+                    b.Property<string>("ProviderRefundId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("provider_refund_id");
+
+                    b.Property<int>("Reason")
+                        .HasColumnType("integer")
+                        .HasColumnName("reason");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PaymentId")
+                        .HasDatabaseName("ix_refunds_payment");
+
+                    b.HasIndex("ProviderRefundId")
+                        .HasDatabaseName("ix_refunds_provider");
+
+                    b.ToTable("refunds", (string)null);
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.BookingItem", b =>
                 {
                     b.HasOne("Kuaforum.Domain.Modules.Booking.Booking", null)
@@ -1231,9 +1402,23 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Payment.Refund", b =>
+                {
+                    b.HasOne("Kuaforum.Domain.Modules.Payment.Payment", null)
+                        .WithMany("Refunds")
+                        .HasForeignKey("PaymentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.Booking", b =>
                 {
                     b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Payment.Payment", b =>
+                {
+                    b.Navigation("Refunds");
                 });
 #pragma warning restore 612, 618
         }

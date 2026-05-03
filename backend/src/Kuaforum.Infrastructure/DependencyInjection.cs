@@ -4,7 +4,9 @@ using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Infrastructure.Auth;
 using Kuaforum.Infrastructure.BackgroundJobs;
 using Kuaforum.Infrastructure.Caching;
+using Kuaforum.Infrastructure.Payments;
 using Kuaforum.Infrastructure.Persistence;
+using Kuaforum.Infrastructure.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -55,6 +57,13 @@ public static class DependencyInjection
         services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
         services.AddSingleton<IOAuthProvider, AppleOAuthProvider>();
 
+        services.Configure<PayTrOptions>(configuration.GetSection(PayTrOptions.SectionName));
+        services.Configure<IyzicoOptions>(configuration.GetSection(IyzicoOptions.SectionName));
+        services.AddSingleton<IPaymentProvider, MockPaymentProvider>();
+        services.AddSingleton<IPaymentProvider, PayTrPaymentProvider>();
+        services.AddSingleton<IPaymentProvider, IyzicoPaymentProvider>();
+        services.AddSingleton<IPaymentProviderRegistry, PaymentProviderRegistry>();
+
         var smsProvider = configuration.GetValue<string>("Sms:Provider")?.ToLowerInvariant() ?? "mock";
         if (smsProvider == "mock")
         {
@@ -78,8 +87,16 @@ public static class DependencyInjection
         });
         services.AddScoped<HardDeleteUsersJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
+        services.AddScoped<GeographySeeder>();
 
         return services;
+    }
+
+    public static async Task SeedReferenceDataAsync(IServiceProvider services, CancellationToken ct = default)
+    {
+        await using var scope = services.CreateAsyncScope();
+        var seeder = scope.ServiceProvider.GetRequiredService<GeographySeeder>();
+        await seeder.SeedAsync(ct);
     }
 
     public static void RegisterRecurringJobs(IServiceProvider services)

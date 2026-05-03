@@ -1,0 +1,116 @@
+using FluentValidation;
+using Kuaforum.Application.Common.Interfaces;
+using Kuaforum.Domain.Common;
+using Kuaforum.Domain.Modules.Barber;
+using BookingAggregate = Kuaforum.Domain.Modules.Booking.Booking;
+using PaymentAggregate = Kuaforum.Domain.Modules.Payment.Payment;
+using Kuaforum.Domain.Modules.Payment;
+using MediatR;
+using Microsoft.EntityFrameworkCore;
+
+namespace Kuaforum.Application.Modules.Payment;
+
+public sealed record InitiatePaymentCommand(
+    Guid CustomerId,
+    Guid BookingId,
+    string? IdempotencyKey) : ICommand<InitiatePaymentResponse>;
+
+public sealed record InitiatePaymentResponse(
+    Guid PaymentId,
+    string CheckoutUrl,
+    string? ProviderToken,
+    DateTimeOffset ExpiresAt);
+
+public sealed class InitiatePaymentCommandValidator : AbstractValidator<InitiatePaymentCommand>
+{
+    public InitiatePaymentCommandValidator()
+    {
+        RuleFor(x => x.CustomerId).NotEmpty();
+        RuleFor(x => x.BookingId).NotEmpty();
+    }
+}
+
+public sealed class InitiatePaymentCommandHandler(
+    IApplicationDbContext db,
+    IPaymentProviderRegistry providerRegistry,
+    IAuditLogger audit) : IRequestHandler<InitiatePaymentCommand, Result<InitiatePaymentResponse>>
+{
+    public async Task<Result<InitiatePaymentResponse>> Handle(InitiatePaymentCommand request, CancellationToken cancellationToken)
+    {
+        var ctx = (DbContext)db;
+
+        // Idempotency check
+        if (!string.IsNullOrEmpty(request.IdempotencyKey))
+        {
+            var existingByKey = await ctx.Set<PaymentAggregate>()
+                .FirstOrDefaultAsync(p => p.IdempotencyKey == request.IdempotencyKey, cancellationToken);
+            if (existingByKey is not null)
+                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Idempotency key already used."));
+        }
+
+        var booking = await ctx.Set<BookingAggregate>()
+            .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+        if (booking is null) return Result.Failure<InitiatePaymentResponse>(Error.NotFound("Booking"));
+        if (booking.CustomerId != request.CustomerId)
+            return Result.Failure<InitiatePaymentResponse>(Error.Forbidden("Not your booking."));
+
+        // Already paid?
+        var existingPayment = await ctx.Set<PaymentAggregate>()
+            .FirstOrDefaultAsync(p => p.BookingId == booking.Id, cancellationToken);
+        if (existingPayment is not null)
+        {
+            if (existingPayment.Status is PaymentStatus.Captured or PaymentStatus.Settled)
+                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Booking already paid."));
+        }
+
+        var shop = await ctx.Set<BarberShop>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, cancellationToken);
+        if (shop is null) return Result.Failure<InitiatePaymentResponse>(Error.NotFound("BarberShop"));
+
+        var customer = await ctx.Set<Domain.Modules.Identity.User>().AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == request.CustomerId, cancellationToken);
+        if (customer is null) return Result.Failure<InitiatePaymentResponse>(Error.NotFound("Customer"));
+
+        var providerName = providerRegistry.DefaultProvider;
+        var provider = providerRegistry.GetProvider(providerName);
+
+        var paymentResult = PaymentAggregate.Initiate(
+            booking.Id,
+            booking.CustomerId,
+            booking.BarberShopId,
+            booking.TotalAmountMinor,
+            booking.PlatformCommissionMinor,
+            providerName,
+            request.IdempotencyKey);
+        if (paymentResult.IsFailure) return Result.Failure<InitiatePaymentResponse>(paymentResult.Error);
+
+        var payment = paymentResult.Value;
+        ctx.Set<PaymentAggregate>().Add(payment);
+
+        var checkoutSession = await provider.InitiateAsync(new CheckoutRequest(
+            PaymentId: payment.Id,
+            BookingId: booking.Id,
+            CustomerId: customer.Id,
+            CustomerPhone: customer.PhoneE164 ?? string.Empty,
+            CustomerEmail: customer.Email,
+            GrossAmountMinor: booking.TotalAmountMinor,
+            CommissionMinor: booking.PlatformCommissionMinor,
+            SubMerchantKey: shop.SubMerchantKey ?? "MOCK-SUB",
+            Currency: booking.Currency,
+            ReturnUrl: "kuaforum://payment/success",
+            CancelUrl: "kuaforum://payment/cancel"), cancellationToken);
+
+        await audit.RecordAsync(
+            "payment.initiated",
+            nameof(PaymentAggregate),
+            payment.Id.ToString(),
+            actorUserId: request.CustomerId,
+            payload: new { booking.Id, providerName = providerName.ToString(), payment.GrossAmountMinor },
+            ct: cancellationToken);
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        return Result.Success(new InitiatePaymentResponse(
+            payment.Id, checkoutSession.CheckoutUrl, checkoutSession.ProviderToken, checkoutSession.ExpiresAt));
+    }
+}

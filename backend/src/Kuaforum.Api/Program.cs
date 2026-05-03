@@ -67,6 +67,7 @@ app.MapGeographyEndpoints();
 app.MapBarberEndpoints();
 app.MapAvailabilityEndpoints();
 app.MapBookingEndpoints();
+app.MapPaymentEndpoints();
 
 app.MapHangfireDashboard("/hangfire", new DashboardOptions
 {
@@ -78,6 +79,9 @@ using (var scope = app.Services.CreateScope())
 {
     Kuaforum.Infrastructure.DependencyInjection.RegisterRecurringJobs(scope.ServiceProvider);
 }
+
+// Seed reference data (81 il + sample districts) on startup. Idempotent.
+await Kuaforum.Infrastructure.DependencyInjection.SeedReferenceDataAsync(app.Services);
 
 app.Run();
 
