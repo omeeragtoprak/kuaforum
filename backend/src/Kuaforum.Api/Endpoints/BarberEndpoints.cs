@@ -1,6 +1,8 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Barber;
+using Kuaforum.Application.Modules.Booking;
 using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Booking;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
 
@@ -60,6 +62,18 @@ public static class BarberEndpoints
             var r = await m.Send(new GetMyBarberShopQuery(ctx.UserId.Value), token);
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).WithName("GetMyBarberShop");
+
+        ownerGroup.MapGet("/bookings", async (
+            [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to,
+            [FromQuery] BookingStatus? status,
+            IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var fromUtc = from ?? DateTimeOffset.UtcNow.Date;
+            var toUtc = to ?? fromUtc.AddDays(7);
+            var r = await m.Send(new GetOwnerBookingsQuery(ctx.UserId.Value, fromUtc, toUtc, status), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+        }).WithName("GetOwnerBookings");
 
         ownerGroup.MapPost("", async ([FromBody] CreateBarberShopRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
