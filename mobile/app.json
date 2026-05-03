@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Kuaforum",
+    "slug": "kuaforum",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "kuaforum",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.kuaforum.app",
+      "config": { "usesNonExemptEncryption": false },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Yakındaki kuaförleri göstermek için konum izni gerekli.",
+        "NSCameraUsageDescription": "Profil fotoğrafı yüklemek için.",
+        "NSPhotoLibraryUsageDescription": "Profil fotoğrafı seçmek için."
+      }
+    },
+    "android": {
+      "package": "com.kuaforum.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    },
+    "web": { "bundler": "metro" },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": { "typedRoutes": true },
+    "locales": { "tr": "./locales/ios-tr.json" },
+    "extra": {
+      "router": { "origin": false },
+      "eas": { "projectId": "TBD-after-EAS-init" }
+    }
+  }
+}
