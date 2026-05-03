@@ -31,7 +31,27 @@ public static class AuthEndpoints
             .WithName("LogoutAll")
             .RequireAuthorization();
 
+        group.MapPost("/oauth/{provider}", OAuthLoginAsync)
+            .WithName("OAuthLogin")
+            .AllowAnonymous();
+
         return app;
+    }
+
+    private static async Task<IResult> OAuthLoginAsync(
+        string provider,
+        [FromBody] OAuthLoginRequest request,
+        HttpContext httpContext,
+        IMediator mediator,
+        CancellationToken ct)
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString();
+        var result = await mediator.Send(
+            new OAuthLoginCommand(provider, request.IdToken, request.DeviceFingerprint, request.DeviceName, ip),
+            ct);
+        return result.IsSuccess
+            ? Results.Ok(result.Value)
+            : Results.Problem(detail: result.Error.Message, statusCode: 401, title: result.Error.Code);
     }
 
     private static async Task<IResult> SendOtpAsync(
@@ -101,4 +121,5 @@ public static class AuthEndpoints
     public sealed record VerifyOtpRequest(Guid OtpId, string Code, string DeviceFingerprint, string? DeviceName);
     public sealed record RefreshRequest(string RefreshToken, string DeviceFingerprint);
     public sealed record LogoutRequest(string RefreshToken);
+    public sealed record OAuthLoginRequest(string IdToken, string DeviceFingerprint, string? DeviceName);
 }

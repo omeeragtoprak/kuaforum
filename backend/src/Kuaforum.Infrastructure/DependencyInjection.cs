@@ -44,10 +44,15 @@ public static class DependencyInjection
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
+        services.Configure<GoogleOAuthOptions>(configuration.GetSection(GoogleOAuthOptions.SectionName));
+        services.Configure<AppleOAuthOptions>(configuration.GetSection(AppleOAuthOptions.SectionName));
 
+        services.AddHttpClient();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IOtpService, OtpService>();
         services.AddScoped<IRateLimiter, RedisRateLimiter>();
+        services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
+        services.AddSingleton<IOAuthProvider, AppleOAuthProvider>();
 
         var smsProvider = configuration.GetValue<string>("Sms:Provider")?.ToLowerInvariant() ?? "mock";
         if (smsProvider == "mock")

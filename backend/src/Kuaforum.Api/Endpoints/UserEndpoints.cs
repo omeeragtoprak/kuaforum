@@ -1,4 +1,5 @@
 using Kuaforum.Application.Common.Interfaces;
+using Kuaforum.Application.Modules.Identity.Auth;
 using Kuaforum.Application.Modules.Identity.Consents;
 using Kuaforum.Application.Modules.Identity.Users;
 using Kuaforum.Application.Modules.Identity.Users.Sessions;
@@ -25,7 +26,36 @@ public static class UserEndpoints
         group.MapGet("/consents", GetMyConsents).WithName("GetMyConsents");
         group.MapPatch("/consents", UpdateConsent).WithName("UpdateConsent");
 
+        group.MapPost("/phone-change/initiate", InitiatePhoneChange).WithName("InitiatePhoneChange");
+        group.MapPost("/phone-change/confirm", ConfirmPhoneChange).WithName("ConfirmPhoneChange");
+
         return app;
+    }
+
+    private static async Task<IResult> InitiatePhoneChange(
+        [FromBody] PhoneChangeInitiateRequest body,
+        IMediator m,
+        IRequestContext ctx,
+        CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var result = await m.Send(new InitiatePhoneChangeCommand(ctx.UserId.Value, body.NewPhone), token);
+        return result.IsSuccess
+            ? Results.Ok(result.Value)
+            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+    }
+
+    private static async Task<IResult> ConfirmPhoneChange(
+        [FromBody] PhoneChangeConfirmRequest body,
+        IMediator m,
+        IRequestContext ctx,
+        CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var result = await m.Send(new ConfirmPhoneChangeCommand(ctx.UserId.Value, body.OtpId, body.Code), token);
+        return result.IsSuccess
+            ? Results.NoContent()
+            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
     }
 
     private static async Task<IResult> GetMyProfile(IMediator m, IRequestContext ctx, CancellationToken ct)
@@ -110,4 +140,6 @@ public static class UserEndpoints
 
     public sealed record UpdateMyProfileRequest(string? DisplayName, string? AvatarUrl);
     public sealed record UpdateConsentRequest(ConsentPurpose Purpose, bool Grant, string Version);
+    public sealed record PhoneChangeInitiateRequest(string NewPhone);
+    public sealed record PhoneChangeConfirmRequest(Guid OtpId, string Code);
 }

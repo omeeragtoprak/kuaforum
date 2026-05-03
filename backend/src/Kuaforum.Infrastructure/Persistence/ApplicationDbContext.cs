@@ -1,5 +1,6 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
+using Kuaforum.Domain.Modules.Geography;
 using Kuaforum.Domain.Modules.Identity;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
     public DbSet<Consent> Consents => Set<Consent>();
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+    public DbSet<City> Cities => Set<City>();
+    public DbSet<District> Districts => Set<District>();
+    public DbSet<Neighborhood> Neighborhoods => Set<Neighborhood>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
