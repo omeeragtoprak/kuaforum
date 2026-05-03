@@ -1,0 +1,78 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Secrets
+secrets/
+*.pem
+*.key
+*.crt
+
+# .NET
+bin/
+obj/
+*.user
+*.suo
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+.pnpm-debug.log*
+npm-debug.log*
+yarn-error.log
+
+# Expo / RN
+.expo/
+.expo-shared/
+dist/
+web-build/
+*.jks
+*.p8
+*.p12
+*.mobileprovision
+
+# Next.js
+.next/
+out/
+
+# Build outputs
+build/
+target/
+
+# Cache
+.cache/
+.parcel-cache/
+.turbo/
+
+# Logs
+logs/
+*.log
+
+# Docker
+.dockerignore
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+
+# Misc
+*.tmp
+*.bak
+.history/
