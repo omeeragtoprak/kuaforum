@@ -1,3 +1,4 @@
+using Hangfire;
 using Kuaforum.Api.Configuration;
 using Kuaforum.Api.Endpoints;
 using Kuaforum.Api.Middleware;
@@ -61,7 +62,29 @@ app.MapGet("/", () => Results.Redirect("/openapi/v1.json"))
     .ExcludeFromDescription();
 
 app.MapAuthEndpoints();
+app.MapUserEndpoints();
+
+app.MapHangfireDashboard("/hangfire", new DashboardOptions
+{
+    DashboardTitle = "Kuaforum Background Jobs",
+    Authorization = [new HangfireDashboardAdminFilter()]
+});
+
+using (var scope = app.Services.CreateScope())
+{
+    Kuaforum.Infrastructure.DependencyInjection.RegisterRecurringJobs(scope.ServiceProvider);
+}
 
 app.Run();
 
 public partial class Program;
+
+internal sealed class HangfireDashboardAdminFilter : Hangfire.Dashboard.IDashboardAuthorizationFilter
+{
+    public bool Authorize(Hangfire.Dashboard.DashboardContext context)
+    {
+        // TODO(Phase 2): wire admin role check via HttpContext.
+        // Dev: dashboard erişimi açık; prod: Cloudflare Access /hangfire path'i kapatır.
+        return true;
+    }
+}

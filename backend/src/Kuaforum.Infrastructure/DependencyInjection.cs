@@ -1,5 +1,8 @@
+using Hangfire;
+using Hangfire.PostgreSql;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Infrastructure.Auth;
+using Kuaforum.Infrastructure.BackgroundJobs;
 using Kuaforum.Infrastructure.Caching;
 using Kuaforum.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -33,7 +36,11 @@ public static class DependencyInjection
             ?? throw new InvalidOperationException("Connection string 'Redis' is missing.");
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnString));
 
+        services.AddHttpContextAccessor();
+
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+        services.AddScoped<IRequestContext, HttpContextRequestContext>();
+        services.AddScoped<IAuditLogger, AuditLogger>();
 
         services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
         services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
@@ -49,10 +56,32 @@ public static class DependencyInjection
         }
         else
         {
-            // NetGSMSmsService will be added when real provider is wired (Phase 1 mid).
             services.AddSingleton<ISmsService, MockSmsService>();
         }
 
+        services.AddHangfire(cfg =>
+        {
+            cfg.UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(pgConnString));
+            cfg.UseSimpleAssemblyNameTypeSerializer();
+            cfg.UseRecommendedSerializerSettings();
+        });
+        services.AddHangfireServer(opts =>
+        {
+            opts.WorkerCount = Environment.ProcessorCount;
+            opts.Queues = ["default", "critical"];
+        });
+        services.AddScoped<HardDeleteUsersJob>();
+
         return services;
+    }
+
+    public static void RegisterRecurringJobs(IServiceProvider services)
+    {
+        var manager = services.GetRequiredService<IRecurringJobManager>();
+        manager.AddOrUpdate<HardDeleteUsersJob>(
+            recurringJobId: HardDeleteUsersJob.JobId,
+            methodCall: job => job.RunAsync(CancellationToken.None),
+            cronExpression: HardDeleteUsersJob.CronExpression,
+            options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 }
