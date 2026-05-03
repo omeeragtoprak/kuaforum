@@ -13,7 +13,7 @@ const queryClient = new QueryClient({
 });
 
 function AuthGate({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading, hydrate } = useAuthStore();
+  const { isAuthenticated, isLoading, hydrate, user } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
 
@@ -23,13 +23,32 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (isLoading) return;
-    const inAuthGroup = segments[0] === '(auth)';
+    const group = segments[0];
+    const inAuthGroup = group === '(auth)';
+    const inBarberGroup = group === '(barber)';
+    const inCustomerGroup = group === '(tabs)';
+
     if (!isAuthenticated && !inAuthGroup) {
       router.replace('/(auth)/login');
-    } else if (isAuthenticated && inAuthGroup) {
-      router.replace('/(tabs)');
+      return;
     }
-  }, [isAuthenticated, isLoading, segments, router]);
+
+    if (isAuthenticated && inAuthGroup) {
+      const role = user?.role ?? 'Customer';
+      if (role === 'BarberOwner' || role === 'Stylist') {
+        router.replace('/(barber)/today');
+      } else {
+        router.replace('/(tabs)');
+      }
+      return;
+    }
+
+    if (isAuthenticated && user) {
+      const isBarber = user.role === 'BarberOwner' || user.role === 'Stylist';
+      if (isBarber && inCustomerGroup) router.replace('/(barber)/today');
+      else if (!isBarber && inBarberGroup) router.replace('/(tabs)');
+    }
+  }, [isAuthenticated, isLoading, segments, router, user]);
 
   return <>{children}</>;
 }

@@ -16,9 +16,11 @@ type AuthState = {
   setLoading: (v: boolean) => void;
   signOut: () => Promise<void>;
   hydrate: () => Promise<void>;
+  isCustomer: () => boolean;
+  isBarber: () => boolean;
 };
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   isLoading: true,
@@ -31,5 +33,10 @@ export const useAuthStore = create<AuthState>((set) => ({
   hydrate: async () => {
     const token = await TokenStorage.getAccessToken();
     set({ isAuthenticated: !!token, isLoading: false });
+  },
+  isCustomer: () => (get().user?.role ?? 'Customer') === 'Customer',
+  isBarber: () => {
+    const role = get().user?.role;
+    return role === 'BarberOwner' || role === 'Stylist';
   },
 }));

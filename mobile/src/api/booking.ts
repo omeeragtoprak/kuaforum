@@ -17,7 +17,7 @@ export type Booking = {
   stylistId: string;
   scheduledAt: string;
   scheduledEndsAt: string;
-  status: number; // BookingStatus enum int
+  status: number;
   totalAmountMinor: number;
   currency: string;
   refundPercentage?: number;
@@ -47,5 +47,22 @@ export const BookingApi = {
   async cancel(id: string, reason: number): Promise<{ refundPercentage: number }> {
     const res = await apiClient.post(`/v1/bookings/${id}/cancel`, { reason });
     return res.data;
+  },
+
+  // Barber owner side
+  async getOwnerBookings(from: string, to: string, status?: number): Promise<Booking[]> {
+    const params: Record<string, string | number> = { from, to };
+    if (status !== undefined) params.status = status;
+    const res = await apiClient.get<Booking[]>('/v1/owner/barber-shop/bookings', { params });
+    return res.data;
+  },
+  async start(id: string): Promise<void> {
+    await apiClient.post(`/v1/bookings/${id}/start`);
+  },
+  async complete(id: string): Promise<void> {
+    await apiClient.post(`/v1/bookings/${id}/complete`);
+  },
+  async markNoShow(id: string): Promise<void> {
+    await apiClient.post(`/v1/bookings/${id}/no-show`);
   },
 };
