@@ -1,16 +1,31 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
+using Kuaforum.Domain.Modules.Identity;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kuaforum.Infrastructure.Persistence;
 
-public class ApplicationDbContext(
-    DbContextOptions<ApplicationDbContext> options,
-    IPublisher publisher)
-    : DbContext(options), IApplicationDbContext
+public class ApplicationDbContext : DbContext, IApplicationDbContext
 {
-    private readonly IPublisher _publisher = publisher;
+    private readonly IPublisher? _publisher;
+
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options) : base(options)
+    {
+    }
+
+    public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options, IPublisher publisher)
+        : base(options)
+    {
+        _publisher = publisher;
+    }
+
+    public DbSet<User> Users => Set<User>();
+    public DbSet<AdminCredential> AdminCredentials => Set<AdminCredential>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<OtpCode> OtpCodes => Set<OtpCode>();
+    public DbSet<Consent> Consents => Set<Consent>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -37,8 +52,11 @@ public class ApplicationDbContext(
 
         var result = await base.SaveChangesAsync(cancellationToken);
 
-        foreach (var domainEvent in domainEvents)
-            await _publisher.Publish(domainEvent, cancellationToken);
+        if (_publisher is not null)
+        {
+            foreach (var domainEvent in domainEvents)
+                await _publisher.Publish(domainEvent, cancellationToken);
+        }
 
         return result;
     }
