@@ -64,6 +64,8 @@ app.MapGet("/", () => Results.Redirect("/openapi/v1.json"))
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
 app.MapGeographyEndpoints();
+app.MapBarberEndpoints();
+app.MapAvailabilityEndpoints();
 
 app.MapHangfireDashboard("/hangfire", new DashboardOptions
 {

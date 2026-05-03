@@ -76,6 +76,7 @@ public static class DependencyInjection
             opts.Queues = ["default", "critical"];
         });
         services.AddScoped<HardDeleteUsersJob>();
+        services.AddScoped<IBusyRangeQuery, StubBusyRangeQuery>();
 
         return services;
     }
