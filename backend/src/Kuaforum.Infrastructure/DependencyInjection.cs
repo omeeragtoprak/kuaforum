@@ -1,4 +1,6 @@
 using Kuaforum.Application.Common.Interfaces;
+using Kuaforum.Infrastructure.Auth;
+using Kuaforum.Infrastructure.Caching;
 using Kuaforum.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -32,6 +34,24 @@ public static class DependencyInjection
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnString));
 
         services.AddSingleton<IDateTimeProvider, SystemDateTimeProvider>();
+
+        services.Configure<JwtOptions>(configuration.GetSection(JwtOptions.SectionName));
+        services.Configure<OtpOptions>(configuration.GetSection(OtpOptions.SectionName));
+
+        services.AddSingleton<IJwtTokenService, JwtTokenService>();
+        services.AddSingleton<IOtpService, OtpService>();
+        services.AddScoped<IRateLimiter, RedisRateLimiter>();
+
+        var smsProvider = configuration.GetValue<string>("Sms:Provider")?.ToLowerInvariant() ?? "mock";
+        if (smsProvider == "mock")
+        {
+            services.AddSingleton<ISmsService, MockSmsService>();
+        }
+        else
+        {
+            // NetGSMSmsService will be added when real provider is wired (Phase 1 mid).
+            services.AddSingleton<ISmsService, MockSmsService>();
+        }
 
         return services;
     }

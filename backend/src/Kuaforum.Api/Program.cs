@@ -1,3 +1,5 @@
+using Kuaforum.Api.Configuration;
+using Kuaforum.Api.Endpoints;
 using Kuaforum.Api.Middleware;
 using Kuaforum.Application;
 using Kuaforum.Infrastructure;
@@ -19,6 +21,7 @@ builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
+builder.Services.AddKuaforumAuth(builder.Configuration);
 
 builder.Services.AddCors(options =>
 {
@@ -47,6 +50,8 @@ else
 
 app.UseCors();
 app.UseRequestIdMiddleware();
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTimeOffset.UtcNow }))
     .WithName("Health")
@@ -54,6 +59,8 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime
 
 app.MapGet("/", () => Results.Redirect("/openapi/v1.json"))
     .ExcludeFromDescription();
+
+app.MapAuthEndpoints();
 
 app.Run();
 
