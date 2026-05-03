@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kuaforum.Api/Kuaforum.Api.csproj" />
+    <Project Path="src/Kuaforum.Application/Kuaforum.Application.csproj" />
+    <Project Path="src/Kuaforum.Domain/Kuaforum.Domain.csproj" />
+    <Project Path="src/Kuaforum.Infrastructure/Kuaforum.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kuaforum.Tests.Application/Kuaforum.Tests.Application.csproj" />
+    <Project Path="tests/Kuaforum.Tests.Domain/Kuaforum.Tests.Domain.csproj" />
+    <Project Path="tests/Kuaforum.Tests.Integration/Kuaforum.Tests.Integration.csproj" />
+  </Folder>
+</Solution>

@@ -53,12 +53,13 @@
 
 ## 2. Backend
 
-### 2.1 .NET 8 / ASP.NET Core
-- **Karar:** Kullanıcı tercihi. Minimal API + Controller hibrit.
-- **Gerekçe:** Performans, type safety, EF Core olgun, .NET 8 LTS (Kasım 2026'ya kadar destek).
+### 2.1 .NET 10 / ASP.NET Core
+- **Karar:** Minimal API + Controller hibrit. **LTS, Kasım 2028'e kadar destekli.**
+- **Düzeltme notu (2026-05-03):** Founder orijinal mesajda ".NET Core 8" yazdı; "Core" eki 2020'de kalktı. .NET 8 LTS Kasım 2026'da bitiyor — launch'tan **önce**. Bu yüzden **.NET 10 LTS** seçildi. Tek satır csproj değişikliği ile gerekirse .NET 8'e geri dönülebilir.
+- **Gerekçe:** Performans, type safety, EF Core 10 olgun, native AOT olgunluğu V2 için iyi durumda.
 - **Risk:** TR developer pool nispeten dar (Java/Node baskın), takım büyürse hire zorlaşabilir. Solo için risk yok.
 
-### 2.2 EF Core 8
+### 2.2 EF Core 10
 - **Karar:** Primary ORM, code-first migrations.
 - **Gerekçe:** .NET native, change tracking, migration ergonomik.
 - **Performans notu:** Read-heavy sorgularda `AsNoTracking()` + `Select` projection. PostGIS sorguları raw SQL veya `EF.Functions`.

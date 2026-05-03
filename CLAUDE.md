@@ -6,7 +6,7 @@
 
 ## 1. Proje Tek Cümle
 
-**Kuaforum**, Türkiye geneli kuaför/berber B2C marketplace mobil uygulamasıdır. Üç yüzey: müşteri appi (Expo/RN), kuaför paneli (mobil-first responsive), admin paneli (web). Backend .NET 8, DB Postgres+PostGIS+Redis+Meilisearch, hosting Hetzner Helsinki.
+**Kuaforum**, Türkiye geneli kuaför/berber B2C marketplace mobil uygulamasıdır. Üç yüzey: müşteri appi (Expo/RN), kuaför paneli (mobil-first responsive), admin paneli (web). Backend .NET 10, DB Postgres+PostGIS+Redis+Meilisearch, hosting Hetzner Helsinki.
 
 **Faz:** Phase 0 (foundation). Henüz kod yok. Bütün modül spec'leri sırayla yazılacak.
 
@@ -32,7 +32,7 @@
 
 | Katman | Karar |
 |---|---|
-| Backend | .NET 8 / ASP.NET Core, EF Core 8, MediatR, FluentValidation, Mapster, Hangfire, SignalR (V1.5) |
+| Backend | .NET 10 / ASP.NET Core, EF Core 10, MediatR 12.4 (MIT — license check), FluentValidation 11 (MIT), Mapster, Hangfire, SignalR (V1.5) |
 | Mimari | Modular monolith + Clean Architecture + CQRS + Outbox |
 | DB | PostgreSQL 16 + PostGIS · Redis 7 · Meilisearch (Türkçe tokenizer) |
 | Mobile | Expo SDK 52+ · React Native 0.76+ · Zustand · React Hook Form + Zod · Tamagui veya RN Paper · i18next |
@@ -53,7 +53,7 @@
 
 ```
 kuaforum/
-├── backend/                 # .NET 8 solution
+├── backend/                 # .NET 10 solution
 │   ├── src/
 │   │   ├── Kuaforum.Api/                # ASP.NET Core API host
 │   │   ├── Kuaforum.Application/        # MediatR handlers, validators
@@ -178,7 +178,7 @@ docker compose -f infra/docker-compose.dev.yml down
 
 Bu projede şu sub-agent'ların `.claude/agents/` altında tanımı var (Phase 0 onayında oluşturulacak):
 
-- **backend-developer** — .NET 8 + EF Core + MediatR uzmanı
+- **backend-developer** — .NET 10 + EF Core + MediatR uzmanı
 - **mobile-developer** — Expo + React Native + Tamagui uzmanı
 - **database-architect** — PostgreSQL + PostGIS + EF Core migration
 - **security-auditor** — KVKK + PCI + OWASP review

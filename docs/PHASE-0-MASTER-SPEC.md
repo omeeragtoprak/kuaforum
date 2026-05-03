@@ -36,7 +36,7 @@ Türkiye'de Booksy ve Fresha'nın **gerçek lansmanı yok** ve mevcut yerli oyun
 |---|---|---|---|---|
 | 1 | Proje ismi | **Kuaforum** | Türkçe doğal, "kuaför + forum / kuaförüm" çift okuma. Trademark + domain durumu Phase 0'ın kapanış check'idir. | `docs/01-research/competitor-analysis.md` |
 | 2 | Mobil platform | **Expo (managed workflow)** + EAS Build/Submit | Solo founder için OTA + hot reload + tek kod. Native gereksinim çıkarsa expo-dev-client ile çözülür. | § 5 |
-| 3 | Backend | **.NET 8 / ASP.NET Core** | Kullanıcı tercihi. EF Core 8, MediatR, FluentValidation, Hangfire/Quartz. | § 5 |
+| 3 | Backend | **.NET 10 / ASP.NET Core** (LTS Kasım 2028'e kadar) | Founder orijinal mesajda ".NET Core 8" yazdı; "Core" eki 2020'de kalktı. .NET 8 LTS Kasım 2026'da bitiyor → launch'tan önce. **.NET 10 LTS** doğru karar. EF Core 10, MediatR 12.4 (MIT, license check pending), FluentValidation 11 (MIT), Hangfire. | § 5 |
 | 4 | Veritabanı | **PostgreSQL 16** (primary), **Redis 7** (cache + session + light queue) | Kullanıcı tercihi. PostGIS extension lokasyon için. | § 5 |
 | 5 | Hosting | **Hetzner Cloud (Helsinki/Frankfurt)** | AB içi, KVKK Standart Sözleşme + 5 iş günü Kuruma bildirim ile uyumlu. Maliyet/performans en iyi. | § 7, `docs/01-research/turkey-compliance.md` |
 | 6 | Mimari | **Modular monolith** + Clean Architecture + CQRS (MediatR) + Outbox | Solo founder için microservices premature. Module boundaries net olduğu için ileride extract edilebilir. | `docs/03-architecture/01-system-architecture.md` |
@@ -150,7 +150,7 @@ Türkiye'de Booksy ve Fresha'nın **gerçek lansmanı yok** ve mevcut yerli oyun
 ```
 
 **Yığın Özeti:**
-- **Backend:** ASP.NET Core 8 · EF Core 8 · MediatR · FluentValidation · Mapster · Hangfire (background jobs) · SignalR (V1.5 walk-in)
+- **Backend:** ASP.NET Core 8 · EF Core 10 · MediatR · FluentValidation · Mapster · Hangfire (background jobs) · SignalR (V1.5 walk-in)
 - **DB:** PostgreSQL 16 + PostGIS · Redis 7 (cache + lock) · Meilisearch (full-text + Turkish tokenizer)
 - **Mobile:** Expo SDK 52+ · React Native 0.76+ · React Navigation · Zustand · React Hook Form + Zod · Tamagui veya React Native Paper · i18next
 - **Web admin:** Next.js 15 · shadcn/ui · TanStack Table/Query
