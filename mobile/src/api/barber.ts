@@ -41,7 +41,42 @@ export type Service = {
 
 export type Slot = { startsAt: string; endsAt: string };
 
+export type BarberSearchResult = {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  genderType: number;
+  addressLine1?: string;
+  latitude?: number;
+  longitude?: number;
+  stylistCount: number;
+  serviceCount: number;
+  minPriceMinor?: number;
+  hasWalkInAvailable: boolean;
+};
+
+export type SearchBarbersResponse = {
+  items: BarberSearchResult[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+};
+
+export type SearchBarbersParams = {
+  cityId?: string;
+  districtId?: string;
+  genderType?: number;
+  walkInOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+};
+
 export const BarberApi = {
+  async search(params: SearchBarbersParams): Promise<SearchBarbersResponse> {
+    const res = await apiClient.get<SearchBarbersResponse>('/v1/barber-shops/search', { params });
+    return res.data;
+  },
   async getById(id: string): Promise<BarberShop> {
     const res = await apiClient.get<BarberShop>(`/v1/barber-shops/${id}`);
     return res.data;

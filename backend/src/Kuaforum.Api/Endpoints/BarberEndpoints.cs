@@ -12,7 +12,27 @@ public static class BarberEndpoints
     {
         var owned = app.MapGroup("/v1/barber-shops").WithTags("BarberShops");
 
-        // Public read
+        // Public search + read
+        owned.MapGet("/search", async (
+            [FromQuery] Guid? cityId,
+            [FromQuery] Guid? districtId,
+            [FromQuery] SalonGenderType? genderType,
+            [FromQuery] bool? walkInOnly,
+            [FromQuery] int page,
+            [FromQuery] int pageSize,
+            IMediator m,
+            CancellationToken ct) =>
+        {
+            var r = await m.Send(new SearchBarbersQuery(
+                CityId: cityId,
+                DistrictId: districtId,
+                GenderType: genderType,
+                OpenWalkInOnly: walkInOnly,
+                Page: page <= 0 ? 1 : page,
+                PageSize: pageSize <= 0 ? 20 : Math.Min(pageSize, 50)), ct);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+        }).AllowAnonymous().WithName("SearchBarbers");
+
         owned.MapGet("/{id:guid}", async (Guid id, IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetBarberShopByIdQuery(id), ct);

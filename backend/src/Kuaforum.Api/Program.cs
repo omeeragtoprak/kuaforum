@@ -81,7 +81,9 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Seed reference data (81 il + sample districts) on startup. Idempotent.
-await Kuaforum.Infrastructure.DependencyInjection.SeedReferenceDataAsync(app.Services);
+// Demo barber shops are seeded only when Seed:Demo=true (dev/staging only).
+var seedDemo = builder.Configuration.GetValue<bool>("Seed:Demo");
+await Kuaforum.Infrastructure.DependencyInjection.SeedReferenceDataAsync(app.Services, seedDemo);
 
 app.Run();
 

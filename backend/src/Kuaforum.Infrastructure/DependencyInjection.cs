@@ -88,15 +88,22 @@ public static class DependencyInjection
         services.AddScoped<HardDeleteUsersJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<GeographySeeder>();
+        services.AddScoped<DemoBarberSeeder>();
 
         return services;
     }
 
-    public static async Task SeedReferenceDataAsync(IServiceProvider services, CancellationToken ct = default)
+    public static async Task SeedReferenceDataAsync(IServiceProvider services, bool seedDemoBarbers, CancellationToken ct = default)
     {
         await using var scope = services.CreateAsyncScope();
-        var seeder = scope.ServiceProvider.GetRequiredService<GeographySeeder>();
-        await seeder.SeedAsync(ct);
+        var geo = scope.ServiceProvider.GetRequiredService<GeographySeeder>();
+        await geo.SeedAsync(ct);
+
+        if (seedDemoBarbers)
+        {
+            var demo = scope.ServiceProvider.GetRequiredService<DemoBarberSeeder>();
+            await demo.SeedAsync(ct);
+        }
     }
 
     public static void RegisterRecurringJobs(IServiceProvider services)
