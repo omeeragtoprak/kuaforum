@@ -68,6 +68,7 @@ app.MapBarberEndpoints();
 app.MapAvailabilityEndpoints();
 app.MapBookingEndpoints();
 app.MapPaymentEndpoints();
+app.MapReviewEndpoints();
 
 app.MapHangfireDashboard("/hangfire", new DashboardOptions
 {

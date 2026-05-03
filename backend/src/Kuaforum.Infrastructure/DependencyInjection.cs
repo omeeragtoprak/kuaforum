@@ -4,6 +4,7 @@ using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Infrastructure.Auth;
 using Kuaforum.Infrastructure.BackgroundJobs;
 using Kuaforum.Infrastructure.Caching;
+using Kuaforum.Infrastructure.Notifications;
 using Kuaforum.Infrastructure.Payments;
 using Kuaforum.Infrastructure.Persistence;
 using Kuaforum.Infrastructure.Persistence.Seeding;
@@ -63,6 +64,12 @@ public static class DependencyInjection
         services.AddSingleton<IPaymentProvider, PayTrPaymentProvider>();
         services.AddSingleton<IPaymentProvider, IyzicoPaymentProvider>();
         services.AddSingleton<IPaymentProviderRegistry, PaymentProviderRegistry>();
+
+        services.AddScoped<INotificationChannelHandler, MockPushChannel>();
+        services.AddScoped<INotificationChannelHandler, MockSmsChannel>();
+        services.AddScoped<INotificationChannelHandler, MockEmailChannel>();
+        services.AddScoped<INotificationChannelHandler, InAppNotificationChannel>();
+        services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 
         var smsProvider = configuration.GetValue<string>("Sms:Provider")?.ToLowerInvariant() ?? "mock";
         if (smsProvider == "mock")

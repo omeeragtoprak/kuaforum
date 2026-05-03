@@ -4,6 +4,9 @@ using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Booking;
 using Kuaforum.Domain.Modules.Geography;
 using Kuaforum.Domain.Modules.Identity;
+using Kuaforum.Domain.Modules.Notification;
+using Kuaforum.Domain.Modules.Payment;
+using Kuaforum.Domain.Modules.Review;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -42,6 +45,11 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<KycDocument> KycDocuments => Set<KycDocument>();
     public DbSet<Booking> Bookings => Set<Booking>();
     public DbSet<BookingItem> BookingItems => Set<BookingItem>();
+    public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<Refund> Refunds => Set<Refund>();
+    public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<BarberReply> BarberReplies => Set<BarberReply>();
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

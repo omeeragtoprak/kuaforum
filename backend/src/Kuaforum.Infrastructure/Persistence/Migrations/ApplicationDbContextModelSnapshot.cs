@@ -1222,6 +1222,89 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Notification.NotificationLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("body");
+
+                    b.Property<int>("Channel")
+                        .HasColumnType("integer")
+                        .HasColumnName("channel");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("FailedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failed_at");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("ProviderMessageId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("provider_message_id");
+
+                    b.Property<string>("Recipient")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)")
+                        .HasColumnName("recipient");
+
+                    b.Property<DateTimeOffset?>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("subject");
+
+                    b.Property<string>("TemplateKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("template_key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_notification_logs_status");
+
+                    b.HasIndex("TemplateKey")
+                        .HasDatabaseName("ix_notification_logs_template");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_notification_logs_user_created");
+
+                    b.ToTable("notification_logs", (string)null);
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Payment.Payment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1393,6 +1476,126 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.ToTable("refunds", (string)null);
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Review.BarberReply", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BarberOwnerUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("barber_owner_user_id");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("body");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("ReviewId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("review_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReviewId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_replies_review");
+
+                    b.ToTable("barber_replies", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Review.Review", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BarberShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("barber_shop_id");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("body");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<DateTimeOffset?>("ModeratedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("moderated_at");
+
+                    b.Property<Guid?>("ModeratedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("moderated_by_user_id");
+
+                    b.Property<int>("ModerationStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("moderation_status");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("integer")
+                        .HasColumnName("rating");
+
+                    b.Property<int?>("RejectionReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("rejection_reason");
+
+                    b.Property<Guid>("StylistId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stylist_id");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BarberShopId")
+                        .HasDatabaseName("ix_reviews_shop");
+
+                    b.HasIndex("BookingId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_reviews_booking");
+
+                    b.HasIndex("ModerationStatus")
+                        .HasDatabaseName("ix_reviews_moderation");
+
+                    b.HasIndex("StylistId")
+                        .HasDatabaseName("ix_reviews_stylist");
+
+                    b.HasIndex("BarberShopId", "ModerationStatus", "CreatedAt")
+                        .HasDatabaseName("ix_reviews_shop_status_created");
+
+                    b.ToTable("reviews", (string)null);
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.BookingItem", b =>
                 {
                     b.HasOne("Kuaforum.Domain.Modules.Booking.Booking", null)
@@ -1411,6 +1614,15 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Review.BarberReply", b =>
+                {
+                    b.HasOne("Kuaforum.Domain.Modules.Review.Review", null)
+                        .WithOne("Reply")
+                        .HasForeignKey("Kuaforum.Domain.Modules.Review.BarberReply", "ReviewId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.Booking", b =>
                 {
                     b.Navigation("Items");
@@ -1419,6 +1631,11 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Kuaforum.Domain.Modules.Payment.Payment", b =>
                 {
                     b.Navigation("Refunds");
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Review.Review", b =>
+                {
+                    b.Navigation("Reply");
                 });
 #pragma warning restore 612, 618
         }
