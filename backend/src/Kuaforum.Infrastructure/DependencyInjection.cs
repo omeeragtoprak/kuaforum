@@ -51,6 +51,7 @@ public static class DependencyInjection
         services.AddSingleton<IJwtTokenService, JwtTokenService>();
         services.AddSingleton<IOtpService, OtpService>();
         services.AddScoped<IRateLimiter, RedisRateLimiter>();
+        services.AddSingleton<IDistributedLock, RedisDistributedLock>();
         services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
         services.AddSingleton<IOAuthProvider, AppleOAuthProvider>();
 
@@ -76,7 +77,7 @@ public static class DependencyInjection
             opts.Queues = ["default", "critical"];
         });
         services.AddScoped<HardDeleteUsersJob>();
-        services.AddScoped<IBusyRangeQuery, StubBusyRangeQuery>();
+        services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
 
         return services;
     }

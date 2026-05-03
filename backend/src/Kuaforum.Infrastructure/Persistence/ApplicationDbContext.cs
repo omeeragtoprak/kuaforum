@@ -1,6 +1,7 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Booking;
 using Kuaforum.Domain.Modules.Geography;
 using Kuaforum.Domain.Modules.Identity;
 using MediatR;
@@ -39,6 +40,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<TimeOff> TimeOffs => Set<TimeOff>();
     public DbSet<KycSubmission> KycSubmissions => Set<KycSubmission>();
     public DbSet<KycDocument> KycDocuments => Set<KycDocument>();
+    public DbSet<Booking> Bookings => Set<Booking>();
+    public DbSet<BookingItem> BookingItems => Set<BookingItem>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

@@ -508,6 +508,174 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.ToTable("working_hours", (string)null);
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.Booking", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BarberShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("barber_shop_id");
+
+                    b.Property<int>("BookingType")
+                        .HasColumnType("integer")
+                        .HasColumnName("booking_type");
+
+                    b.Property<int?>("CancellationReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("cancellation_reason");
+
+                    b.Property<DateTimeOffset?>("CancelledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("cancelled_at");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<Guid>("CustomerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("customer_id");
+
+                    b.Property<string>("CustomerNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("customer_note");
+
+                    b.Property<Guid?>("PaymentId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("payment_id");
+
+                    b.Property<long>("PlatformCommissionMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("platform_commission_minor");
+
+                    b.Property<int?>("RefundPercentage")
+                        .HasColumnType("integer")
+                        .HasColumnName("refund_percentage");
+
+                    b.Property<DateTimeOffset>("ScheduledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_at");
+
+                    b.Property<DateTimeOffset>("ScheduledEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("scheduled_ends_at");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("StylistId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("stylist_id");
+
+                    b.Property<long>("TotalAmountMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("total_amount_minor");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BarberShopId")
+                        .HasDatabaseName("ix_bookings_shop");
+
+                    b.HasIndex("CustomerId")
+                        .HasDatabaseName("ix_bookings_customer");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_bookings_status");
+
+                    b.HasIndex("StylistId")
+                        .HasDatabaseName("ix_bookings_stylist");
+
+                    b.HasIndex("StylistId", "ScheduledAt", "ScheduledEndsAt")
+                        .HasDatabaseName("ix_bookings_stylist_range");
+
+                    b.ToTable("bookings", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.BookingItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("booking_id");
+
+                    b.Property<int>("BufferMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("buffer_minutes");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DurationMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_minutes");
+
+                    b.Property<int>("OrderIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("order_index");
+
+                    b.Property<long>("PriceMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_minor");
+
+                    b.Property<Guid>("ServiceCatalogId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("service_catalog_id");
+
+                    b.Property<string>("ServiceName")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("service_name");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BookingId")
+                        .HasDatabaseName("ix_booking_items_booking");
+
+                    b.ToTable("booking_items", (string)null);
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Geography.City", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1052,6 +1220,20 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_users_role");
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.BookingItem", b =>
+                {
+                    b.HasOne("Kuaforum.Domain.Modules.Booking.Booking", null)
+                        .WithMany("Items")
+                        .HasForeignKey("BookingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.Booking", b =>
+                {
+                    b.Navigation("Items");
                 });
 #pragma warning restore 612, 618
         }
