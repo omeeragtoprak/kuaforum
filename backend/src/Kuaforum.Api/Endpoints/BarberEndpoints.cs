@@ -20,8 +20,8 @@ public static class BarberEndpoints
             [FromQuery] Guid? districtId,
             [FromQuery] SalonGenderType? genderType,
             [FromQuery] bool? walkInOnly,
-            [FromQuery] int page,
-            [FromQuery] int pageSize,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
             IMediator m,
             CancellationToken ct) =>
         {
@@ -30,8 +30,8 @@ public static class BarberEndpoints
                 DistrictId: districtId,
                 GenderType: genderType,
                 OpenWalkInOnly: walkInOnly,
-                Page: page <= 0 ? 1 : page,
-                PageSize: pageSize <= 0 ? 20 : Math.Min(pageSize, 50)), ct);
+                Page: page is null or <= 0 ? 1 : page.Value,
+                PageSize: pageSize is null or <= 0 ? 20 : Math.Min(pageSize.Value, 50)), ct);
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).AllowAnonymous().WithName("SearchBarbers");
 

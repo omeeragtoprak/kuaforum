@@ -18,10 +18,12 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
 {
     public async Task SeedAsync(CancellationToken ct = default)
     {
-        var hasDemo = await db.BarberShops.AnyAsync(s => s.Slug.StartsWith("demo-"), ct);
+        // Idempotency: if any demo owner phone already exists, skip the entire seed.
+        var demoPhones = DemoData.Select(d => d.OwnerPhone).ToArray();
+        var hasDemo = await db.Users.AnyAsync(u => u.PhoneE164 != null && demoPhones.Contains(u.PhoneE164), ct);
         if (hasDemo)
         {
-            logger.LogDebug("DemoBarberSeeder: demo shops already present, skipping.");
+            logger.LogDebug("DemoBarberSeeder: demo data already present, skipping.");
             return;
         }
 
