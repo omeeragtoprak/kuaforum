@@ -22,12 +22,15 @@ internal sealed class NotificationLogConfiguration : IEntityTypeConfiguration<No
         builder.Property(x => x.ProviderMessageId).HasColumnName("provider_message_id").HasMaxLength(120);
         builder.Property(x => x.SentAt).HasColumnName("sent_at");
         builder.Property(x => x.FailedAt).HasColumnName("failed_at");
+        builder.Property(x => x.IsRead).HasColumnName("is_read").HasDefaultValue(false);
+        builder.Property(x => x.ReadAt).HasColumnName("read_at");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");
 
         builder.HasIndex(x => new { x.UserId, x.CreatedAt }).HasDatabaseName("ix_notification_logs_user_created");
         builder.HasIndex(x => x.Status).HasDatabaseName("ix_notification_logs_status");
         builder.HasIndex(x => x.TemplateKey).HasDatabaseName("ix_notification_logs_template");
+        builder.HasIndex(x => new { x.UserId, x.Channel, x.IsRead }).HasDatabaseName("ix_notification_logs_user_channel_read");
 
         builder.Ignore(x => x.DomainEvents);
     }

@@ -16,9 +16,9 @@ public readonly record struct Coordinate
     public static Result<Coordinate> TryCreate(double lat, double lng)
     {
         if (lat is < -90 or > 90)
-            return Result.Failure<Coordinate>(Error.Validation("Latitude must be between -90 and 90."));
+            return Result.Failure<Coordinate>(Error.Validation("Enlem -90 ile 90 arasında olmalı."));
         if (lng is < -180 or > 180)
-            return Result.Failure<Coordinate>(Error.Validation("Longitude must be between -180 and 180."));
+            return Result.Failure<Coordinate>(Error.Validation("Boylam -180 ile 180 arasında olmalı."));
         return new Coordinate(lat, lng);
     }
 

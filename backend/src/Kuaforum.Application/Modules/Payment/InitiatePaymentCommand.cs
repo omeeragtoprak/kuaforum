@@ -45,14 +45,14 @@ public sealed class InitiatePaymentCommandHandler(
             var existingByKey = await ctx.Set<PaymentAggregate>()
                 .FirstOrDefaultAsync(p => p.IdempotencyKey == request.IdempotencyKey, cancellationToken);
             if (existingByKey is not null)
-                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Idempotency key already used."));
+                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Bu işlem anahtarı daha önce kullanılmış."));
         }
 
         var booking = await ctx.Set<BookingAggregate>()
             .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
         if (booking is null) return Result.Failure<InitiatePaymentResponse>(Error.NotFound("Booking"));
         if (booking.CustomerId != request.CustomerId)
-            return Result.Failure<InitiatePaymentResponse>(Error.Forbidden("Not your booking."));
+            return Result.Failure<InitiatePaymentResponse>(Error.Forbidden("Bu randevu size ait değil."));
 
         // Already paid?
         var existingPayment = await ctx.Set<PaymentAggregate>()
@@ -60,7 +60,7 @@ public sealed class InitiatePaymentCommandHandler(
         if (existingPayment is not null)
         {
             if (existingPayment.Status is PaymentStatus.Captured or PaymentStatus.Settled)
-                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Booking already paid."));
+                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Bu randevunun ödemesi zaten yapılmış."));
         }
 
         var shop = await ctx.Set<BarberShop>().AsNoTracking()
@@ -108,9 +108,37 @@ public sealed class InitiatePaymentCommandHandler(
             payload: new { booking.Id, providerName = providerName.ToString(), payment.GrossAmountMinor },
             ct: cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex, out var constraint))
+        {
+            // Concurrent initiate raced past idempotency/booking check; unique constraint caught it.
+            return Result.Failure<InitiatePaymentResponse>(Error.Conflict(
+                constraint == "ux_payments_idempotency"
+                    ? "Bu işlem anahtarı daha önce kullanılmış."
+                    : "Bu randevu için zaten bir ödeme işlemi devam ediyor."));
+        }
 
         return Result.Success(new InitiatePaymentResponse(
             payment.Id, checkoutSession.CheckoutUrl, checkoutSession.ProviderToken, checkoutSession.ExpiresAt));
+    }
+
+    /// <summary>
+    /// Detects PostgreSQL unique-violation (SQLSTATE 23505) without taking a hard dependency on Npgsql.
+    /// Application layer stays provider-agnostic; Infrastructure references the driver.
+    /// </summary>
+    private static bool IsUniqueViolation(DbUpdateException ex, out string? constraintName)
+    {
+        constraintName = null;
+        var inner = ex.InnerException;
+        if (inner is null) return false;
+        var t = inner.GetType();
+        if (t.Name != "PostgresException") return false;
+        var sqlState = t.GetProperty("SqlState")?.GetValue(inner) as string;
+        if (sqlState != "23505") return false;
+        constraintName = t.GetProperty("ConstraintName")?.GetValue(inner) as string;
+        return true;
     }
 }

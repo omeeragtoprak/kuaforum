@@ -43,7 +43,7 @@ public sealed class RefundPaymentCommandHandler(
             Reason: request.Reason), cancellationToken);
 
         if (!pspResult.Succeeded)
-            return Result.Failure<Guid>(Error.Validation(pspResult.FailureReason ?? "Refund failed at PSP."));
+            return Result.Failure<Guid>(Error.Validation(pspResult.FailureReason ?? "Ödeme sağlayıcısında iade başarısız oldu."));
 
         var refundResult = payment.AddRefund(request.AmountMinor, request.Reason, pspResult.ProviderRefundId);
         if (refundResult.IsFailure) return Result.Failure<Guid>(refundResult.Error);

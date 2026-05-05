@@ -54,10 +54,10 @@ public sealed class AdminLoginCommandHandler(
         if (cred is null) return GenericFailure();
 
         if (cred.IsLocked())
-            return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Account temporarily locked. Try again later."));
+            return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Hesap geçici olarak kilitli. Daha sonra tekrar deneyin."));
 
         if (!user.CanLogin)
-            return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Account is not active."));
+            return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Hesap aktif değil."));
 
         if (!passwordHasher.Verify(cred.PasswordHash, request.Password))
         {
@@ -104,5 +104,5 @@ public sealed class AdminLoginCommandHandler(
     }
 
     private static Result<VerifyOtpResponse> GenericFailure() =>
-        Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Invalid credentials."));
+        Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Kullanıcı adı veya şifre hatalı."));
 }

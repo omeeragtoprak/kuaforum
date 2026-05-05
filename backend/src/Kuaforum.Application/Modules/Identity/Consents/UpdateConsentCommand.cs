@@ -30,7 +30,7 @@ public sealed class UpdateConsentCommandHandler(
     public async Task<Result> Handle(UpdateConsentCommand request, CancellationToken cancellationToken)
     {
         if (request.Purpose == ConsentPurpose.TermsOfService && !request.Grant)
-            return Result.Failure(Error.Validation("ToS consent cannot be revoked while account is active. Use account deletion instead."));
+            return Result.Failure(Error.Validation("Hesap aktifken Hizmet Şartları rızası geri alınamaz. Onun yerine hesap silme akışını kullanın."));
 
         var ctx = (DbContext)db;
         var existing = await ctx.Set<Consent>()

@@ -13,28 +13,30 @@ public sealed class GeographySeeder(ApplicationDbContext db, ILogger<GeographySe
     public async Task SeedAsync(CancellationToken ct = default)
     {
         var existingCount = await db.Cities.CountAsync(ct);
-        if (existingCount >= Tr81CitySeed.Cities.Count)
+
+        if (existingCount < Tr81CitySeed.Cities.Count)
         {
-            logger.LogDebug("GeographySeeder: 81 cities already present, skipping.");
-            return;
+            logger.LogInformation("GeographySeeder: seeding {Count} cities...", Tr81CitySeed.Cities.Count);
+
+            var existingPlates = await db.Cities.Select(c => c.PlateCode).ToListAsync(ct);
+            var existingPlateSet = existingPlates.ToHashSet();
+
+            foreach (var (plate, name) in Tr81CitySeed.Cities)
+            {
+                if (existingPlateSet.Contains(plate)) continue;
+                db.Cities.Add(City.Create(plate, name));
+            }
+            await db.SaveChangesAsync(ct);
+        }
+        else
+        {
+            logger.LogDebug("GeographySeeder: 81 cities already present, skipping cities.");
         }
 
-        logger.LogInformation("GeographySeeder: seeding {Count} cities...", Tr81CitySeed.Cities.Count);
-
-        var existingPlates = await db.Cities.Select(c => c.PlateCode).ToListAsync(ct);
-        var existingPlateSet = existingPlates.ToHashSet();
-
-        foreach (var (plate, name) in Tr81CitySeed.Cities)
-        {
-            if (existingPlateSet.Contains(plate)) continue;
-            db.Cities.Add(City.Create(plate, name));
-        }
-        await db.SaveChangesAsync(ct);
-
-        logger.LogInformation("GeographySeeder: seeding sample districts for big cities...");
-
+        // Districts seed her zaman çalıştırılır — yeni şehirler eklendikçe SampleDistricts genişler.
         var citiesByPlate = await db.Cities.ToDictionaryAsync(c => c.PlateCode, ct);
 
+        var districtsAdded = 0;
         foreach (var (plate, districts) in Tr81CitySeed.SampleDistricts)
         {
             if (!citiesByPlate.TryGetValue(plate, out var city)) continue;
@@ -50,10 +52,13 @@ public sealed class GeographySeeder(ApplicationDbContext db, ILogger<GeographySe
                 var d = District.Create(city.Id, districtName);
                 if (existingSlugSet.Contains(d.Slug)) continue;
                 db.Districts.Add(d);
+                districtsAdded++;
             }
         }
-        await db.SaveChangesAsync(ct);
-
-        logger.LogInformation("GeographySeeder: complete.");
+        if (districtsAdded > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("GeographySeeder: added {N} new districts.", districtsAdded);
+        }
     }
 }

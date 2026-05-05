@@ -4,6 +4,7 @@ using Kuaforum.Api.Endpoints;
 using Kuaforum.Api.Middleware;
 using Kuaforum.Application;
 using Kuaforum.Infrastructure;
+using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,6 +21,10 @@ builder.Host.UseSerilog((context, services, configuration) =>
 
 builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    o.SerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+});
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddKuaforumAuth(builder.Configuration);
@@ -58,17 +63,60 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime
     .WithName("Health")
     .WithTags("System");
 
+app.MapGet("/health/ready", async (
+    Kuaforum.Infrastructure.Persistence.ApplicationDbContext db,
+    StackExchange.Redis.IConnectionMultiplexer redis,
+    CancellationToken ct) =>
+{
+    var checks = new Dictionary<string, object>();
+    var allOk = true;
+
+    // Postgres ping
+    try
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await db.Database.ExecuteSqlRawAsync("SELECT 1", ct);
+        sw.Stop();
+        checks["postgres"] = new { status = "ok", latencyMs = sw.ElapsedMilliseconds };
+    }
+    catch (Exception ex)
+    {
+        checks["postgres"] = new { status = "fail", error = ex.Message };
+        allOk = false;
+    }
+
+    // Redis ping
+    try
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var pong = await redis.GetDatabase().PingAsync();
+        sw.Stop();
+        checks["redis"] = new { status = "ok", latencyMs = sw.ElapsedMilliseconds, pingMs = pong.TotalMilliseconds };
+    }
+    catch (Exception ex)
+    {
+        checks["redis"] = new { status = "fail", error = ex.Message };
+        allOk = false;
+    }
+
+    var payload = new { status = allOk ? "ok" : "degraded", timestamp = DateTimeOffset.UtcNow, checks };
+    return allOk ? Results.Ok(payload) : Results.Json(payload, statusCode: 503);
+}).WithName("ReadinessProbe").WithTags("System");
+
 app.MapGet("/", () => Results.Redirect("/openapi/v1.json"))
     .ExcludeFromDescription();
 
-app.MapAuthEndpoints();
+app.MapAuthEndpoints(app.Environment);
 app.MapUserEndpoints();
 app.MapGeographyEndpoints();
 app.MapBarberEndpoints();
 app.MapAvailabilityEndpoints();
 app.MapBookingEndpoints();
+app.MapUploadsEndpoints();
 app.MapPaymentEndpoints();
 app.MapReviewEndpoints();
+app.MapNotificationEndpoints();
+app.MapDeviceTokenEndpoints();
 app.MapAdminEndpoints();
 
 app.MapHangfireDashboard("/hangfire", new DashboardOptions
@@ -84,8 +132,12 @@ using (var scope = app.Services.CreateScope())
 
 // Seed reference data (81 il + sample districts) on startup. Idempotent.
 // Demo barber shops are seeded only when Seed:Demo=true (dev/staging only).
+// Seed:ComprehensiveDemo=true ek olarak 15 şehir, ~50 müşteri, ~250 booking, payments,
+// reviews, notifications üretir — visual demo + integration test için.
 var seedDemo = builder.Configuration.GetValue<bool>("Seed:Demo");
-await Kuaforum.Infrastructure.DependencyInjection.SeedReferenceDataAsync(app.Services, seedDemo);
+var seedComprehensive = builder.Configuration.GetValue<bool>("Seed:ComprehensiveDemo");
+await Kuaforum.Infrastructure.DependencyInjection.SeedReferenceDataAsync(
+    app.Services, seedDemo, seedComprehensive);
 
 app.Run();
 
@@ -95,8 +147,11 @@ internal sealed class HangfireDashboardAdminFilter : Hangfire.Dashboard.IDashboa
 {
     public bool Authorize(Hangfire.Dashboard.DashboardContext context)
     {
-        // TODO(Phase 2): wire admin role check via HttpContext.
-        // Dev: dashboard erişimi açık; prod: Cloudflare Access /hangfire path'i kapatır.
-        return true;
+        if (context is not Hangfire.Dashboard.AspNetCoreDashboardContext aspCtx) return false;
+        var http = aspCtx.HttpContext;
+        // Allow localhost (dev) without auth so Docker compose health checks work.
+        if (http.Request.Host.Host is "localhost" or "127.0.0.1") return true;
+        var user = http.User;
+        return user.Identity?.IsAuthenticated == true && user.IsInRole("Admin");
     }
 }

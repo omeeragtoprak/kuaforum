@@ -1,3 +1,4 @@
+using FluentValidation;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Identity;
@@ -7,6 +8,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Kuaforum.Application.Modules.Identity.Users;
 
 public sealed record DeleteMyAccountCommand(Guid UserId) : ICommand;
+
+public sealed class DeleteMyAccountCommandValidator : AbstractValidator<DeleteMyAccountCommand>
+{
+    public DeleteMyAccountCommandValidator()
+    {
+        RuleFor(x => x.UserId).NotEmpty();
+    }
+}
 
 public sealed class DeleteMyAccountCommandHandler(
     IApplicationDbContext db,

@@ -3,11 +3,47 @@ namespace Kuaforum.Domain.Common;
 public sealed record Error(string Code, string Message)
 {
     public static readonly Error None = new(string.Empty, string.Empty);
-    public static Error NotFound(string entity) => new("not_found", $"{entity} not found.");
+
+    // Türkçeleştirilmiş entity → "X bulunamadı." dönüşü.
+    // Fallback: caller ad-hoc tam cümle geçerse (boşluk/nokta içeriyor) suffix eklemez,
+    // mesajı olduğu gibi kullanır. Böylece "Booking" → "Randevu bulunamadı." OLURKEN
+    // "No admin user found. AdminSeeder must run first." → aynen kalır (double-suffix yok).
+    public static Error NotFound(string entity)
+    {
+        if (string.IsNullOrWhiteSpace(entity))
+            return new("not_found", "Kayıt bulunamadı.");
+        if (entity.Contains(' ') || entity.EndsWith('.'))
+            return new("not_found", entity);
+        var tr = EntityNameTr.GetValueOrDefault(entity, entity);
+        return new("not_found", $"{tr} bulunamadı.");
+    }
+
     public static Error Validation(string message) => new("validation", message);
     public static Error Conflict(string message) => new("conflict", message);
     public static Error Forbidden(string message) => new("forbidden", message);
-    public static Error Unauthorized(string message = "Unauthorized.") => new("unauthorized", message);
+    public static Error Unauthorized(string message = "Yetkisiz erişim.") => new("unauthorized", message);
+
+    private static readonly Dictionary<string, string> EntityNameTr = new(StringComparer.Ordinal)
+    {
+        ["Booking"] = "Randevu",
+        ["User"] = "Kullanıcı",
+        ["OTP"] = "Doğrulama kodu",
+        ["Session"] = "Oturum",
+        ["BarberShop"] = "Kuaför",
+        ["Customer"] = "Müşteri",
+        ["Stylist"] = "Çalışan",
+        ["Owner"] = "İşletme sahibi",
+        ["Payment"] = "Ödeme",
+        ["Review"] = "Değerlendirme",
+        ["Notification"] = "Bildirim",
+        ["KycSubmission"] = "KYC başvurusu",
+        ["Service"] = "Hizmet",
+        ["DeviceToken"] = "Cihaz",
+        ["Address"] = "Adres",
+        ["Refund"] = "İade",
+        ["TimeOff"] = "İzin",
+        ["WorkingHours"] = "Çalışma saati",
+    };
 }
 
 public class Result

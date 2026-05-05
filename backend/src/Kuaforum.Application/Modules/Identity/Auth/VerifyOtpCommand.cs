@@ -63,7 +63,7 @@ public sealed class VerifyOtpCommandHandler(
             return Result.Failure<VerifyOtpResponse>(verifyResult.Error);
 
         if (!verifyResult.Value)
-            return Result.Failure<VerifyOtpResponse>(Error.Validation("Invalid OTP code."));
+            return Result.Failure<VerifyOtpResponse>(Error.Validation("Doğrulama kodu hatalı."));
 
         var phoneResult = PhoneE164.TryCreate(otp.PhoneE164);
         if (phoneResult.IsFailure)
@@ -82,7 +82,7 @@ public sealed class VerifyOtpCommandHandler(
         else
         {
             if (!user.CanLogin)
-                return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Account cannot login."));
+                return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Bu hesap ile giriş yapılamaz."));
         }
 
         var loginResult = user.MarkLoggedIn(request.DeviceFingerprint, request.Ip);

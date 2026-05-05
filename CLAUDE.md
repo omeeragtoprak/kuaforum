@@ -229,5 +229,5 @@ Her faz/modül kapanışında:
 
 ---
 
-**Son güncelleme:** 2026-05-02 (Phase 0 başlangıcı)
-**Bir sonraki güncelleme:** Phase 0 onayı + ek doc'ların yazımı sonrası.
+**Son güncelleme:** 2026-05-05 (98 backend test yeşil; Service CRUD edit/delete + booking detail owner müşteri bilgisi (JOIN) + start/complete time-window guards + IStylistScheduleChecker WorkingHours/TimeOff enforcement on Initiate+Reschedule + AddStylist default WorkingHours seed + TimeOff vs aktif booking conflict check + audit log parity Set/Add availability + Domain/Application İngilizce error mesajları Türkçeleştirildi + DemoBarberSeeder 7. shop Draft state + DevLoginRole.BarberOwnerDraft + mobile login Draft hızlı giriş butonu + NU1903 vuln bump 10.0.0→10.0.7 + IObjectStorage + LocalFileObjectStorage + POST /v1/uploads/kyc multipart + mobile uploadKycDocument)
+**Bir sonraki güncelleme:** Hetzner deploy pipeline + R2 file upload + Sentry integration + shadcn migration sonrası

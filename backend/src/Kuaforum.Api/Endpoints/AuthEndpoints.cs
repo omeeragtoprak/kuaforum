@@ -7,9 +7,16 @@ namespace Kuaforum.Api.Endpoints;
 
 public static class AuthEndpoints
 {
-    public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app, IWebHostEnvironment env)
     {
         var group = app.MapGroup("/v1/auth").WithTags("Auth");
+
+        if (env.IsDevelopment())
+        {
+            group.MapPost("/dev-login", DevLoginAsync)
+                .WithName("DevLogin")
+                .AllowAnonymous();
+        }
 
         group.MapPost("/otp/send", SendOtpAsync)
             .WithName("SendOtp")
@@ -40,6 +47,22 @@ public static class AuthEndpoints
             .AllowAnonymous();
 
         return app;
+    }
+
+    private static async Task<IResult> DevLoginAsync(
+        [FromBody] DevLoginRequest request,
+        HttpContext httpContext,
+        IMediator mediator,
+        CancellationToken ct)
+    {
+        var ip = httpContext.Connection.RemoteIpAddress?.ToString();
+        var deviceFingerprint = request.DeviceFingerprint
+            ?? $"dev-{request.Role.ToString().ToLowerInvariant()}-{httpContext.Connection.Id}";
+        var result = await mediator.Send(
+            new DevLoginCommand(request.Role, deviceFingerprint, request.DeviceName ?? "Dev Quick Login", ip), ct);
+        return result.IsSuccess
+            ? Results.Ok(result.Value)
+            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
     }
 
     private static async Task<IResult> AdminLoginAsync(
@@ -138,6 +161,7 @@ public static class AuthEndpoints
         return result.IsSuccess ? Results.NoContent() : Results.Problem(result.Error.Message);
     }
 
+    public sealed record DevLoginRequest(DevLoginRole Role, string? DeviceFingerprint, string? DeviceName);
     public sealed record SendOtpRequest(string Phone, OtpPurpose Purpose);
     public sealed record VerifyOtpRequest(Guid OtpId, string Code, string DeviceFingerprint, string? DeviceName);
     public sealed record RefreshRequest(string RefreshToken, string DeviceFingerprint);

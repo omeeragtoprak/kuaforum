@@ -42,7 +42,7 @@ public sealed class OtpCode : Entity
         if (!IsActive)
         {
             ExpireIfApplicable();
-            return Result.Failure<bool>(Error.Validation("OTP is no longer active."));
+            return Result.Failure<bool>(Error.Validation("Doğrulama kodu artık geçerli değil."));
         }
 
         if (CodeHash == candidateCodeHash)

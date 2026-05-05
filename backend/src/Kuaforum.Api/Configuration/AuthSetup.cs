@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using Kuaforum.Infrastructure.Auth;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -11,6 +12,10 @@ public static class AuthSetup
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Disable Microsoft's inbound claim mapping so "role"/"sub" stay as-is
+        // (otherwise they get rewritten to http://schemas.microsoft.com/... URIs and RequireRole fails).
+        JwtSecurityTokenHandler.DefaultMapInboundClaims = false;
+
         var jwt = configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>()
             ?? throw new InvalidOperationException("Jwt options missing.");
 
@@ -22,6 +27,7 @@ public static class AuthSetup
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(options =>
             {
+                options.MapInboundClaims = false;
                 options.TokenValidationParameters = new TokenValidationParameters
                 {
                     ValidateIssuer = true,

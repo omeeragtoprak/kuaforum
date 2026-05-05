@@ -11,6 +11,15 @@ namespace Kuaforum.Application.Modules.Review;
 
 public sealed record ApproveReviewCommand(Guid ModeratorUserId, Guid ReviewId) : ICommand;
 
+public sealed class ApproveReviewCommandValidator : AbstractValidator<ApproveReviewCommand>
+{
+    public ApproveReviewCommandValidator()
+    {
+        RuleFor(x => x.ModeratorUserId).NotEmpty();
+        RuleFor(x => x.ReviewId).NotEmpty();
+    }
+}
+
 public sealed class ApproveReviewCommandHandler(IApplicationDbContext db, IAuditLogger audit) : IRequestHandler<ApproveReviewCommand, Result>
 {
     public async Task<Result> Handle(ApproveReviewCommand request, CancellationToken cancellationToken)
@@ -30,6 +39,16 @@ public sealed class ApproveReviewCommandHandler(IApplicationDbContext db, IAudit
 }
 
 public sealed record RejectReviewCommand(Guid ModeratorUserId, Guid ReviewId, ReviewRejectionReason Reason) : ICommand;
+
+public sealed class RejectReviewCommandValidator : AbstractValidator<RejectReviewCommand>
+{
+    public RejectReviewCommandValidator()
+    {
+        RuleFor(x => x.ModeratorUserId).NotEmpty();
+        RuleFor(x => x.ReviewId).NotEmpty();
+        RuleFor(x => x.Reason).IsInEnum();
+    }
+}
 
 public sealed class RejectReviewCommandHandler(IApplicationDbContext db, IAuditLogger audit) : IRequestHandler<RejectReviewCommand, Result>
 {
@@ -73,7 +92,7 @@ public sealed class ReplyToReviewCommandHandler(IApplicationDbContext db, IAudit
         var shop = await ctx.Set<BarberShop>().AsNoTracking()
             .FirstOrDefaultAsync(s => s.Id == review.BarberShopId, cancellationToken);
         if (shop is null || shop.OwnerId != request.BarberOwnerUserId)
-            return Result.Failure(Error.Forbidden("Only barber owner can reply."));
+            return Result.Failure(Error.Forbidden("Yalnızca işletme sahibi yanıt verebilir."));
 
         var result = review.AddReply(request.BarberOwnerUserId, request.Body);
         if (result.IsFailure) return result;

@@ -9,3 +9,7 @@ public sealed record PaymentCapturedEvent(Guid PaymentId, Guid BookingId, long A
 public sealed record PaymentFailedEvent(Guid PaymentId, Guid BookingId, string Reason) : DomainEvent;
 
 public sealed record PaymentRefundedEvent(Guid PaymentId, Guid RefundId, long AmountMinor, RefundReason Reason) : DomainEvent;
+
+public sealed record PaymentAuthorizedEvent(Guid PaymentId, Guid BookingId, string ProviderTransactionId) : DomainEvent;
+
+public sealed record PaymentSettledEvent(Guid PaymentId, Guid BookingId, long NetToBarberMinor, DateTimeOffset SettledAt) : DomainEvent;

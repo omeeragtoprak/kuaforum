@@ -2,6 +2,7 @@ using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Modules.Identity;
 using Kuaforum.Domain.Modules.Identity.ValueObjects;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -27,8 +28,16 @@ public sealed class AdminSeeder(
     ITotpService totp,
     ISymmetricEncryption encryption,
     IOptions<AdminSeederOptions> options,
+    IHostEnvironment env,
     ILogger<AdminSeeder> logger)
 {
+    private static string MaskEmail(string email)
+    {
+        var at = email.IndexOf('@');
+        if (at <= 1) return "***";
+        return email[..1] + new string('*', Math.Max(2, at - 1)) + email[at..];
+    }
+
     public async Task SeedAsync(CancellationToken ct = default)
     {
         var opts = options.Value;
@@ -69,13 +78,21 @@ public sealed class AdminSeeder(
 
         await db.SaveChangesAsync(ct);
 
-        var provisioningUri = totp.FormatProvisioningUri(totpSecret, opts.Email, "Kuaforum");
-        logger.LogWarning("================================================================");
-        logger.LogWarning("ADMIN USER CREATED: {Email}", opts.Email);
-        logger.LogWarning("TOTP SECRET (Base32): {Secret}", totpSecret);
-        logger.LogWarning("Authenticator otpauth URI: {Uri}", provisioningUri);
-        logger.LogWarning("Bu çıktıyı GÜVENLİ kaydet — Authenticator app'a manuel olarak gir veya otpauth URI'yi QR kod jeneratörüne yapıştır.");
-        logger.LogWarning("Üretimde Seed:Admin değerlerini sil; bu seed bir defalık.");
-        logger.LogWarning("================================================================");
+        if (env.IsDevelopment())
+        {
+            var provisioningUri = totp.FormatProvisioningUri(totpSecret, opts.Email, "Kuaforum");
+            logger.LogWarning("================================================================");
+            logger.LogWarning("ADMIN USER CREATED [DEV ONLY]: {Email}", opts.Email);
+            logger.LogWarning("TOTP SECRET (Base32) [DEV ONLY]: {Secret}", totpSecret);
+            logger.LogWarning("Authenticator otpauth URI [DEV ONLY]: {Uri}", provisioningUri);
+            logger.LogWarning("Authenticator app'a manuel olarak gir veya otpauth URI'yi QR kod jeneratörüne yapıştır.");
+            logger.LogWarning("================================================================");
+        }
+        else
+        {
+            // Production: expose nothing sensitive in logs. Founder sets Seed:Admin:FixedTotpSecret out-of-band.
+            logger.LogInformation("Admin user provisioned for {MaskedEmail} (TOTP secret intentionally not logged in non-Development env).",
+                MaskEmail(opts.Email));
+        }
     }
 }

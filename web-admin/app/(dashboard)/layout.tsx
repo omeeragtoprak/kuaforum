@@ -5,9 +5,11 @@ import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { adminAuth } from '@/lib/api';
 
-const NAV = [
+const NAV: Array<{ href: import('next').Route; label: string }> = [
   { href: '/', label: 'Dashboard' },
   { href: '/users', label: 'Kullanıcılar' },
+  { href: '/barber-shops', label: 'Kuaförler' },
+  { href: '/bookings', label: 'Randevular' },
   { href: '/kyc', label: 'KYC Kuyruğu' },
   { href: '/reviews', label: 'Yorum Moderasyonu' },
 ];

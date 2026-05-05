@@ -9,3 +9,5 @@ public sealed record ReviewApprovedEvent(Guid ReviewId, Guid CustomerId, Guid Ba
 public sealed record ReviewRejectedEvent(Guid ReviewId, ReviewRejectionReason Reason) : DomainEvent;
 
 public sealed record ReviewReplyAddedEvent(Guid ReviewId, Guid BarberOwnerId) : DomainEvent;
+
+public sealed record ReviewHiddenEvent(Guid ReviewId, Guid ModeratorUserId) : DomainEvent;

@@ -26,13 +26,13 @@ public sealed class ServiceCatalog : Entity
         string? description = null)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 80)
-            return Result.Failure<ServiceCatalog>(Error.Validation("Service name max 80."));
+            return Result.Failure<ServiceCatalog>(Error.Validation("Hizmet adı en fazla 80 karakter olabilir."));
         if (durationMinutes is < 5 or > 600)
-            return Result.Failure<ServiceCatalog>(Error.Validation("Duration must be 5-600 minutes."));
+            return Result.Failure<ServiceCatalog>(Error.Validation("Süre 5-600 dakika arasında olmalı."));
         if (bufferMinutes is < 0 or > 60)
-            return Result.Failure<ServiceCatalog>(Error.Validation("Buffer must be 0-60 minutes."));
+            return Result.Failure<ServiceCatalog>(Error.Validation("Tampon süresi 0-60 dakika arasında olmalı."));
         if (priceMinor < 0)
-            return Result.Failure<ServiceCatalog>(Error.Validation("Price cannot be negative."));
+            return Result.Failure<ServiceCatalog>(Error.Validation("Fiyat negatif olamaz."));
 
         return new ServiceCatalog
         {
@@ -54,12 +54,12 @@ public sealed class ServiceCatalog : Entity
         if (durationMinutes.HasValue)
         {
             if (durationMinutes is < 5 or > 600)
-                return Result.Failure(Error.Validation("Duration must be 5-600."));
+                return Result.Failure(Error.Validation("Süre 5-600 dakika arasında olmalı."));
             DurationMinutes = durationMinutes.Value;
         }
         if (priceMinor.HasValue)
         {
-            if (priceMinor.Value < 0) return Result.Failure(Error.Validation("Price negative."));
+            if (priceMinor.Value < 0) return Result.Failure(Error.Validation("Fiyat negatif olamaz."));
             PriceMinor = priceMinor.Value;
         }
         if (bufferMinutes.HasValue) BufferMinutes = bufferMinutes.Value;
@@ -93,9 +93,9 @@ public sealed class StylistService : Entity
     public Result SetOverrides(int? duration, long? price)
     {
         if (duration is not null && duration is < 5 or > 600)
-            return Result.Failure(Error.Validation("Override duration 5-600."));
+            return Result.Failure(Error.Validation("Özel süre 5-600 dakika arasında olmalı."));
         if (price is < 0)
-            return Result.Failure(Error.Validation("Override price negative."));
+            return Result.Failure(Error.Validation("Özel fiyat negatif olamaz."));
         OverrideDurationMinutes = duration;
         OverridePriceMinor = price;
         Touch();

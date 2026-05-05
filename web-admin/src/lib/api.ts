@@ -151,6 +151,92 @@ export const adminApi = {
   async unsuspendUser(userId: string) {
     return apiFetch(`/v1/admin/users/${userId}/unsuspend`, { method: 'POST' });
   },
+  async listBookings(params: AdminBookingsQuery = {}): Promise<AdminBookingsPage> {
+    const qs = new URLSearchParams();
+    if (params.from) qs.set('from', params.from);
+    if (params.to) qs.set('to', params.to);
+    if (params.status !== undefined) qs.set('status', String(params.status));
+    if (params.barberShopId) qs.set('barberShopId', params.barberShopId);
+    if (params.search) qs.set('search', params.search);
+    qs.set('page', String(params.page ?? 1));
+    qs.set('pageSize', String(params.pageSize ?? 25));
+    return apiFetch<AdminBookingsPage>(`/v1/admin/bookings?${qs}`);
+  },
+  async cancelBooking(bookingId: string, reason: string): Promise<{ refundPercentage: number }> {
+    return apiFetch<{ refundPercentage: number }>(`/v1/admin/bookings/${bookingId}/cancel`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+  async listBarberShops(params: AdminShopsQuery = {}): Promise<AdminBarberShopsPage> {
+    const qs = new URLSearchParams();
+    if (params.search) qs.set('search', params.search);
+    if (params.status !== undefined) qs.set('status', String(params.status));
+    qs.set('page', String(params.page ?? 1));
+    qs.set('pageSize', String(params.pageSize ?? 25));
+    return apiFetch<AdminBarberShopsPage>(`/v1/admin/barber-shops?${qs}`);
+  },
+};
+
+export type AdminBookingsQuery = {
+  from?: string;
+  to?: string;
+  status?: number;
+  barberShopId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminBookingDto = {
+  id: string;
+  customerId: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  barberShopId: string;
+  shopName: string;
+  stylistId: string;
+  stylistName: string;
+  scheduledAt: string;
+  scheduledEndsAt: string;
+  status: number | string;
+  totalAmountMinor: number;
+  currency: string;
+};
+
+export type AdminBookingsPage = {
+  items: AdminBookingDto[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+};
+
+export type AdminShopsQuery = {
+  search?: string;
+  status?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AdminBarberShopDto = {
+  id: string;
+  name: string;
+  slug: string;
+  ownerDisplayName: string | null;
+  ownerPhone: string | null;
+  status: number | string;
+  genderType: number | string;
+  stylistCount: number;
+  serviceCount: number;
+  completedBookingsCount: number;
+  createdAt: string;
+};
+
+export type AdminBarberShopsPage = {
+  items: AdminBarberShopDto[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
 };
 
 export function formatTry(minor: number): string {

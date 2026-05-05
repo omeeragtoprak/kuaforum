@@ -32,6 +32,8 @@ public sealed class NotificationLog : Entity
     public string? ProviderMessageId { get; private set; }
     public DateTimeOffset? SentAt { get; private set; }
     public DateTimeOffset? FailedAt { get; private set; }
+    public bool IsRead { get; private set; }
+    public DateTimeOffset? ReadAt { get; private set; }
 
     public static NotificationLog Create(
         Guid? userId,
@@ -50,7 +52,16 @@ public sealed class NotificationLog : Entity
             Subject = subject,
             Body = body,
             Status = NotificationStatus.Pending,
+            IsRead = false,
         };
+    }
+
+    public void MarkRead()
+    {
+        if (IsRead) return;
+        IsRead = true;
+        ReadAt = DateTimeOffset.UtcNow;
+        Touch();
     }
 
     public void MarkSent(string? providerMessageId)

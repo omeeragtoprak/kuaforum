@@ -611,11 +611,17 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.HasIndex("CustomerId")
                         .HasDatabaseName("ix_bookings_customer");
 
+                    b.HasIndex("ScheduledAt")
+                        .HasDatabaseName("ix_bookings_scheduled_at");
+
                     b.HasIndex("Status")
                         .HasDatabaseName("ix_bookings_status");
 
                     b.HasIndex("StylistId")
                         .HasDatabaseName("ix_bookings_stylist");
+
+                    b.HasIndex("CustomerId", "ScheduledAt")
+                        .HasDatabaseName("ix_bookings_customer_scheduled");
 
                     b.HasIndex("StylistId", "ScheduledAt", "ScheduledEndsAt")
                         .HasDatabaseName("ix_bookings_stylist_range");
@@ -991,6 +997,70 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.ToTable("consents", (string)null);
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Identity.DeviceToken", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AppVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("app_version");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeviceModel")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("device_model");
+
+                    b.Property<string>("FcmToken")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)")
+                        .HasColumnName("fcm_token");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<int>("Platform")
+                        .HasColumnType("integer")
+                        .HasColumnName("platform");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FcmToken")
+                        .IsUnique()
+                        .HasDatabaseName("ux_device_tokens_fcm_token");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_device_tokens_user_id");
+
+                    b.HasIndex("UserId", "IsActive")
+                        .HasDatabaseName("ix_device_tokens_user_active");
+
+                    b.ToTable("device_tokens", (string)null);
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Identity.OtpCode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1252,10 +1322,20 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("failure_reason");
 
+                    b.Property<bool>("IsRead")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_read");
+
                     b.Property<string>("ProviderMessageId")
                         .HasMaxLength(120)
                         .HasColumnType("character varying(120)")
                         .HasColumnName("provider_message_id");
+
+                    b.Property<DateTimeOffset?>("ReadAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("read_at");
 
                     b.Property<string>("Recipient")
                         .IsRequired()
@@ -1301,6 +1381,9 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("UserId", "CreatedAt")
                         .HasDatabaseName("ix_notification_logs_user_created");
+
+                    b.HasIndex("UserId", "Channel", "IsRead")
+                        .HasDatabaseName("ix_notification_logs_user_channel_read");
 
                     b.ToTable("notification_logs", (string)null);
                 });
@@ -1421,6 +1504,9 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
 
                     b.HasIndex("SubMerchantBarberShopId")
                         .HasDatabaseName("ix_payments_shop");
+
+                    b.HasIndex("CustomerId", "CreatedAt")
+                        .HasDatabaseName("ix_payments_customer_created");
 
                     b.ToTable("payments", (string)null);
                 });

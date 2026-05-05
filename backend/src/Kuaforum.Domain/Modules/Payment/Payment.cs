@@ -41,9 +41,9 @@ public sealed class Payment : AggregateRoot
         string? idempotencyKey = null)
     {
         if (grossAmountMinor <= 0)
-            return Result.Failure<Payment>(Error.Validation("Gross amount must be positive."));
+            return Result.Failure<Payment>(Error.Validation("Toplam tutar sıfırdan büyük olmalı."));
         if (platformCommissionMinor < 0 || platformCommissionMinor > grossAmountMinor)
-            return Result.Failure<Payment>(Error.Validation("Commission out of range."));
+            return Result.Failure<Payment>(Error.Validation("Komisyon tutarı geçerli aralıkta değil."));
 
         var payment = new Payment
         {
@@ -65,9 +65,9 @@ public sealed class Payment : AggregateRoot
     public Result Capture(string providerTransactionId, long pspMdrMinor)
     {
         if (Status != PaymentStatus.Initiated && Status != PaymentStatus.Authorized)
-            return Result.Failure(Error.Validation($"Cannot capture in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki ödeme tahsil edilemez."));
         if (pspMdrMinor < 0)
-            return Result.Failure(Error.Validation("PSP MDR cannot be negative."));
+            return Result.Failure(Error.Validation("PSP komisyon tutarı negatif olamaz."));
 
         Status = PaymentStatus.Captured;
         ProviderTransactionId = providerTransactionId;
@@ -83,18 +83,40 @@ public sealed class Payment : AggregateRoot
     public Result MarkSettled()
     {
         if (Status != PaymentStatus.Captured)
-            return Result.Failure(Error.Validation($"Cannot settle in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki ödeme mahsuplaştırılamaz."));
 
         Status = PaymentStatus.Settled;
         SettledAt = DateTimeOffset.UtcNow;
         Touch();
+
+        RaiseDomainEvent(new PaymentSettledEvent(Id, BookingId, NetToBarberMinor, SettledAt!.Value));
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// Pre-capture authorization (3DS handshake completed, funds reserved but not yet captured).
+    /// Most flows go straight Initiated→Captured; this exists for PSPs that split the steps.
+    /// </summary>
+    public Result Authorize(string providerTransactionId)
+    {
+        if (Status != PaymentStatus.Initiated)
+            return Result.Failure(Error.Validation($"{Status} durumundaki ödeme için yetkilendirme yapılamaz."));
+        if (string.IsNullOrWhiteSpace(providerTransactionId))
+            return Result.Failure(Error.Validation("Sağlayıcı işlem numarası gerekli."));
+
+        Status = PaymentStatus.Authorized;
+        ProviderTransactionId = providerTransactionId;
+        AuthorizedAt = DateTimeOffset.UtcNow;
+        Touch();
+
+        RaiseDomainEvent(new PaymentAuthorizedEvent(Id, BookingId, providerTransactionId));
         return Result.Success();
     }
 
     public Result Fail(string reason)
     {
         if (Status is PaymentStatus.Captured or PaymentStatus.Settled or PaymentStatus.Refunded)
-            return Result.Failure(Error.Validation($"Cannot fail in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki ödeme başarısız olarak işaretlenemez."));
 
         Status = PaymentStatus.Failed;
         FailureReason = reason;
@@ -107,13 +129,13 @@ public sealed class Payment : AggregateRoot
     public Result<Refund> AddRefund(long amountMinor, RefundReason reason, string? providerRefundId = null)
     {
         if (Status != PaymentStatus.Captured && Status != PaymentStatus.Settled && Status != PaymentStatus.PartiallyRefunded)
-            return Result.Failure<Refund>(Error.Validation($"Cannot refund in status {Status}."));
+            return Result.Failure<Refund>(Error.Validation($"{Status} durumundaki ödeme iade edilemez."));
         if (amountMinor <= 0)
-            return Result.Failure<Refund>(Error.Validation("Refund amount must be positive."));
+            return Result.Failure<Refund>(Error.Validation("İade tutarı sıfırdan büyük olmalı."));
 
         var alreadyRefunded = _refunds.Where(r => r.Status == RefundStatus.Succeeded).Sum(r => r.AmountMinor);
         if (alreadyRefunded + amountMinor > GrossAmountMinor)
-            return Result.Failure<Refund>(Error.Validation("Refund exceeds remaining payment amount."));
+            return Result.Failure<Refund>(Error.Validation("İade tutarı kalan ödeme tutarını aşıyor."));
 
         var refund = Refund.Create(Id, amountMinor, reason, providerRefundId);
         _refunds.Add(refund);

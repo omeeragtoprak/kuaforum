@@ -26,14 +26,14 @@ public sealed class ComputeAvailabilityQueryHandler(
     public async Task<Result<IReadOnlyList<SlotDto>>> Handle(ComputeAvailabilityQuery request, CancellationToken ct)
     {
         if (request.ToDate < request.FromDate)
-            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("ToDate must be >= FromDate."));
+            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Bitiş tarihi başlangıç tarihinden önce olamaz."));
 
         var rangeDays = request.ToDate.DayNumber - request.FromDate.DayNumber + 1;
         if (rangeDays > 60)
-            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Max 60-day window."));
+            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Tarih aralığı en fazla 60 gün olabilir."));
 
         if (request.ServiceCatalogIds.Count == 0)
-            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("At least one service is required."));
+            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("En az bir hizmet seçilmeli."));
 
         var ctx = (DbContext)db;
 
@@ -48,14 +48,14 @@ public sealed class ComputeAvailabilityQueryHandler(
             .ToListAsync(ct);
 
         if (services.Count != request.ServiceCatalogIds.Count)
-            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Some requested services are missing or inactive."));
+            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Seçilen hizmetlerin bazıları bulunamadı veya pasif."));
 
         var totalDuration = services.Sum(s => s.DurationMinutes);
         var totalBuffer = services.Sum(s => s.BufferMinutes);
         var requiredMinutes = totalDuration + totalBuffer;
 
         if (requiredMinutes <= 0)
-            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Service total duration must be > 0."));
+            return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Toplam hizmet süresi sıfırdan büyük olmalı."));
 
         var workingHours = await ctx.Set<WorkingHours>().AsNoTracking()
             .Where(w => w.StylistId == request.StylistId)

@@ -1,15 +1,17 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert, Linking, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
+import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
-import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Radius, Spacing, Layout, Shadow } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
 import { ReviewApi } from '@/api/review';
-import { formatDuration, formatTime, formatTry } from '@/lib/format';
+import { formatDuration, formatTime, formatTry, salonGenderLabel } from '@/lib/format';
 
 export default function BarberDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -26,13 +28,47 @@ export default function BarberDetailScreen() {
     queryFn: () => ReviewApi.getShopReviews(id!, 1, 5),
   });
 
+  const today = new Date().toISOString().slice(0, 10);
+  const week = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
+  const slotsQuery = useQuery({
+    queryKey: ['availability', selectedStylist, Array.from(selectedServices).sort().join(',')],
+    queryFn: () =>
+      BarberApi.computeAvailability(selectedStylist!, today, week, Array.from(selectedServices)),
+    enabled: !!selectedStylist && selectedServices.size > 0,
+  });
+
+  const slotsByDay = useMemo(() => {
+    const groups: { dateKey: string; label: string; slots: typeof slotsQuery.data }[] = [];
+    if (!slotsQuery.data) return groups;
+    const todayKey = new Date();
+    todayKey.setHours(0, 0, 0, 0);
+    const tomorrowKey = new Date(todayKey);
+    tomorrowKey.setDate(todayKey.getDate() + 1);
+    for (const slot of slotsQuery.data) {
+      const d = new Date(slot.startsAt);
+      const dateKey = d.toISOString().slice(0, 10);
+      let group = groups.find((g) => g.dateKey === dateKey);
+      if (!group) {
+        const dKey = new Date(d);
+        dKey.setHours(0, 0, 0, 0);
+        let label: string;
+        if (dKey.getTime() === todayKey.getTime()) label = 'Bugün';
+        else if (dKey.getTime() === tomorrowKey.getTime()) label = 'Yarın';
+        else label = d.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+        group = { dateKey, label, slots: [] };
+        groups.push(group);
+      }
+      group.slots!.push(slot);
+    }
+    return groups;
+  }, [slotsQuery.data]);
+
   function openDirections() {
     const shop = shopQuery.data;
     if (!shop?.latitude || !shop?.longitude) {
       Alert.alert('Konum yok', 'Bu kuaförün konumu tanımlı değil.');
       return;
     }
-    // FREE deep link — no API call, no key required
     const lat = shop.latitude;
     const lng = shop.longitude;
     const label = encodeURIComponent(shop.name);
@@ -45,15 +81,6 @@ export default function BarberDetailScreen() {
       Linking.openURL(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`);
     });
   }
-
-  const today = new Date().toISOString().slice(0, 10);
-  const week = new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10);
-  const slotsQuery = useQuery({
-    queryKey: ['availability', selectedStylist, Array.from(selectedServices).sort().join(',')],
-    queryFn: () =>
-      BarberApi.computeAvailability(selectedStylist!, today, week, Array.from(selectedServices)),
-    enabled: !!selectedStylist && selectedServices.size > 0,
-  });
 
   function toggleService(serviceId: string) {
     const next = new Set(selectedServices);
@@ -72,93 +99,181 @@ export default function BarberDetailScreen() {
     .reduce((sum, s) => sum + s.durationMinutes + s.bufferMinutes, 0);
 
   function handleContinue() {
-    if (!selectedStylist) {
-      Alert.alert('Stilist seç');
-      return;
-    }
-    if (selectedServices.size === 0) {
-      Alert.alert('Hizmet seç', 'En az bir hizmet seçmelisin.');
-      return;
-    }
-    if (!selectedSlot) {
-      Alert.alert('Saat seç');
-      return;
-    }
+    if (!selectedStylist) return Alert.alert('Stilist seç', 'Devam etmek için bir stilist seç.');
+    if (selectedServices.size === 0) return Alert.alert('Hizmet seç', 'En az bir hizmet seçmelisin.');
+    if (!selectedSlot) return Alert.alert('Saat seç', 'Müsait saatlerden birini seç.');
+    const stylistName =
+      (stylistsQuery.data ?? []).find((s) => s.id === selectedStylist)?.displayName ?? '';
+    const serviceLabels = (servicesQuery.data ?? [])
+      .filter((s) => selectedServices.has(s.id))
+      .map((s) => s.name)
+      .join(' · ');
     router.push({
       pathname: '/booking/confirm',
       params: {
         stylistId: selectedStylist,
+        stylistName,
         scheduledAt: selectedSlot,
         services: Array.from(selectedServices).join(','),
+        serviceLabels,
+        totalAmount: String(totalAmount),
+        totalDuration: String(totalDuration),
+        shopName: shop.name,
       },
     });
   }
 
-  if (shopQuery.isLoading) return <SafeAreaView style={styles.container}><EmptyState title="Yükleniyor..." /></SafeAreaView>;
-  if (shopQuery.isError || !shopQuery.data)
+  if (shopQuery.isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <EmptyState title="Bulunamadı" description="Bu kuaför yüklenemedi." />
+        <EmptyState title="Yükleniyor…" />
       </SafeAreaView>
     );
+  }
+  if (shopQuery.isError || !shopQuery.data) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <EmptyState
+          emoji="⚠️"
+          title="Bulunamadı"
+          description="Bu kuaför yüklenemedi."
+          actionLabel="Geri dön"
+          onAction={() => router.back()}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  const shop = shopQuery.data;
+  const summary = reviewsQuery.data?.summary;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView>
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 140 }}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()}>
+          <Pressable onPress={() => router.back()} style={styles.backBtn}>
             <Text style={styles.back}>← Geri</Text>
           </Pressable>
-          <Text style={styles.shopName}>{shopQuery.data.name}</Text>
-          {shopQuery.data.description ? <Text style={styles.shopDesc}>{shopQuery.data.description}</Text> : null}
-          {shopQuery.data.addressLine1 ? <Text style={styles.shopAddr}>📍 {shopQuery.data.addressLine1}</Text> : null}
-          {reviewsQuery.data && reviewsQuery.data.summary.count > 0 ? (
-            <Text style={styles.ratingLine}>
-              ⭐ {reviewsQuery.data.summary.average.toFixed(1)} ({reviewsQuery.data.summary.count} yorum)
-            </Text>
+
+          <View style={styles.heroBubble}>
+            <Text style={styles.heroEmoji}>✂️</Text>
+          </View>
+          <Text style={styles.shopName}>{shop.name}</Text>
+          {shop.description ? (
+            <Text style={styles.shopDesc}>{shop.description}</Text>
           ) : null}
-          {shopQuery.data.latitude && shopQuery.data.longitude ? (
-            <Pressable onPress={openDirections} style={styles.directionsBtn}>
-              <Text style={styles.directionsText}>🗺  Yol tarifi al</Text>
-            </Pressable>
+
+          <View style={styles.metaRow}>
+            <Badge label={salonGenderLabel(shop.genderType)} tone="brand" />
+            {summary && summary.count > 0 ? (
+              <Badge label={`⭐ ${summary.average.toFixed(1)} (${summary.count})`} tone="warning" />
+            ) : null}
+          </View>
+
+          {shop.addressLine1 ? (
+            <View style={styles.addressRow}>
+              <Text style={styles.addressIcon}>📍</Text>
+              <Text style={styles.addressText} numberOfLines={2}>{shop.addressLine1}</Text>
+              {shop.latitude && shop.longitude ? (
+                <Pressable onPress={openDirections} style={styles.directionsBtn}>
+                  <Text style={styles.directionsText}>Yol tarifi</Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : null}
         </View>
 
-        <Section title="Hizmetler">
+        <Section title="Hizmetler" subtitle="Birden fazla seçebilirsin">
           {(servicesQuery.data ?? []).map((s) => {
             const selected = selectedServices.has(s.id);
             return (
-              <Pressable key={s.id} onPress={() => toggleService(s.id)}>
-                <Card style={[styles.serviceCard, selected && styles.serviceCardSelected]}>
-                  <View style={styles.flexBetween}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.serviceName}>{s.name}</Text>
-                      <Text style={styles.serviceDuration}>{formatDuration(s.durationMinutes)}</Text>
-                    </View>
-                    <Text style={styles.servicePrice}>{formatTry(s.priceMinor)}</Text>
-                  </View>
-                </Card>
+              <Pressable
+                key={s.id}
+                onPress={() => toggleService(s.id)}
+                style={[styles.serviceCard, selected && styles.serviceCardSelected]}
+              >
+                <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+                  {selected ? <Text style={styles.checkmark}>✓</Text> : null}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.serviceName}>{s.name}</Text>
+                  <Text style={styles.serviceMeta}>{formatDuration(s.durationMinutes + s.bufferMinutes)}</Text>
+                </View>
+                <Text style={styles.servicePrice}>{formatTry(s.priceMinor)}</Text>
               </Pressable>
             );
           })}
         </Section>
 
-        <Section title="Stilist seç">
-          <View style={styles.stylistRow}>
+        <Section title="Stilist" subtitle="Çalışmak istediğin uzmanı seç">
+          <View style={styles.chipsRow}>
             {(stylistsQuery.data ?? []).map((st) => (
-              <Pressable key={st.id} onPress={() => setSelectedStylist(st.id)} style={[styles.stylistPill, selectedStylist === st.id && styles.stylistPillSelected]}>
-                <Text style={[styles.stylistText, selectedStylist === st.id && styles.stylistTextSelected]}>
-                  {st.displayName}
-                </Text>
-              </Pressable>
+              <Chip
+                key={st.id}
+                label={st.displayName}
+                selected={selectedStylist === st.id}
+                onPress={() => setSelectedStylist(st.id)}
+              />
             ))}
           </View>
         </Section>
 
-        {reviewsQuery.data && reviewsQuery.data.items.length > 0 ? (
-          <Section title={`Yorumlar (${reviewsQuery.data.summary.count})`}>
-            {reviewsQuery.data.items.map((r) => (
-              <Card key={r.id} style={styles.reviewCard}>
+        {selectedStylist && selectedServices.size > 0 ? (
+          <Section title="Müsait saatler" subtitle="Önümüzdeki 7 gün">
+            {slotsQuery.isLoading ? (
+              <Text style={styles.muted}>Hesaplanıyor…</Text>
+            ) : slotsQuery.isError ? (
+              <EmptyState
+                emoji="⚠️"
+                title="Slotlar alınamadı"
+                description="Bağlantı hatası — tekrar dene."
+                actionLabel="Yenile"
+                onAction={() => slotsQuery.refetch()}
+              />
+            ) : (slotsQuery.data?.length ?? 0) === 0 ? (
+              <EmptyState
+                emoji="🗓️"
+                title="Müsait slot yok"
+                description="Farklı bir stilist veya hizmet seçimi dene."
+              />
+            ) : (
+              <View style={{ gap: Spacing.md }}>
+                {slotsByDay.map((group) => (
+                  <View key={group.dateKey} style={{ gap: Spacing.sm }}>
+                    <Text style={styles.dayHeader}>{group.label}</Text>
+                    <View style={styles.slotGrid}>
+                      {group.slots!.map((slot) => (
+                        <Pressable
+                          key={slot.startsAt}
+                          onPress={() => setSelectedSlot(slot.startsAt)}
+                          style={[
+                            styles.slotChip,
+                            selectedSlot === slot.startsAt && styles.slotChipSelected,
+                          ]}
+                        >
+                          <Text style={[
+                            styles.slotText,
+                            selectedSlot === slot.startsAt && styles.slotTextSelected,
+                          ]}>
+                            {formatTime(slot.startsAt)}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </Section>
+        ) : null}
+
+        {summary && reviewsQuery.data!.items.length > 0 ? (
+          <Section title={`Yorumlar (${summary.count})`} subtitle={`Ortalama ⭐ ${summary.average.toFixed(1)}`}>
+            {reviewsQuery.data!.items.map((r) => (
+              <Card key={r.id} style={{ gap: 6 }}>
                 <View style={styles.reviewHead}>
                   <Text style={styles.reviewStars}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</Text>
                   <Text style={styles.reviewDate}>
@@ -168,43 +283,20 @@ export default function BarberDetailScreen() {
                 {r.body ? <Text style={styles.reviewBody}>{r.body}</Text> : null}
                 {r.replyBody ? (
                   <View style={styles.replyBox}>
-                    <Text style={styles.replyLabel}>Kuaförün cevabı:</Text>
-                    <Text style={styles.replyBody}>{r.replyBody}</Text>
+                    <Text style={styles.replyLabel}>Kuaförden:</Text>
+                    <Text style={styles.reviewBody}>{r.replyBody}</Text>
                   </View>
                 ) : null}
               </Card>
             ))}
           </Section>
         ) : null}
-
-        {selectedStylist && selectedServices.size > 0 ? (
-          <Section title="Müsait saatler">
-            {slotsQuery.isLoading ? (
-              <EmptyState title="Hesaplanıyor..." />
-            ) : (slotsQuery.data?.length ?? 0) === 0 ? (
-              <EmptyState title="Müsait slot yok" description="Farklı bir stilist veya hizmet kombinasyonu deneyin." />
-            ) : (
-              <View style={styles.slotGrid}>
-                {slotsQuery.data!.slice(0, 24).map((slot) => (
-                  <Pressable
-                    key={slot.startsAt}
-                    onPress={() => setSelectedSlot(slot.startsAt)}
-                    style={[styles.slotChip, selectedSlot === slot.startsAt && styles.slotChipSelected]}
-                  >
-                    <Text style={[styles.slotText, selectedSlot === slot.startsAt && styles.slotTextSelected]}>
-                      {formatTime(slot.startsAt)}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </Section>
-        ) : null}
       </ScrollView>
 
       {selectedServices.size > 0 ? (
         <View style={styles.footerBar}>
-          <View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.footerTotalLabel}>Toplam</Text>
             <Text style={styles.footerTotal}>{formatTry(totalAmount)}</Text>
             <Text style={styles.footerDuration}>{formatDuration(totalDuration)}</Text>
           </View>
@@ -212,7 +304,9 @@ export default function BarberDetailScreen() {
             label="Devam et"
             onPress={handleContinue}
             disabled={!selectedSlot || !selectedStylist}
-            style={{ flex: 1, marginLeft: Spacing.md }}
+            fullWidth={false}
+            size="lg"
+            style={{ paddingHorizontal: 32 }}
           />
         </View>
       ) : null}
@@ -220,87 +314,138 @@ export default function BarberDetailScreen() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
+      {subtitle ? <Text style={styles.sectionSub}>{subtitle}</Text> : null}
+      <View style={{ gap: Spacing.sm }}>{children}</View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { padding: Spacing.lg },
-  back: { color: Colors.primary, fontSize: FontSize.sm, marginBottom: Spacing.sm },
-  shopName: { fontSize: FontSize.xxl, fontWeight: '700', color: Colors.text },
-  shopDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
-  shopAddr: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: Spacing.sm },
-  ratingLine: { fontSize: FontSize.sm, color: Colors.text, marginTop: Spacing.xs, fontWeight: '600' },
-  directionsBtn: {
-    marginTop: Spacing.md,
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.md,
-    backgroundColor: 'rgba(107, 79, 79, 0.1)',
-    alignSelf: 'flex-start',
+  header: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.lg,
+    alignItems: 'flex-start',
   },
-  directionsText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600' },
-  reviewCard: { gap: Spacing.xs },
+  backBtn: { paddingVertical: 6 },
+  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  heroBubble: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.primarySoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: Spacing.md,
+  },
+  heroEmoji: { fontSize: 32 },
+  shopName: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: Spacing.md },
+  shopDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, lineHeight: 20 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: Spacing.md },
+  addressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: Spacing.md,
+    backgroundColor: Colors.surface,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 10,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignSelf: 'stretch',
+  },
+  addressIcon: { fontSize: 16 },
+  addressText: { flex: 1, fontSize: FontSize.sm, color: Colors.textSecondary },
+  directionsBtn: {
+    backgroundColor: Colors.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+  },
+  directionsText: { fontSize: FontSize.xs, color: Colors.primaryDark, fontWeight: FontWeight.semibold },
+  section: { paddingHorizontal: Layout.screenPaddingX, marginTop: Spacing.lg },
+  sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
+  sectionSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, marginBottom: Spacing.md },
+  muted: { fontSize: FontSize.sm, color: Colors.textMuted },
+  serviceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.surface,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+  },
+  serviceCardSelected: { borderColor: Colors.primary, backgroundColor: Colors.primarySoft },
+  checkbox: {
+    width: 24, height: 24, borderRadius: 12,
+    borderWidth: 2, borderColor: Colors.borderStrong,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkboxSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  checkmark: { color: Colors.textInverse, fontSize: 14, fontWeight: FontWeight.bold },
+  serviceName: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.medium },
+  serviceMeta: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  servicePrice: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.bold },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  slotGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  dayHeader: {
+    fontSize: FontSize.sm,
+    fontWeight: FontWeight.bold,
+    color: Colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  slotChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: Radius.sm,
+    backgroundColor: Colors.surface,
+    borderWidth: 1.5,
+    borderColor: Colors.border,
+    minWidth: 76,
+    alignItems: 'center',
+  },
+  slotChipSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  slotText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
+  slotTextSelected: { color: Colors.textInverse },
   reviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  reviewStars: { fontSize: FontSize.md, color: Colors.accent, letterSpacing: 2 },
+  reviewStars: { fontSize: FontSize.md, color: Colors.star, letterSpacing: 2 },
   reviewDate: { fontSize: FontSize.xs, color: Colors.textMuted },
   reviewBody: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
   replyBox: {
     marginTop: Spacing.sm,
-    padding: Spacing.sm,
+    padding: 10,
     backgroundColor: Colors.background,
     borderRadius: Radius.sm,
     borderLeftWidth: 3,
     borderLeftColor: Colors.primary,
   },
-  replyLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: '700', marginBottom: 2 },
-  replyBody: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 18 },
-  section: { padding: Spacing.lg, paddingTop: 0, gap: Spacing.sm },
-  sectionTitle: { fontSize: FontSize.lg, fontWeight: '600', color: Colors.text, marginBottom: Spacing.sm },
-  serviceCard: { borderColor: Colors.border },
-  serviceCardSelected: { borderColor: Colors.primary, borderWidth: 2 },
-  flexBetween: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  serviceName: { fontSize: FontSize.md, color: Colors.text, fontWeight: '500' },
-  serviceDuration: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  servicePrice: { fontSize: FontSize.md, color: Colors.primary, fontWeight: '700' },
-  stylistRow: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  stylistPill: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.full,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  stylistPillSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  stylistText: { fontSize: FontSize.sm, color: Colors.text },
-  stylistTextSelected: { color: '#fff', fontWeight: '600' },
-  slotGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
-  slotChip: {
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.sm,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-  },
-  slotChipSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  slotText: { fontSize: FontSize.sm, color: Colors.text },
-  slotTextSelected: { color: '#fff', fontWeight: '600' },
+  replyLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.bold, marginBottom: 2 },
   footerBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
     flexDirection: 'row',
     alignItems: 'center',
-    padding: Spacing.lg,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
     backgroundColor: Colors.surface,
     borderTopWidth: 1,
     borderTopColor: Colors.border,
+    gap: Spacing.md,
+    ...Shadow.lg,
   },
-  footerTotal: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.primary },
-  footerDuration: { fontSize: FontSize.xs, color: Colors.textMuted },
+  footerTotalLabel: { fontSize: 11, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
+  footerTotal: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.primary },
+  footerDuration: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
 });

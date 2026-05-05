@@ -42,6 +42,10 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.HasIndex(x => x.BarberShopId).HasDatabaseName("ix_bookings_shop");
         builder.HasIndex(x => x.Status).HasDatabaseName("ix_bookings_status");
         builder.HasIndex(x => new { x.StylistId, x.ScheduledAt, x.ScheduledEndsAt }).HasDatabaseName("ix_bookings_stylist_range");
+        // Standalone scheduled_at for date-range admin queries (e.g., "bookings in May")
+        builder.HasIndex(x => x.ScheduledAt).HasDatabaseName("ix_bookings_scheduled_at");
+        // Reverse-chrono index for customer/admin "recent bookings" listing
+        builder.HasIndex(x => new { x.CustomerId, x.ScheduledAt }).HasDatabaseName("ix_bookings_customer_scheduled");
 
         builder.Ignore(x => x.DomainEvents);
     }

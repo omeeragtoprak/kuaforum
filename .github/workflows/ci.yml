@@ -1,0 +1,108 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (build + test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      docker:
+        # Docker available for Testcontainers (Postgres + Redis spin-up)
+        image: docker:dind
+        options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - name: Restore
+        working-directory: backend
+        run: dotnet restore
+
+      - name: Build
+        working-directory: backend
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Domain unit tests
+        working-directory: backend
+        run: dotnet test tests/Kuaforum.Tests.Domain --no-build --configuration Release --logger "console;verbosity=normal"
+
+      - name: Integration tests (Testcontainers)
+        working-directory: backend
+        run: dotnet test tests/Kuaforum.Tests.Integration --no-build --configuration Release --logger "console;verbosity=normal"
+
+  mobile:
+    name: Mobile (typecheck)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install
+        working-directory: mobile
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: mobile
+        run: pnpm typecheck
+
+  web-admin:
+    name: Web admin (typecheck + build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install
+        working-directory: web-admin
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        working-directory: web-admin
+        run: pnpm typecheck
+
+      - name: Next.js build
+        working-directory: web-admin
+        env:
+          NEXT_PUBLIC_API_BASE_URL: 'http://localhost:5100'
+        run: pnpm build

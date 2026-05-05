@@ -1,5 +1,7 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
+using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Identity;
 using BookingAggregate = Kuaforum.Domain.Modules.Booking.Booking;
 using Kuaforum.Domain.Modules.Booking;
 using MediatR;
@@ -20,7 +22,12 @@ public sealed record BookingDto(
     long TotalAmountMinor,
     string Currency,
     int? RefundPercentage,
-    IReadOnlyList<BookingItemDto> Items);
+    IReadOnlyList<BookingItemDto> Items,
+    string? CustomerName = null,
+    string? CustomerPhone = null,
+    string? CustomerNote = null,
+    string? ShopName = null,
+    string? StylistName = null);
 
 public sealed record GetMyBookingsQuery(Guid CustomerId, BookingStatus? StatusFilter) : IQuery<IReadOnlyList<BookingDto>>;
 
@@ -40,20 +47,48 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
             .OrderByDescending(b => b.ScheduledAt)
             .ToListAsync(ct);
 
-        var result = list.Select(b => new BookingDto(
-            b.Id, b.CustomerId, b.BarberShopId, b.StylistId,
-            b.ScheduledAt, b.ScheduledEndsAt, b.Status,
-            b.TotalAmountMinor, b.Currency, b.RefundPercentage,
-            b.Items.OrderBy(i => i.OrderIndex)
-                .Select(i => new BookingItemDto(i.Id, i.ServiceCatalogId, i.ServiceName, i.DurationMinutes, i.PriceMinor))
-                .ToList()))
-            .ToList();
+        var customerIds = list.Select(b => b.CustomerId).Distinct().ToList();
+        var customers = await ctx.Set<User>().AsNoTracking()
+            .Where(u => customerIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.DisplayName, u.PhoneE164 })
+            .ToDictionaryAsync(u => u.Id, ct);
+
+        var shopIds = list.Select(b => b.BarberShopId).Distinct().ToList();
+        var shops = await ctx.Set<BarberShop>().AsNoTracking()
+            .Where(s => shopIds.Contains(s.Id))
+            .Select(s => new { s.Id, s.Name })
+            .ToDictionaryAsync(s => s.Id, ct);
+
+        var stylistIds = list.Select(b => b.StylistId).Distinct().ToList();
+        var stylists = await ctx.Set<Stylist>().AsNoTracking()
+            .Where(s => stylistIds.Contains(s.Id))
+            .Select(s => new { s.Id, s.DisplayName })
+            .ToDictionaryAsync(s => s.Id, ct);
+
+        var result = list.Select(b =>
+        {
+            customers.TryGetValue(b.CustomerId, out var c);
+            shops.TryGetValue(b.BarberShopId, out var sh);
+            stylists.TryGetValue(b.StylistId, out var st);
+            return new BookingDto(
+                b.Id, b.CustomerId, b.BarberShopId, b.StylistId,
+                b.ScheduledAt, b.ScheduledEndsAt, b.Status,
+                b.TotalAmountMinor, b.Currency, b.RefundPercentage,
+                b.Items.OrderBy(i => i.OrderIndex)
+                    .Select(i => new BookingItemDto(i.Id, i.ServiceCatalogId, i.ServiceName, i.DurationMinutes, i.PriceMinor))
+                    .ToList(),
+                CustomerName: c?.DisplayName,
+                CustomerPhone: c?.PhoneE164,
+                CustomerNote: b.CustomerNote,
+                ShopName: sh?.Name,
+                StylistName: st?.DisplayName);
+        }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(result);
     }
 }
 
-public sealed record GetBookingByIdQuery(Guid CustomerId, Guid BookingId) : IQuery<BookingDto>;
+public sealed record GetBookingByIdQuery(Guid UserId, Guid BookingId) : IQuery<BookingDto>;
 
 public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequestHandler<GetBookingByIdQuery, Result<BookingDto>>
 {
@@ -65,8 +100,30 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             .FirstOrDefaultAsync(b => b.Id == request.BookingId, ct);
 
         if (booking is null) return Result.Failure<BookingDto>(Error.NotFound("Booking"));
-        if (booking.CustomerId != request.CustomerId)
-            return Result.Failure<BookingDto>(Error.Forbidden("Not your booking."));
+
+        var isCustomer = booking.CustomerId == request.UserId;
+        var isOwner = false;
+        if (!isCustomer)
+        {
+            var shop = await ctx.Set<Kuaforum.Domain.Modules.Barber.BarberShop>().AsNoTracking()
+                .FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, ct);
+            isOwner = shop is not null && shop.OwnerId == request.UserId;
+        }
+        if (!isCustomer && !isOwner)
+            return Result.Failure<BookingDto>(Error.Forbidden("Bu randevu size ait değil."));
+
+        var customer = await ctx.Set<User>().AsNoTracking()
+            .Where(u => u.Id == booking.CustomerId)
+            .Select(u => new { u.DisplayName, u.PhoneE164 })
+            .FirstOrDefaultAsync(ct);
+        var shopMeta = await ctx.Set<BarberShop>().AsNoTracking()
+            .Where(s => s.Id == booking.BarberShopId)
+            .Select(s => s.Name)
+            .FirstOrDefaultAsync(ct);
+        var stylistMeta = await ctx.Set<Stylist>().AsNoTracking()
+            .Where(s => s.Id == booking.StylistId)
+            .Select(s => s.DisplayName)
+            .FirstOrDefaultAsync(ct);
 
         return Result.Success(new BookingDto(
             booking.Id, booking.CustomerId, booking.BarberShopId, booking.StylistId,
@@ -74,6 +131,11 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             booking.TotalAmountMinor, booking.Currency, booking.RefundPercentage,
             booking.Items.OrderBy(i => i.OrderIndex)
                 .Select(i => new BookingItemDto(i.Id, i.ServiceCatalogId, i.ServiceName, i.DurationMinutes, i.PriceMinor))
-                .ToList()));
+                .ToList(),
+            CustomerName: customer?.DisplayName,
+            CustomerPhone: customer?.PhoneE164,
+            CustomerNote: booking.CustomerNote,
+            ShopName: shopMeta,
+            StylistName: stylistMeta));
     }
 }

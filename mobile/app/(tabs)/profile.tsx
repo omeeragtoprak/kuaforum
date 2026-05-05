@@ -1,10 +1,11 @@
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
-import { Colors, FontSize, Spacing, Radius } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { useAuthStore } from '@/store/auth-store';
 import { maskPhone } from '@/lib/format';
@@ -12,11 +13,17 @@ import { maskPhone } from '@/lib/format';
 export default function ProfileScreen() {
   const router = useRouter();
   const signOut = useAuthStore((s) => s.signOut);
+  const storeUser = useAuthStore((s) => s.user);
+  const role = storeUser?.role;
 
   const profileQuery = useQuery({
     queryKey: ['my-profile'],
     queryFn: () => AuthApi.getMyProfile(),
   });
+
+  const displayName = profileQuery.data?.displayName ?? storeUser?.displayName ?? 'Misafir';
+  const phone = profileQuery.data?.phone ?? storeUser?.phone ?? null;
+  const email = profileQuery.data?.email ?? storeUser?.email ?? null;
 
   async function handleLogout() {
     Alert.alert('Çıkış yap', 'Çıkış yapmak istediğine emin misin?', [
@@ -25,7 +32,6 @@ export default function ProfileScreen() {
         text: 'Çıkış',
         style: 'destructive',
         onPress: async () => {
-          await AuthApi.logout();
           await signOut();
           router.replace('/(auth)/login');
         },
@@ -42,80 +48,159 @@ export default function ProfileScreen() {
         {
           text: 'Sil',
           style: 'destructive',
-          onPress: async () => {
-            // TODO: DELETE /v1/users/me + signOut
-            Alert.alert('Henüz wired değil', 'Backend hazır, mobile UI henüz silme butonunu çağırmıyor (bir sonraki turn).');
+          onPress: () => {
+            Alert.alert('Bilgi', 'Hesap silme akışı backend hazır, mobile UI bir sonraki sürümde bağlanacak.');
           },
         },
       ],
     );
   }
 
+  const initial = displayName.slice(0, 1).toUpperCase();
+  const roleLabel: Record<string, string> = {
+    Customer: 'Müşteri',
+    BarberOwner: 'Kuaför Sahibi',
+    Stylist: 'Stilist',
+    Admin: 'Yönetici',
+  };
+  const displayRole = roleLabel[role ?? 'Customer'] ?? role ?? '—';
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>
-              {profileQuery.data?.displayName?.[0]?.toUpperCase() ?? '👤'}
-            </Text>
+            <Text style={styles.avatarText}>{initial}</Text>
           </View>
-          <Text style={styles.name}>{profileQuery.data?.displayName ?? 'Misafir'}</Text>
+          <Text style={styles.name}>{displayName}</Text>
           <Text style={styles.phone}>
-            {profileQuery.data?.phone ? maskPhone(profileQuery.data.phone) : '—'}
+            {phone ? maskPhone(phone) : email ?? '—'}
           </Text>
+          <View style={{ marginTop: Spacing.sm }}>
+            <Badge label={displayRole} tone="brand" />
+          </View>
         </View>
 
-        <Card style={styles.section}>
-          <SectionRow label="Rol" value={profileQuery.data?.role ?? '—'} />
-          <SectionRow label="Şehir" value={profileQuery.data?.locale ?? 'tr-TR'} />
-          <SectionRow label="Üyelik" value={
-            profileQuery.data?.createdAt
-              ? new Date(profileQuery.data.createdAt).toLocaleDateString('tr-TR')
-              : '—'
-          } />
+        <Text style={styles.sectionTitle}>Hesap</Text>
+        <Card style={styles.section} padded={false}>
+          <ListRow icon="🔔" label="Bildirimler" hint="Yakında" disabled />
+          <Divider />
+          <ListRow icon="🌐" label="Dil" value="Türkçe" disabled />
+          <Divider />
+          <ListRow icon="🛡️" label="Gizlilik (KVKK)" hint="Yakında" disabled />
+        </Card>
+
+        <Text style={styles.sectionTitle}>Yardım</Text>
+        <Card style={styles.section} padded={false}>
+          <ListRow icon="💬" label="Destek" hint="Yakında" disabled />
+          <Divider />
+          <ListRow icon="📄" label="Kullanım Koşulları" hint="Yakında" disabled />
+          <Divider />
+          <ListRow icon="🏷️" label="Sürüm" value="0.0.1" disabled />
         </Card>
 
         <View style={styles.actions}>
           <Button label="Çıkış yap" variant="secondary" onPress={handleLogout} />
-          <Button label="Hesabı sil (KVKK)" variant="destructive" onPress={handleDeleteAccount} />
+          <Button label="Hesabı sil" variant="ghost" onPress={handleDeleteAccount} />
         </View>
 
-        <Text style={styles.footer}>Kuaforum • v0.0.1</Text>
+        <Text style={styles.footer}>Kuaforum • Türkiye'nin kuaför pazaryeri</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function SectionRow({ label, value }: { label: string; value: string }) {
+function ListRow({
+  icon,
+  label,
+  value,
+  hint,
+  disabled,
+  onPress,
+}: {
+  icon: string;
+  label: string;
+  value?: string;
+  hint?: string;
+  disabled?: boolean;
+  onPress?: () => void;
+}) {
   return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
-    </View>
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [styles.listRow, pressed && !disabled && styles.pressed]}
+    >
+      <Text style={styles.listIcon}>{icon}</Text>
+      <Text style={styles.listLabel}>{label}</Text>
+      <View style={{ flex: 1 }} />
+      {value ? <Text style={styles.listValue}>{value}</Text> : null}
+      {hint ? <Text style={styles.listHint}>{hint}</Text> : null}
+      {!value && !hint ? <Text style={styles.chevron}>›</Text> : null}
+    </Pressable>
   );
+}
+
+function Divider() {
+  return <View style={styles.divider} />;
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  scroll: { padding: Spacing.lg, gap: Spacing.lg },
-  header: { alignItems: 'center', paddingVertical: Spacing.lg },
+  scroll: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingBottom: Spacing.xxl,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  header: { alignItems: 'center', paddingVertical: Spacing.xl },
   avatar: {
-    width: 80,
-    height: 80,
+    width: 88,
+    height: 88,
     borderRadius: Radius.full,
     backgroundColor: Colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
   },
-  avatarText: { color: '#fff', fontSize: 36, fontWeight: '700' },
-  name: { fontSize: FontSize.xl, fontWeight: '600', color: Colors.text },
-  phone: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
-  section: { gap: Spacing.sm },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.sm },
-  rowLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  rowValue: { fontSize: FontSize.sm, color: Colors.text, fontWeight: '500' },
-  actions: { gap: Spacing.sm },
-  footer: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.lg },
+  avatarText: { color: Colors.textInverse, fontSize: 38, fontWeight: FontWeight.bold },
+  name: { fontSize: FontSize.xl, fontWeight: FontWeight.semibold, color: Colors.text },
+  phone: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
+  sectionTitle: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    fontWeight: FontWeight.semibold,
+  },
+  section: { paddingVertical: 4 },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+    minHeight: 52,
+  },
+  pressed: { backgroundColor: Colors.surfaceAlt },
+  listIcon: { fontSize: 20, width: 24, textAlign: 'center' },
+  listLabel: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.medium },
+  listValue: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  listHint: { fontSize: FontSize.xs, color: Colors.textMuted },
+  chevron: { fontSize: 22, color: Colors.textMuted },
+  divider: { height: 1, backgroundColor: Colors.divider, marginLeft: 56 },
+  actions: { gap: Spacing.sm, marginTop: Spacing.xl },
+  footer: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    textAlign: 'center',
+    marginTop: Spacing.xl,
+  },
 });

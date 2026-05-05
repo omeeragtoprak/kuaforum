@@ -1,21 +1,14 @@
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
-import { Colors, FontSize, Spacing } from '@/lib/theme';
+import { Button } from '@/components/Button';
+import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
-import { formatDateTime, formatTry } from '@/lib/format';
-
-const STATUS_LABELS: Record<number, { text: string; color: string }> = {
-  0: { text: 'Beklemede', color: Colors.warning },
-  1: { text: 'Onaylandı', color: Colors.success },
-  2: { text: 'Devam ediyor', color: Colors.info },
-  3: { text: 'Tamamlandı', color: Colors.success },
-  4: { text: 'İptal edildi', color: Colors.textMuted },
-  5: { text: 'Gelmediniz', color: Colors.error },
-};
+import { formatDateTime, formatTry, bookingStatusInfo, isBookingUpcoming } from '@/lib/format';
 
 export default function BookingsScreen() {
   const router = useRouter();
@@ -28,70 +21,140 @@ export default function BookingsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Randevularım</Text>
+        <Text style={styles.subtitle}>
+          {query.isLoading ? 'Yükleniyor…' : `${query.data?.length ?? 0} randevu`}
+        </Text>
       </View>
 
-      {query.isLoading ? (
-        <EmptyState title="Yükleniyor..." />
-      ) : query.isError ? (
-        <EmptyState
-          title="Bağlantı hatası"
-          description="Backend'e ulaşılamıyor."
-        />
-      ) : (query.data?.length ?? 0) === 0 ? (
-        <EmptyState
-          title="Henüz randevu yok"
-          description="Ana sayfadan bir kuaför bul ve randevu al."
-        />
-      ) : (
-        <FlatList
-          data={query.data}
-          keyExtractor={(b) => b.id}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl refreshing={query.isFetching} onRefresh={() => query.refetch()} />
-          }
-          renderItem={({ item }) => <BookingRow booking={item} onPress={() => router.push(`/booking/${item.id}` as never)} />}
-        />
-      )}
+      <FlatList
+        data={query.data ?? []}
+        keyExtractor={(b) => b.id}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={query.isFetching && !query.isLoading}
+            onRefresh={() => query.refetch()}
+            tintColor={Colors.primary}
+          />
+        }
+        ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+        ListEmptyComponent={
+          query.isLoading ? null : query.isError ? (
+            <EmptyState
+              emoji="⚠️"
+              title="Bağlantı hatası"
+              description="Sunucuya ulaşılamıyor."
+              actionLabel="Tekrar dene"
+              onAction={() => query.refetch()}
+            />
+          ) : (
+            <EmptyState
+              emoji="📅"
+              title="Henüz randevun yok"
+              description="Keşfet sekmesinden bir kuaför bul ve ilk randevunu oluştur."
+              actionLabel="Kuaför bul"
+              onAction={() => router.push('/(tabs)/' as never)}
+            />
+          )
+        }
+        renderItem={({ item }) => (
+          <BookingRow booking={item} onPress={() => router.push(`/booking/${item.id}` as never)} />
+        )}
+      />
     </SafeAreaView>
   );
 }
 
 function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => void }) {
-  const status = STATUS_LABELS[booking.status] ?? { text: '?', color: Colors.textMuted };
+  const status = bookingStatusInfo(booking.status);
+  const isUpcoming = isBookingUpcoming(booking.status);
   return (
-    <Pressable onPress={onPress}>
-      <Card style={styles.card}>
-        <View style={styles.row}>
+    <Card onPress={onPress} style={{ gap: Spacing.sm }}>
+      <View style={styles.row}>
+        <View style={{ flex: 1 }}>
           <Text style={styles.dateText}>{formatDateTime(booking.scheduledAt)}</Text>
-          <View style={[styles.badge, { backgroundColor: status.color }]}>
-            <Text style={styles.badgeText}>{status.text}</Text>
-          </View>
+          {booking.shopName ? (
+            <Text style={styles.shopText} numberOfLines={1}>📍 {booking.shopName}</Text>
+          ) : null}
+          {booking.stylistName ? (
+            <Text style={styles.shopText} numberOfLines={1}>✂️ {booking.stylistName}</Text>
+          ) : null}
         </View>
-        <View style={styles.servicesRow}>
-          {booking.items.map((it) => (
-            <Text key={it.id} style={styles.serviceText} numberOfLines={1}>
-              • {it.serviceName} ({it.durationMinutes} dk)
+        <Badge label={status.label} tone={status.tone} />
+      </View>
+
+      <View style={styles.servicesBlock}>
+        {booking.items.slice(0, 3).map((it) => (
+          <View key={it.id} style={styles.serviceRow}>
+            <Text style={styles.serviceDot}>•</Text>
+            <Text style={styles.serviceText} numberOfLines={1}>
+              {it.serviceName}
             </Text>
-          ))}
-        </View>
+            <Text style={styles.serviceMeta}>{it.durationMinutes} dk</Text>
+          </View>
+        ))}
+        {booking.items.length > 3 ? (
+          <Text style={styles.moreText}>+{booking.items.length - 3} daha</Text>
+        ) : null}
+      </View>
+
+      <View style={styles.footerRow}>
+        <Text style={styles.totalLabel}>Toplam</Text>
         <Text style={styles.amount}>{formatTry(booking.totalAmountMinor)}</Text>
-      </Card>
-    </Pressable>
+      </View>
+
+      {isUpcoming ? (
+        <View style={styles.upcomingHint}>
+          <View style={styles.dot} />
+          <Text style={styles.upcomingText}>Yaklaşan randevu</Text>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { padding: Spacing.lg },
-  title: { fontSize: FontSize.xxl, fontWeight: '700', color: Colors.text },
-  list: { paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg, gap: Spacing.md },
-  card: { gap: Spacing.sm },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  dateText: { fontSize: FontSize.md, color: Colors.text, fontWeight: '600' },
-  badge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: 999 },
-  badgeText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '600' },
-  servicesRow: { gap: 2 },
-  serviceText: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  amount: { fontSize: FontSize.lg, fontWeight: '700', color: Colors.primary, marginTop: Spacing.xs },
+  header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.lg, paddingBottom: Spacing.md },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
+  list: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingBottom: Spacing.xl,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  row: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
+  dateText: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.semibold },
+  shopText: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  servicesBlock: { gap: 4, marginTop: 2 },
+  serviceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  serviceDot: { color: Colors.primary, fontWeight: FontWeight.bold },
+  serviceText: { flex: 1, fontSize: FontSize.sm, color: Colors.text },
+  serviceMeta: { fontSize: FontSize.xs, color: Colors.textMuted },
+  moreText: { fontSize: FontSize.xs, color: Colors.textMuted, fontStyle: 'italic' },
+  footerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  totalLabel: { fontSize: FontSize.xs, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+  amount: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.primary },
+  upcomingHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.infoSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+    alignSelf: 'flex-start',
+  },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.info },
+  upcomingText: { fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.semibold },
 });

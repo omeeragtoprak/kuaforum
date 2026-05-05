@@ -36,7 +36,7 @@ public sealed class RefreshTokenCommandHandler(
         var refreshTokens = ctx.Set<RefreshToken>();
         var token = await refreshTokens.FirstOrDefaultAsync(t => t.TokenHash == hash, cancellationToken);
         if (token is null)
-            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Refresh token invalid."));
+            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Yenileme tokeni geçersiz."));
 
         if (token.IsRevoked)
         {
@@ -48,19 +48,19 @@ public sealed class RefreshTokenCommandHandler(
             foreach (var s in siblings)
                 s.Revoke(RefreshTokenRevokedReason.TokenReuse);
             await db.SaveChangesAsync(cancellationToken);
-            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Refresh token reuse detected. Please log in again."));
+            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Yenileme tokeni yeniden kullanım tespit edildi. Lütfen tekrar giriş yapın."));
         }
 
         if (token.IsExpired)
-            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Refresh token expired."));
+            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Yenileme tokeninin süresi doldu."));
 
         if (token.DeviceFingerprint != request.DeviceFingerprint)
-            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Device fingerprint mismatch."));
+            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Cihaz parmak izi eşleşmiyor."));
 
         var users = ctx.Set<User>();
         var user = await users.FirstOrDefaultAsync(u => u.Id == token.UserId, cancellationToken);
         if (user is null || !user.CanLogin)
-            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Account is not active."));
+            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Hesap aktif değil."));
 
         var newRawRefresh = jwtTokenService.GenerateRefreshTokenRaw();
         var newRefreshHash = jwtTokenService.HashRefreshToken(newRawRefresh);

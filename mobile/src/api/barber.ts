@@ -31,6 +31,7 @@ export type Stylist = {
 export type Service = {
   id: string;
   name: string;
+  description?: string;
   gender: number;
   durationMinutes: number;
   bufferMinutes: number;
@@ -66,15 +67,64 @@ export type SearchBarbersResponse = {
 export type SearchBarbersParams = {
   cityId?: string;
   districtId?: string;
-  genderType?: number;
+  /** Backend accepts enum names (Unisex/FemaleOnly/MaleOnly) or int (0/1/2) thanks to JsonStringEnumConverter. */
+  genderType?: 'Unisex' | 'FemaleOnly' | 'MaleOnly' | number;
   walkInOnly?: boolean;
   page?: number;
   pageSize?: number;
 };
 
+export type DayOfWeekKey = 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+
+export type WorkingHours = {
+  dayOfWeek: DayOfWeekKey;
+  openTime: string;
+  closeTime: string;
+  isClosed: boolean;
+};
+
+export type TimeOff = {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  reason?: string;
+};
+
+export type KycDocumentType = 'TaxLicense' | 'SanitaryPermit' | 'MykCertificate' | 'IdentityCard' | 'Other';
+
+export type KycDocumentRequest = {
+  documentType: KycDocumentType;
+  fileName: string;
+  storageKey: string;
+  sizeBytes: number;
+  contentType?: string;
+};
+
+export type UploadKycResponse = {
+  storageKey: string;
+  sizeBytes: number;
+  contentType: string;
+};
+
 export const BarberApi = {
   async search(params: SearchBarbersParams): Promise<SearchBarbersResponse> {
     const res = await apiClient.get<SearchBarbersResponse>('/v1/barber-shops/search', { params });
+    return res.data;
+  },
+  async submitKyc(shopId: string, documents: KycDocumentRequest[]): Promise<{ id: string }> {
+    const res = await apiClient.post(`/v1/owner/barber-shop/${shopId}/kyc/submit`, { documents });
+    return res.data;
+  },
+  async uploadKycDocument(args: { uri: string; name: string; contentType: string }): Promise<UploadKycResponse> {
+    const form = new FormData();
+    form.append('file', {
+      uri: args.uri,
+      name: args.name,
+      type: args.contentType,
+    } as unknown as Blob);
+    const res = await apiClient.post<UploadKycResponse>('/v1/uploads/kyc', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return res.data;
   },
   async getById(id: string): Promise<BarberShop> {
@@ -119,7 +169,38 @@ export const BarberApi = {
     const res = await apiClient.post<{ id: string }>(`/v1/owner/barber-shop/${shopId}/services`, body);
     return res.data;
   },
+  async updateService(shopId: string, serviceId: string, body: {
+    name?: string;
+    description?: string | null;
+    durationMinutes?: number;
+    priceMinor?: number;
+    bufferMinutes?: number;
+  }): Promise<void> {
+    await apiClient.put(`/v1/owner/barber-shop/${shopId}/services/${serviceId}`, body);
+  },
+  async deleteService(shopId: string, serviceId: string): Promise<void> {
+    await apiClient.delete(`/v1/owner/barber-shop/${shopId}/services/${serviceId}`);
+  },
   async toggleStylistWalkIn(stylistId: string, available: boolean): Promise<void> {
     await apiClient.post(`/v1/stylists/${stylistId}/walk-in`, { available });
+  },
+
+  async getWorkingHours(stylistId: string): Promise<WorkingHours[]> {
+    const res = await apiClient.get<WorkingHours[]>(`/v1/stylists/${stylistId}/working-hours`);
+    return res.data;
+  },
+  async setWorkingHours(stylistId: string, body: { dayOfWeek: number; openTime: string; closeTime: string; isClosed: boolean }): Promise<void> {
+    await apiClient.put(`/v1/stylists/${stylistId}/working-hours`, body);
+  },
+  async getTimeOffs(stylistId: string): Promise<TimeOff[]> {
+    const res = await apiClient.get<TimeOff[]>(`/v1/stylists/${stylistId}/time-offs`);
+    return res.data;
+  },
+  async addTimeOff(stylistId: string, body: { startsAt: string; endsAt: string; reason?: string }): Promise<{ id: string }> {
+    const res = await apiClient.post<{ id: string }>(`/v1/stylists/${stylistId}/time-off`, body);
+    return res.data;
+  },
+  async deleteTimeOff(stylistId: string, timeOffId: string): Promise<void> {
+    await apiClient.delete(`/v1/stylists/${stylistId}/time-offs/${timeOffId}`);
   },
 };

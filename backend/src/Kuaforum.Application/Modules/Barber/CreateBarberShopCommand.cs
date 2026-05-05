@@ -37,7 +37,7 @@ public sealed class CreateBarberShopCommandHandler(
         if (owner is null) return Result.Failure<Guid>(Error.NotFound("Owner"));
 
         var existing = await ctx.Set<BarberShop>().AnyAsync(s => s.OwnerId == request.OwnerId, cancellationToken);
-        if (existing) return Result.Failure<Guid>(Error.Conflict("Owner already has a BarberShop. Multi-shop is V1.5."));
+        if (existing) return Result.Failure<Guid>(Error.Conflict("Bu kullanıcının zaten bir işletmesi var. Çoklu işletme desteği V1.5'te gelecek."));
 
         var createResult = BarberShop.Create(request.OwnerId, request.Name, request.GenderType);
         if (createResult.IsFailure) return Result.Failure<Guid>(createResult.Error);

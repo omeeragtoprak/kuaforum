@@ -1,15 +1,20 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Modal, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView } from 'react-native';
+import {
+  View, Text, StyleSheet, FlatList, Modal, Alert, KeyboardAvoidingView,
+  Platform, Pressable, ScrollView,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
+import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
-import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
-import { BarberApi } from '@/api/barber';
+import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { BarberApi, type Service } from '@/api/barber';
 import { extractApiError } from '@/api/client';
-import { formatDuration, formatTry } from '@/lib/format';
+import { formatDuration, formatTry, serviceGenderLabel } from '@/lib/format';
 
 const GENDER_OPTIONS = [
   { value: 0, label: 'Herkes' },
@@ -17,12 +22,11 @@ const GENDER_OPTIONS = [
   { value: 2, label: 'Sadece Erkek' },
 ];
 
+const genderText = serviceGenderLabel;
+
 export default function BarberServicesScreen() {
   const qc = useQueryClient();
-  const shopQuery = useQuery({
-    queryKey: ['my-shop'],
-    queryFn: () => BarberApi.getMyShop(),
-  });
+  const shopQuery = useQuery({ queryKey: ['my-shop'], queryFn: () => BarberApi.getMyShop() });
   const servicesQuery = useQuery({
     queryKey: ['my-shop-services', shopQuery.data?.id],
     queryFn: () => BarberApi.getServices(shopQuery.data!.id),
@@ -30,12 +34,34 @@ export default function BarberServicesScreen() {
   });
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [gender, setGender] = useState(0);
   const [duration, setDuration] = useState('30');
   const [priceTl, setPriceTl] = useState('300');
   const [buffer, setBuffer] = useState('5');
   const [description, setDescription] = useState('');
+
+  const reset = () => {
+    setEditingId(null);
+    setName(''); setDescription(''); setDuration('30'); setPriceTl('300'); setBuffer('5'); setGender(0);
+  };
+
+  function openCreate() {
+    reset();
+    setModalOpen(true);
+  }
+
+  function openEdit(s: Service) {
+    setEditingId(s.id);
+    setName(s.name);
+    setGender(s.gender);
+    setDuration(String(s.durationMinutes));
+    setBuffer(String(s.bufferMinutes));
+    setPriceTl((s.priceMinor / 100).toString());
+    setDescription(s.description ?? '');
+    setModalOpen(true);
+  }
 
   const createMut = useMutation({
     mutationFn: () => {
@@ -54,17 +80,56 @@ export default function BarberServicesScreen() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['my-shop-services'] });
       setModalOpen(false);
-      setName(''); setDescription(''); setDuration('30'); setPriceTl('300'); setBuffer('5');
+      reset();
     },
     onError: (err) => Alert.alert('Hata', extractApiError(err)),
   });
+
+  const updateMut = useMutation({
+    mutationFn: () => {
+      const dur = parseInt(duration, 10);
+      const buf = parseInt(buffer, 10);
+      const priceMinor = Math.round(parseFloat(priceTl) * 100);
+      return BarberApi.updateService(shopQuery.data!.id, editingId!, {
+        name: name.trim(),
+        description: description.trim() ? description.trim() : null,
+        durationMinutes: dur,
+        priceMinor,
+        bufferMinutes: buf,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-shop-services'] });
+      setModalOpen(false);
+      reset();
+    },
+    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => BarberApi.deleteService(shopQuery.data!.id, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['my-shop-services'] }),
+    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+  });
+
+  function handleDelete(s: Service) {
+    Alert.alert(
+      'Hizmeti sil',
+      `"${s.name}" hizmetini silmek istediğine emin misin? Mevcut randevular etkilenmez ama yeni rezervasyon alamazsın.`,
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        { text: 'Sil', style: 'destructive', onPress: () => deleteMut.mutate(s.id) },
+      ],
+    );
+  }
 
   if (!shopQuery.data && !shopQuery.isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          title="İşletme yok"
-          description="Önce bir BarberShop oluşturmalısın. Şimdilik web'den /v1/owner/barber-shop POST ile yapabilirsin."
+          emoji="🏪"
+          title="Salon yok"
+          description="Önce Profil sekmesinden salon bilgilerini girmelisin."
         />
       </SafeAreaView>
     );
@@ -73,78 +138,171 @@ export default function BarberServicesScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <View>
+        <View style={{ flex: 1 }}>
           <Text style={styles.title}>Hizmetler</Text>
-          <Text style={styles.subtitle}>{servicesQuery.data?.length ?? 0} aktif</Text>
+          <Text style={styles.subtitle}>{servicesQuery.data?.length ?? 0} aktif hizmet</Text>
         </View>
-        <Pressable style={styles.addBtn} onPress={() => setModalOpen(true)}>
-          <Text style={styles.addBtnText}>+ Ekle</Text>
-        </Pressable>
+        <Button label="+ Yeni" size="sm" fullWidth={false} onPress={openCreate} />
       </View>
 
-      {servicesQuery.isLoading ? (
-        <EmptyState title="Yükleniyor..." />
-      ) : (servicesQuery.data?.length ?? 0) === 0 ? (
-        <EmptyState title="Henüz hizmet yok" description='"+Ekle" ile başlat.' />
-      ) : (
-        <FlatList
-          data={servicesQuery.data}
-          keyExtractor={(s) => s.id}
-          contentContainerStyle={styles.list}
-          renderItem={({ item }) => (
-            <Card style={styles.serviceCard}>
-              <View style={styles.headerRow}>
-                <Text style={styles.serviceName}>{item.name}</Text>
+      <FlatList
+        data={servicesQuery.data ?? []}
+        keyExtractor={(s) => s.id}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        ItemSeparatorComponent={() => <View style={{ height: Spacing.sm }} />}
+        ListEmptyComponent={
+          servicesQuery.isLoading ? null : servicesQuery.isError ? (
+            <EmptyState
+              emoji="⚠️"
+              title="Bağlantı hatası"
+              description="Hizmetler yüklenemedi."
+              actionLabel="Tekrar dene"
+              onAction={() => servicesQuery.refetch()}
+            />
+          ) : (
+            <EmptyState
+              emoji="✂️"
+              title="Henüz hizmet yok"
+              description="Hizmetlerini tanımla — fiyat ve süreyle birlikte."
+              actionLabel="İlk hizmetini ekle"
+              onAction={openCreate}
+            />
+          )
+        }
+        renderItem={({ item }) => (
+          <Pressable onPress={() => openEdit(item)} accessibilityRole="button" accessibilityLabel={`${item.name} hizmetini düzenle`}>
+            <Card style={{ gap: Spacing.sm }}>
+              <View style={styles.serviceHeader}>
+                <Text style={styles.serviceName} numberOfLines={1}>{item.name}</Text>
                 <Text style={styles.servicePrice}>{formatTry(item.priceMinor)}</Text>
               </View>
-              <Text style={styles.serviceMeta}>
-                {formatDuration(item.durationMinutes)} · +{item.bufferMinutes} dk buffer ·{' '}
-                {item.gender === 0 ? 'Herkes' : item.gender === 1 ? 'Kadın' : 'Erkek'}
-              </Text>
+              {item.description ? (
+                <Text style={styles.serviceDesc} numberOfLines={2}>{item.description}</Text>
+              ) : null}
+              <View style={styles.metaRow}>
+                <Badge label={formatDuration(item.durationMinutes)} tone="info" />
+                <Badge
+                  label={genderText(item.gender)}
+                  tone="brand"
+                />
+                <Badge label={`+${item.bufferMinutes} dk buffer`} tone="neutral" />
+              </View>
+              <View style={styles.actionsRow}>
+                <Pressable
+                  onPress={() => openEdit(item)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Düzenle"
+                  style={styles.actionBtn}
+                >
+                  <Text style={styles.actionEdit}>Düzenle</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => handleDelete(item)}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Sil"
+                  style={styles.actionBtn}
+                  disabled={deleteMut.isPending}
+                >
+                  <Text style={styles.actionDelete}>Sil</Text>
+                </Pressable>
+              </View>
             </Card>
-          )}
-        />
-      )}
+          </Pressable>
+        )}
+      />
 
       <Modal visible={modalOpen} transparent animationType="slide" onRequestClose={() => setModalOpen(false)}>
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalOverlay}
         >
+          <Pressable style={{ flex: 1 }} onPress={() => setModalOpen(false)} />
           <View style={styles.modalSheet}>
-            <ScrollView contentContainerStyle={styles.modalContent}>
-              <Text style={styles.modalTitle}>Yeni hizmet</Text>
+            <View style={styles.handle} />
+            <ScrollView contentContainerStyle={styles.modalContent} keyboardShouldPersistTaps="handled">
+              <Text style={styles.modalTitle}>{editingId ? 'Hizmeti düzenle' : 'Yeni hizmet'}</Text>
+              <Text style={styles.modalHint}>
+                {editingId
+                  ? 'Mevcut randevular etkilenmez; yeni randevular güncel fiyat/süreyle oluşur.'
+                  : 'Müşterilerin görmek istediği detayları gir. Sonra düzenleyebilirsin.'}
+              </Text>
 
-              <Input label="Hizmet adı" value={name} onChangeText={setName} placeholder="Saç Kesim" maxLength={80} />
+              <Input
+                label="Hizmet adı"
+                required
+                value={name}
+                onChangeText={setName}
+                placeholder="Örn. Saç Kesim, Boyama"
+                maxLength={80}
+              />
 
-              <Text style={styles.label}>Cinsiyet</Text>
-              <View style={styles.genderRow}>
+              <Text style={styles.fieldLabel}>Hangi cinsiyet?</Text>
+              <View style={styles.chipsRow}>
                 {GENDER_OPTIONS.map((g) => (
-                  <Pressable
+                  <Chip
                     key={g.value}
-                    style={[styles.pill, gender === g.value && styles.pillActive]}
+                    label={g.label}
+                    selected={gender === g.value}
                     onPress={() => setGender(g.value)}
-                  >
-                    <Text style={[styles.pillText, gender === g.value && styles.pillTextActive]}>{g.label}</Text>
-                  </Pressable>
+                  />
                 ))}
               </View>
 
               <View style={styles.row2}>
                 <View style={{ flex: 1 }}>
-                  <Input label="Süre (dakika)" value={duration} onChangeText={setDuration} keyboardType="number-pad" />
+                  <Input
+                    label="Süre (dk)"
+                    required
+                    value={duration}
+                    onChangeText={(t) => setDuration(t.replace(/\D/g, '').slice(0, 4))}
+                    keyboardType="number-pad"
+                  />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Input label="Buffer (dakika)" value={buffer} onChangeText={setBuffer} keyboardType="number-pad" />
+                  <Input
+                    label="Buffer (dk)"
+                    value={buffer}
+                    onChangeText={(t) => setBuffer(t.replace(/\D/g, '').slice(0, 3))}
+                    keyboardType="number-pad"
+                    hint="Sonraki randevu için ara"
+                  />
                 </View>
               </View>
 
-              <Input label="Fiyat (TL)" value={priceTl} onChangeText={setPriceTl} keyboardType="decimal-pad" />
-              <Input label="Açıklama (opsiyonel)" value={description} onChangeText={setDescription} multiline numberOfLines={3} maxLength={500} />
+              <Input
+                label="Fiyat (TL)"
+                required
+                value={priceTl}
+                onChangeText={(t) => setPriceTl(t.replace(/[^\d.]/g, ''))}
+                keyboardType="decimal-pad"
+                rightSlot={<Text style={styles.priceUnit}>₺</Text>}
+              />
+
+              <Input
+                label="Açıklama"
+                value={description}
+                onChangeText={setDescription}
+                placeholder="Müşteri ne bilmeli? (opsiyonel)"
+                multiline
+                numberOfLines={3}
+                maxLength={500}
+              />
 
               <View style={styles.modalActions}>
-                <Button label="Vazgeç" variant="secondary" onPress={() => setModalOpen(false)} />
-                <Button label="Oluştur" onPress={() => createMut.mutate()} loading={createMut.isPending} disabled={!name.trim()} />
+                <View style={{ flex: 1 }}>
+                  <Button label="Vazgeç" variant="secondary" onPress={() => setModalOpen(false)} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Button
+                    label={editingId ? 'Kaydet' : 'Oluştur'}
+                    onPress={() => (editingId ? updateMut.mutate() : createMut.mutate())}
+                    loading={editingId ? updateMut.isPending : createMut.isPending}
+                    disabled={!name.trim() || !duration || !priceTl}
+                  />
+                </View>
               </View>
             </ScrollView>
           </View>
@@ -157,52 +315,67 @@ export default function BarberServicesScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    padding: Spacing.lg,
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.md,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: Spacing.md,
   },
-  title: { fontSize: FontSize.xxl, fontWeight: '700', color: Colors.text },
-  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
-  addBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
-    borderRadius: Radius.md,
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
+  list: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingBottom: Spacing.xl,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
   },
-  addBtnText: { color: '#fff', fontSize: FontSize.sm, fontWeight: '600' },
-  list: { padding: Spacing.lg, paddingTop: 0, gap: Spacing.sm },
-  serviceCard: { gap: Spacing.xs },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  serviceName: { fontSize: FontSize.md, fontWeight: '600', color: Colors.text },
-  servicePrice: { fontSize: FontSize.md, fontWeight: '700', color: Colors.primary },
-  serviceMeta: { fontSize: FontSize.xs, color: Colors.textMuted },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+  serviceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.sm },
+  serviceName: { flex: 1, fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
+  servicePrice: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.primary },
+  serviceDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  actionsRow: {
+    flexDirection: 'row',
     justifyContent: 'flex-end',
+    gap: Spacing.lg,
+    marginTop: Spacing.xs,
+    paddingTop: Spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
   },
+  actionBtn: { paddingVertical: 6, paddingHorizontal: 4 },
+  actionEdit: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.primary },
+  actionDelete: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.error },
+
+  modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
   modalSheet: {
     backgroundColor: Colors.background,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    maxHeight: '90%',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '92%',
   },
-  modalContent: { padding: Spacing.lg, gap: Spacing.sm },
-  modalTitle: { fontSize: FontSize.xl, fontWeight: '700', color: Colors.text, marginBottom: Spacing.md },
-  label: { fontSize: FontSize.sm, color: Colors.textSecondary, fontWeight: '500', marginBottom: Spacing.xs },
-  genderRow: { flexDirection: 'row', gap: Spacing.sm, marginBottom: Spacing.md },
-  pill: {
-    paddingVertical: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.full,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    backgroundColor: Colors.surface,
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.borderStrong,
+    alignSelf: 'center',
+    marginTop: 8,
+    marginBottom: Spacing.sm,
   },
-  pillActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  pillText: { fontSize: FontSize.sm, color: Colors.text },
-  pillTextActive: { color: '#fff', fontWeight: '600' },
+  modalContent: { padding: Spacing.lg, paddingBottom: Spacing.xl },
+  modalTitle: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text },
+  modalHint: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4, marginBottom: Spacing.lg },
+  fieldLabel: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    fontWeight: FontWeight.medium,
+    marginBottom: 8,
+  },
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: Spacing.lg },
   row2: { flexDirection: 'row', gap: Spacing.sm },
-  modalActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.lg },
+  priceUnit: { fontSize: FontSize.lg, color: Colors.textMuted, fontWeight: FontWeight.semibold, paddingHorizontal: 4 },
+  modalActions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
 });

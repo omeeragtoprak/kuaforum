@@ -30,7 +30,7 @@ public sealed class BarberShop : AggregateRoot
     public static Result<BarberShop> Create(Guid ownerId, string name, SalonGenderType genderType)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 120)
-            return Result.Failure<BarberShop>(Error.Validation("Name is required and max 120 chars."));
+            return Result.Failure<BarberShop>(Error.Validation("İşletme adı gerekli ve en fazla 120 karakter olabilir."));
 
         return new BarberShop
         {
@@ -48,7 +48,7 @@ public sealed class BarberShop : AggregateRoot
         if (name is not null)
         {
             if (string.IsNullOrWhiteSpace(name) || name.Length > 120)
-                return Result.Failure(Error.Validation("Name max 120 chars."));
+                return Result.Failure(Error.Validation("İşletme adı en fazla 120 karakter olabilir."));
             Name = name.Trim();
             Slug = SlugHelper.Make(name);
         }
@@ -77,7 +77,7 @@ public sealed class BarberShop : AggregateRoot
     public Result MarkPendingKyc()
     {
         if (Status != BarberShopStatus.Draft)
-            return Result.Failure(Error.Validation("Only draft shops can submit KYC."));
+            return Result.Failure(Error.Validation("Yalnızca taslak durumundaki işletmeler KYC başvurusu gönderebilir."));
         Status = BarberShopStatus.PendingKyc;
         Touch();
         return Result.Success();
@@ -86,7 +86,7 @@ public sealed class BarberShop : AggregateRoot
     public Result ApproveKyc(string subMerchantKey)
     {
         if (Status != BarberShopStatus.PendingKyc)
-            return Result.Failure(Error.Validation("Shop is not pending KYC."));
+            return Result.Failure(Error.Validation("İşletmenin KYC başvurusu beklemede değil."));
         SubMerchantKey = subMerchantKey;
         Status = BarberShopStatus.Active;
         Touch();
@@ -96,7 +96,7 @@ public sealed class BarberShop : AggregateRoot
     public Result Suspend(string reason)
     {
         if (Status == BarberShopStatus.Closed)
-            return Result.Failure(Error.Validation("Closed shop cannot be suspended."));
+            return Result.Failure(Error.Validation("Kapanmış işletme askıya alınamaz."));
         Status = BarberShopStatus.Suspended;
         Touch();
         return Result.Success();
@@ -105,7 +105,7 @@ public sealed class BarberShop : AggregateRoot
     public Result Reactivate()
     {
         if (Status != BarberShopStatus.Suspended)
-            return Result.Failure(Error.Validation("Shop is not suspended."));
+            return Result.Failure(Error.Validation("İşletme askıya alınmış durumda değil."));
         Status = BarberShopStatus.Active;
         Touch();
         return Result.Success();

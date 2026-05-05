@@ -40,6 +40,20 @@ export const AuthApi = {
     return res.data;
   },
 
+  async devLogin(role: 'Customer' | 'BarberOwner' | 'BarberOwnerDraft' | 'Admin'): Promise<VerifyOtpResponse> {
+    const deviceFingerprint = await TokenStorage.getDeviceFingerprint();
+    const res = await apiClient.post<VerifyOtpResponse>('/v1/auth/dev-login', {
+      role,
+      deviceFingerprint,
+      deviceName: 'Expo Dev Quick Login',
+    });
+    if (res.data.accessToken && res.data.refreshToken) {
+      await TokenStorage.setAccessToken(res.data.accessToken);
+      await TokenStorage.setRefreshToken(res.data.refreshToken);
+    }
+    return res.data;
+  },
+
   async logout(): Promise<void> {
     const refreshToken = await TokenStorage.getRefreshToken();
     if (refreshToken) {

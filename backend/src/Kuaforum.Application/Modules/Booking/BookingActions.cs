@@ -1,3 +1,4 @@
+using FluentValidation;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
@@ -10,6 +11,16 @@ namespace Kuaforum.Application.Modules.Booking;
 
 public sealed record CancelBookingCommand(Guid ActorUserId, Guid BookingId, BookingCancellationReason Reason) : ICommand<int>;
 
+public sealed class CancelBookingCommandValidator : AbstractValidator<CancelBookingCommand>
+{
+    public CancelBookingCommandValidator()
+    {
+        RuleFor(x => x.ActorUserId).NotEmpty();
+        RuleFor(x => x.BookingId).NotEmpty();
+        RuleFor(x => x.Reason).IsInEnum();
+    }
+}
+
 public sealed class CancelBookingCommandHandler(
     IApplicationDbContext db,
     IAuditLogger audit) : IRequestHandler<CancelBookingCommand, Result<int>>
@@ -21,7 +32,7 @@ public sealed class CancelBookingCommandHandler(
         if (booking is null) return Result.Failure<int>(Error.NotFound("Booking"));
 
         var allowed = await IsAuthorized(ctx, booking, request.ActorUserId, cancellationToken);
-        if (!allowed) return Result.Failure<int>(Error.Forbidden("Cannot cancel this booking."));
+        if (!allowed) return Result.Failure<int>(Error.Forbidden("Bu randevuyu iptal etme yetkiniz yok."));
 
         var cancelResult = booking.Cancel(request.Reason);
         if (cancelResult.IsFailure) return Result.Failure<int>(cancelResult.Error);
@@ -46,7 +57,50 @@ public sealed class CancelBookingCommandHandler(
     }
 }
 
+public sealed record OwnerConfirmBookingCommand(Guid ActorUserId, Guid BookingId) : ICommand;
+
+public sealed class OwnerConfirmBookingCommandValidator : AbstractValidator<OwnerConfirmBookingCommand>
+{
+    public OwnerConfirmBookingCommandValidator()
+    {
+        RuleFor(x => x.ActorUserId).NotEmpty();
+        RuleFor(x => x.BookingId).NotEmpty();
+    }
+}
+
+public sealed class OwnerConfirmBookingCommandHandler(IApplicationDbContext db, IAuditLogger audit)
+    : IRequestHandler<OwnerConfirmBookingCommand, Result>
+{
+    public async Task<Result> Handle(OwnerConfirmBookingCommand request, CancellationToken cancellationToken)
+    {
+        var ctx = (DbContext)db;
+        var booking = await ctx.Set<BookingAggregate>().FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
+        if (booking is null) return Result.Failure(Error.NotFound("Booking"));
+
+        var shop = await ctx.Set<BarberShop>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, cancellationToken);
+        if (shop is null || shop.OwnerId != request.ActorUserId)
+            return Result.Failure(Error.Forbidden("Yalnızca işletme sahibi randevuyu onaylayabilir."));
+
+        var result = booking.OwnerConfirm();
+        if (result.IsFailure) return result;
+
+        await audit.RecordAsync("booking.confirmed_by_owner", nameof(BookingAggregate), booking.Id.ToString(),
+            actorUserId: request.ActorUserId, ct: cancellationToken);
+        await db.SaveChangesAsync(cancellationToken);
+        return Result.Success();
+    }
+}
+
 public sealed record StartBookingCommand(Guid ActorUserId, Guid BookingId) : ICommand;
+
+public sealed class StartBookingCommandValidator : AbstractValidator<StartBookingCommand>
+{
+    public StartBookingCommandValidator()
+    {
+        RuleFor(x => x.ActorUserId).NotEmpty();
+        RuleFor(x => x.BookingId).NotEmpty();
+    }
+}
 
 public sealed class StartBookingCommandHandler(IApplicationDbContext db, IAuditLogger audit) : IRequestHandler<StartBookingCommand, Result>
 {
@@ -58,7 +112,7 @@ public sealed class StartBookingCommandHandler(IApplicationDbContext db, IAuditL
 
         var shop = await ctx.Set<BarberShop>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, cancellationToken);
         if (shop is null || shop.OwnerId != request.ActorUserId)
-            return Result.Failure(Error.Forbidden("Only barber owner can start booking."));
+            return Result.Failure(Error.Forbidden("Yalnızca işletme sahibi randevuyu başlatabilir."));
 
         var startResult = booking.Start();
         if (startResult.IsFailure) return startResult;
@@ -72,6 +126,15 @@ public sealed class StartBookingCommandHandler(IApplicationDbContext db, IAuditL
 
 public sealed record CompleteBookingCommand(Guid ActorUserId, Guid BookingId) : ICommand;
 
+public sealed class CompleteBookingCommandValidator : AbstractValidator<CompleteBookingCommand>
+{
+    public CompleteBookingCommandValidator()
+    {
+        RuleFor(x => x.ActorUserId).NotEmpty();
+        RuleFor(x => x.BookingId).NotEmpty();
+    }
+}
+
 public sealed class CompleteBookingCommandHandler(IApplicationDbContext db, IAuditLogger audit) : IRequestHandler<CompleteBookingCommand, Result>
 {
     public async Task<Result> Handle(CompleteBookingCommand request, CancellationToken cancellationToken)
@@ -82,7 +145,7 @@ public sealed class CompleteBookingCommandHandler(IApplicationDbContext db, IAud
 
         var shop = await ctx.Set<BarberShop>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, cancellationToken);
         if (shop is null || shop.OwnerId != request.ActorUserId)
-            return Result.Failure(Error.Forbidden("Only barber owner can complete booking."));
+            return Result.Failure(Error.Forbidden("Yalnızca işletme sahibi randevuyu tamamlayabilir."));
 
         var result = booking.Complete();
         if (result.IsFailure) return result;
@@ -96,6 +159,15 @@ public sealed class CompleteBookingCommandHandler(IApplicationDbContext db, IAud
 
 public sealed record MarkNoShowCommand(Guid ActorUserId, Guid BookingId) : ICommand;
 
+public sealed class MarkNoShowCommandValidator : AbstractValidator<MarkNoShowCommand>
+{
+    public MarkNoShowCommandValidator()
+    {
+        RuleFor(x => x.ActorUserId).NotEmpty();
+        RuleFor(x => x.BookingId).NotEmpty();
+    }
+}
+
 public sealed class MarkNoShowCommandHandler(IApplicationDbContext db, IAuditLogger audit) : IRequestHandler<MarkNoShowCommand, Result>
 {
     public async Task<Result> Handle(MarkNoShowCommand request, CancellationToken cancellationToken)
@@ -106,7 +178,7 @@ public sealed class MarkNoShowCommandHandler(IApplicationDbContext db, IAuditLog
 
         var shop = await ctx.Set<BarberShop>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, cancellationToken);
         if (shop is null || shop.OwnerId != request.ActorUserId)
-            return Result.Failure(Error.Forbidden("Only barber owner can mark no-show."));
+            return Result.Failure(Error.Forbidden("Yalnızca işletme sahibi gelmedi işareti koyabilir."));
 
         var result = booking.MarkNoShow();
         if (result.IsFailure) return result;

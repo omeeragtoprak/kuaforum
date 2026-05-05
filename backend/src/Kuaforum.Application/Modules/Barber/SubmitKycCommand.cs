@@ -26,7 +26,7 @@ public sealed class SubmitKycCommandValidator : AbstractValidator<SubmitKycComma
         RuleFor(x => x.OwnerId).NotEmpty();
         RuleFor(x => x.BarberShopId).NotEmpty();
         RuleFor(x => x.Documents).NotEmpty().Must(d => d.Count >= 2)
-            .WithMessage("At least 2 documents required (tax license + sanitary permit).");
+            .WithMessage("En az 2 belge gerekli (vergi levhası + işyeri açma ruhsatı).");
     }
 }
 
@@ -39,11 +39,11 @@ public sealed class SubmitKycCommandHandler(
         var ctx = (DbContext)db;
         var shop = await ctx.Set<BarberShop>().FirstOrDefaultAsync(s => s.Id == request.BarberShopId, cancellationToken);
         if (shop is null) return Result.Failure<Guid>(Error.NotFound("BarberShop"));
-        if (shop.OwnerId != request.OwnerId) return Result.Failure<Guid>(Error.Forbidden("Not owner."));
+        if (shop.OwnerId != request.OwnerId) return Result.Failure<Guid>(Error.Forbidden("Bu işletmenin sahibi siz değilsiniz."));
 
         var hasPending = await ctx.Set<KycSubmission>()
             .AnyAsync(k => k.BarberShopId == request.BarberShopId && (k.Status == KycStatus.Pending || k.Status == KycStatus.UnderReview), cancellationToken);
-        if (hasPending) return Result.Failure<Guid>(Error.Conflict("There is already an in-progress KYC submission."));
+        if (hasPending) return Result.Failure<Guid>(Error.Conflict("Halihazırda incelemede olan bir KYC başvurunuz var."));
 
         var submission = KycSubmission.Create(request.BarberShopId, request.OwnerId);
         ctx.Set<KycSubmission>().Add(submission);
@@ -94,7 +94,7 @@ public sealed class ReviewKycCommandHandler(
         if (request.Approve)
         {
             if (string.IsNullOrEmpty(request.SubMerchantKey))
-                return Result.Failure(Error.Validation("SubMerchantKey required on approval (PSP onboarding)."));
+                return Result.Failure(Error.Validation("Onaylama için alt üye işyeri anahtarı gerekli (PSP kayıt)."));
 
             var approve = submission.Approve(request.AdminUserId);
             if (approve.IsFailure) return approve;
@@ -105,7 +105,7 @@ public sealed class ReviewKycCommandHandler(
         else
         {
             if (string.IsNullOrWhiteSpace(request.RejectionReason))
-                return Result.Failure(Error.Validation("Rejection reason required."));
+                return Result.Failure(Error.Validation("Reddetme gerekçesi belirtilmeli."));
             var reject = submission.Reject(request.AdminUserId, request.RejectionReason);
             if (reject.IsFailure) return reject;
         }

@@ -95,7 +95,7 @@ public sealed class User : AggregateRoot
         if (avatarUrl is not null)
         {
             if (avatarUrl.Length > MaxAvatarUrlLength)
-                return Result.Failure(Error.Validation($"Avatar URL must be at most {MaxAvatarUrlLength} chars."));
+                return Result.Failure(Error.Validation($"Avatar URL en fazla {MaxAvatarUrlLength} karakter olabilir."));
             AvatarUrl = avatarUrl;
         }
 
@@ -103,10 +103,21 @@ public sealed class User : AggregateRoot
         return Result.Success();
     }
 
+    public Result PromoteToBarberOwner()
+    {
+        if (Status != UserStatus.Active)
+            return Result.Failure(Error.Validation("Aktif olmayan hesap yetkilendirilemez."));
+        if (Role == UserRole.Admin)
+            return Result.Failure(Error.Validation("Yönetici hesabı kuaför sahipliğine düşürülemez."));
+        Role = UserRole.BarberOwner;
+        Touch();
+        return Result.Success();
+    }
+
     public Result ChangePhone(PhoneE164 newPhone)
     {
         if (Status != UserStatus.Active)
-            return Result.Failure(Error.Validation("Cannot change phone of non-active account."));
+            return Result.Failure(Error.Validation("Aktif olmayan hesabın telefon numarası değiştirilemez."));
 
         PhoneE164 = newPhone.Value;
         Touch();
@@ -116,7 +127,7 @@ public sealed class User : AggregateRoot
     public Result MarkLoggedIn(string deviceFingerprint, string? ip)
     {
         if (!CanLogin)
-            return Result.Failure(Error.Forbidden("Account cannot login."));
+            return Result.Failure(Error.Forbidden("Bu hesap ile giriş yapılamaz."));
 
         LastLoginAt = DateTimeOffset.UtcNow;
         Touch();
@@ -127,7 +138,7 @@ public sealed class User : AggregateRoot
     public Result Suspend()
     {
         if (Status == UserStatus.Deleted)
-            return Result.Failure(Error.Validation("Cannot suspend a deleted account."));
+            return Result.Failure(Error.Validation("Silinmiş hesap askıya alınamaz."));
         if (Status == UserStatus.Suspended)
             return Result.Success();
 
@@ -139,7 +150,7 @@ public sealed class User : AggregateRoot
     public Result Unsuspend()
     {
         if (Status != UserStatus.Suspended)
-            return Result.Failure(Error.Validation("Account is not suspended."));
+            return Result.Failure(Error.Validation("Hesap askıya alınmış durumda değil."));
 
         Status = UserStatus.Active;
         Touch();
@@ -149,7 +160,7 @@ public sealed class User : AggregateRoot
     public Result SoftDelete()
     {
         if (IsDeleted)
-            return Result.Failure(Error.Validation("Account already deleted."));
+            return Result.Failure(Error.Validation("Hesap zaten silinmiş."));
 
         DeletedAt = DateTimeOffset.UtcNow;
         Status = UserStatus.Deleted;
@@ -161,11 +172,11 @@ public sealed class User : AggregateRoot
     public Result RestoreFromSoftDelete()
     {
         if (DeletedAt is null)
-            return Result.Failure(Error.Validation("Account is not in soft-delete state."));
+            return Result.Failure(Error.Validation("Hesap silinme bekleme sürecinde değil."));
 
         var elapsed = DateTimeOffset.UtcNow - DeletedAt.Value;
         if (elapsed > TimeSpan.FromDays(30))
-            return Result.Failure(Error.Validation("Soft-delete window (30 days) has passed."));
+            return Result.Failure(Error.Validation("Hesap geri yükleme süresi (30 gün) doldu."));
 
         DeletedAt = null;
         Status = UserStatus.Active;
@@ -190,7 +201,7 @@ public sealed class User : AggregateRoot
         var trimmed = raw.Trim();
         if (trimmed.Length == 0) return Result.Success<string?>(null);
         if (trimmed.Length > MaxDisplayNameLength)
-            return Result.Failure<string?>(Error.Validation($"DisplayName must be at most {MaxDisplayNameLength} chars."));
+            return Result.Failure<string?>(Error.Validation($"Görünen ad en fazla {MaxDisplayNameLength} karakter olabilir."));
         return Result.Success<string?>(trimmed);
     }
 }

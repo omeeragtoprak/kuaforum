@@ -38,6 +38,7 @@ internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
 
         builder.HasIndex(x => x.BookingId).IsUnique().HasDatabaseName("ux_payments_booking");
         builder.HasIndex(x => x.CustomerId).HasDatabaseName("ix_payments_customer");
+        builder.HasIndex(x => new { x.CustomerId, x.CreatedAt }).HasDatabaseName("ix_payments_customer_created");
         builder.HasIndex(x => x.SubMerchantBarberShopId).HasDatabaseName("ix_payments_shop");
         builder.HasIndex(x => x.Status).HasDatabaseName("ix_payments_status");
         builder.HasIndex(x => x.ProviderTransactionId).HasDatabaseName("ix_payments_provider_tx");

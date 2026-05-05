@@ -15,7 +15,7 @@ public sealed class WorkingHours : Entity
     public static Result<WorkingHours> Create(Guid stylistId, DayOfWeek dow, TimeOnly open, TimeOnly close, bool isClosed = false)
     {
         if (!isClosed && close <= open)
-            return Result.Failure<WorkingHours>(Error.Validation("Close time must be after open time."));
+            return Result.Failure<WorkingHours>(Error.Validation("Kapanış saati açılış saatinden sonra olmalı."));
 
         return new WorkingHours
         {
@@ -30,7 +30,7 @@ public sealed class WorkingHours : Entity
     public Result Update(TimeOnly open, TimeOnly close, bool isClosed)
     {
         if (!isClosed && close <= open)
-            return Result.Failure(Error.Validation("Close time must be after open time."));
+            return Result.Failure(Error.Validation("Kapanış saati açılış saatinden sonra olmalı."));
         OpenTime = open;
         CloseTime = close;
         IsClosed = isClosed;
@@ -51,9 +51,9 @@ public sealed class TimeOff : Entity
     public static Result<TimeOff> Create(Guid stylistId, DateTimeOffset start, DateTimeOffset end, string? reason = null)
     {
         if (end <= start)
-            return Result.Failure<TimeOff>(Error.Validation("End must be after start."));
+            return Result.Failure<TimeOff>(Error.Validation("Bitiş zamanı başlangıç zamanından sonra olmalı."));
         if (start < DateTimeOffset.UtcNow.AddDays(-1))
-            return Result.Failure<TimeOff>(Error.Validation("Cannot create time-off in the far past."));
+            return Result.Failure<TimeOff>(Error.Validation("Geçmiş tarihli izin oluşturulamaz."));
 
         return new TimeOff
         {

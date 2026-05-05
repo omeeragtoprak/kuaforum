@@ -103,6 +103,15 @@ public sealed class SuspendUserCommandHandler(IApplicationDbContext db, IAuditLo
 
 public sealed record UnsuspendUserCommand(Guid AdminUserId, Guid TargetUserId) : ICommand;
 
+public sealed class UnsuspendUserCommandValidator : AbstractValidator<UnsuspendUserCommand>
+{
+    public UnsuspendUserCommandValidator()
+    {
+        RuleFor(x => x.AdminUserId).NotEmpty();
+        RuleFor(x => x.TargetUserId).NotEmpty();
+    }
+}
+
 public sealed class UnsuspendUserCommandHandler(IApplicationDbContext db, IAuditLogger audit)
     : IRequestHandler<UnsuspendUserCommand, Result>
 {

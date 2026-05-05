@@ -60,6 +60,23 @@ public sealed record SetBarberShopAddressCommand(
     double Latitude,
     double Longitude) : ICommand;
 
+public sealed class SetBarberShopAddressCommandValidator : AbstractValidator<SetBarberShopAddressCommand>
+{
+    public SetBarberShopAddressCommandValidator()
+    {
+        RuleFor(x => x.OwnerId).NotEmpty();
+        RuleFor(x => x.BarberShopId).NotEmpty();
+        RuleFor(x => x.CityId).NotEmpty();
+        RuleFor(x => x.DistrictId).NotEmpty();
+        RuleFor(x => x.NeighborhoodId).NotEmpty();
+        RuleFor(x => x.Line1).NotEmpty().MaximumLength(200);
+        RuleFor(x => x.Line2).MaximumLength(200);
+        RuleFor(x => x.PostalCode).MaximumLength(10);
+        RuleFor(x => x.Latitude).InclusiveBetween(35.5, 42.5).WithMessage("Türkiye sınırları dışı.");
+        RuleFor(x => x.Longitude).InclusiveBetween(25.5, 45.0).WithMessage("Türkiye sınırları dışı.");
+    }
+}
+
 public sealed class SetBarberShopAddressCommandHandler(
     IApplicationDbContext db,
     IAuditLogger audit) : IRequestHandler<SetBarberShopAddressCommand, Result>

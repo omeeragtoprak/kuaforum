@@ -33,7 +33,7 @@ public sealed class Consent : Entity
     public Result Revoke()
     {
         if (!Granted || RevokedAt is not null)
-            return Result.Failure(Error.Validation("Consent is not active."));
+            return Result.Failure(Error.Validation("Bu rıza zaten geçerli değil."));
 
         Granted = false;
         RevokedAt = DateTimeOffset.UtcNow;

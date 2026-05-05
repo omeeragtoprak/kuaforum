@@ -40,14 +40,14 @@ public sealed class OAuthLoginCommandHandler(
         var provider = oauthProviders.FirstOrDefault(p =>
             p.ProviderName.Equals(request.Provider, StringComparison.OrdinalIgnoreCase));
         if (provider is null)
-            return Result.Failure<VerifyOtpResponse>(Error.Validation($"OAuth provider '{request.Provider}' not configured."));
+            return Result.Failure<VerifyOtpResponse>(Error.Validation($"'{request.Provider}' OAuth sağlayıcısı yapılandırılmamış."));
 
         var identity = await provider.VerifyAsync(request.IdToken, cancellationToken);
         if (identity is null)
-            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("Invalid OAuth id token."));
+            return Result.Failure<VerifyOtpResponse>(Error.Unauthorized("OAuth kimlik doğrulaması geçersiz."));
 
         if (string.IsNullOrEmpty(identity.Email))
-            return Result.Failure<VerifyOtpResponse>(Error.Validation("OAuth provider did not supply email."));
+            return Result.Failure<VerifyOtpResponse>(Error.Validation("OAuth sağlayıcısı e-posta adresi vermedi."));
 
         var emailResult = EmailAddress.TryCreate(identity.Email);
         if (emailResult.IsFailure)
@@ -68,7 +68,7 @@ public sealed class OAuthLoginCommandHandler(
         else
         {
             if (!user.CanLogin)
-                return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Account cannot login."));
+                return Result.Failure<VerifyOtpResponse>(Error.Forbidden("Bu hesap ile giriş yapılamaz."));
         }
 
         var loginResult = user.MarkLoggedIn(request.DeviceFingerprint, request.Ip);

@@ -36,7 +36,7 @@ public sealed class InitiatePhoneChangeCommandHandler(
         var users = ctx.Set<User>();
         var existing = await users.AnyAsync(u => u.PhoneE164 == phoneResult.Value.Value && u.Id != request.UserId, cancellationToken);
         if (existing)
-            return Result.Failure<SendOtpResponse>(Error.Conflict("Phone number is already used by another account."));
+            return Result.Failure<SendOtpResponse>(Error.Conflict("Bu telefon numarası başka bir hesap tarafından kullanılıyor."));
 
         var rate = await rateLimiter.CheckAsync(
             bucket: $"phonechange:{request.UserId}",
@@ -44,7 +44,7 @@ public sealed class InitiatePhoneChangeCommandHandler(
             window: TimeSpan.FromHours(1),
             ct: cancellationToken);
         if (!rate.Allowed)
-            return Result.Failure<SendOtpResponse>(Error.Validation($"Too many attempts. Retry in {rate.RetryAfter?.TotalMinutes:0} min."));
+            return Result.Failure<SendOtpResponse>(Error.Validation($"Çok fazla deneme yapıldı. {rate.RetryAfter?.TotalMinutes:0} dakika sonra tekrar deneyin."));
 
         var phone = phoneResult.Value;
         var code = otpService.GenerateNumericCode();
@@ -55,7 +55,7 @@ public sealed class InitiatePhoneChangeCommandHandler(
 
         var sent = await smsService.SendOtpAsync(phone.Value, code, cancellationToken);
         if (!sent)
-            return Result.Failure<SendOtpResponse>(Error.Validation("SMS gateway temporarily unavailable."));
+            return Result.Failure<SendOtpResponse>(Error.Validation("SMS gönderim servisine şu anda ulaşılamıyor. Lütfen daha sonra tekrar deneyin."));
 
         await audit.RecordAsync(
             "user.phone.change.initiated",
@@ -99,7 +99,7 @@ public sealed class ConfirmPhoneChangeCommandHandler(
         await db.SaveChangesAsync(cancellationToken);
 
         if (verifyResult.IsFailure) return verifyResult;
-        if (!verifyResult.Value) return Result.Failure(Error.Validation("Invalid OTP code."));
+        if (!verifyResult.Value) return Result.Failure(Error.Validation("Doğrulama kodu hatalı."));
 
         var phoneResult = PhoneE164.TryCreate(otp.PhoneE164);
         if (phoneResult.IsFailure) return phoneResult;

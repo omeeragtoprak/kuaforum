@@ -18,7 +18,7 @@ public sealed class Stylist : Entity
     public static Result<Stylist> Create(Guid barberShopId, string displayName, Guid? userId = null)
     {
         if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > 80)
-            return Result.Failure<Stylist>(Error.Validation("DisplayName max 80 chars."));
+            return Result.Failure<Stylist>(Error.Validation("Görünen ad en fazla 80 karakter olabilir."));
 
         return new Stylist
         {
@@ -35,7 +35,7 @@ public sealed class Stylist : Entity
         if (displayName is not null)
         {
             if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > 80)
-                return Result.Failure(Error.Validation("DisplayName max 80."));
+                return Result.Failure(Error.Validation("Görünen ad en fazla 80 karakter olabilir."));
             DisplayName = displayName.Trim();
         }
         if (photoUrl is not null) PhotoUrl = photoUrl.Length > 500 ? photoUrl[..500] : photoUrl;
@@ -55,7 +55,7 @@ public sealed class Stylist : Entity
     public Result ToggleWalkIn(bool available)
     {
         if (!IsActive && available)
-            return Result.Failure(Error.Validation("Inactive stylist cannot enable walk-in."));
+            return Result.Failure(Error.Validation("Pasif çalışan için 'şu anda müsait' açılamaz."));
         WalkInAvailable = available;
         WalkInToggledAt = DateTimeOffset.UtcNow;
         Touch();

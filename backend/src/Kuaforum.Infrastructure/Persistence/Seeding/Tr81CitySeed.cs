@@ -28,7 +28,7 @@ internal static class Tr81CitySeed
     };
 
     /// <summary>
-    /// İstanbul, Ankara, İzmir, Bursa için sample district seti.
+    /// 15 büyük şehir için sample district seti — comprehensive demo seeder bunlara salon yerleştirir.
     /// Tüm 970+ ilçe import'u (NVI tam veri seti) Phase 1+ runbook'ta.
     /// </summary>
     public static readonly IReadOnlyDictionary<int, string[]> SampleDistricts = new Dictionary<int, string[]>
@@ -63,6 +63,73 @@ internal static class Tr81CitySeed
             "Büyükorhan", "Gemlik", "Gürsu", "Harmancık", "İnegöl", "İznik",
             "Karacabey", "Keles", "Kestel", "Mudanya", "Mustafakemalpaşa",
             "Nilüfer", "Orhaneli", "Orhangazi", "Osmangazi", "Yenişehir", "Yıldırım",
+        },
+        [7] = new[] // Antalya (19 ilçe)
+        {
+            "Akseki", "Aksu", "Alanya", "Demre", "Döşemealtı", "Elmalı", "Finike",
+            "Gazipaşa", "Gündoğmuş", "İbradı", "Kaş", "Kemer", "Kepez", "Konyaaltı",
+            "Korkuteli", "Kumluca", "Manavgat", "Muratpaşa", "Serik",
+        },
+        [1] = new[] // Adana (15 ilçe)
+        {
+            "Aladağ", "Ceyhan", "Çukurova", "Feke", "İmamoğlu", "Karaisalı", "Karataş",
+            "Kozan", "Pozantı", "Saimbeyli", "Sarıçam", "Seyhan", "Tufanbeyli",
+            "Yumurtalık", "Yüreğir",
+        },
+        [42] = new[] // Konya (31 ilçe)
+        {
+            "Akören", "Akşehir", "Altınekin", "Beyşehir", "Bozkır", "Cihanbeyli",
+            "Çeltik", "Çumra", "Derbent", "Derebucak", "Doğanhisar", "Emirgazi",
+            "Ereğli", "Güneysınır", "Hadim", "Halkapınar", "Hüyük", "Ilgın",
+            "Kadınhanı", "Karapınar", "Karatay", "Kulu", "Meram", "Sarayönü",
+            "Selçuklu", "Seydişehir", "Taşkent", "Tuzlukçu", "Yalıhüyük", "Yunak",
+            "Akyokuş",
+        },
+        [27] = new[] // Gaziantep (9 ilçe)
+        {
+            "Araban", "İslahiye", "Karkamış", "Nizip", "Nurdağı", "Oğuzeli",
+            "Şahinbey", "Şehitkamil", "Yavuzeli",
+        },
+        [38] = new[] // Kayseri (16 ilçe)
+        {
+            "Akkışla", "Bünyan", "Develi", "Felahiye", "Hacılar", "İncesu",
+            "Kocasinan", "Melikgazi", "Özvatan", "Pınarbaşı", "Sarıoğlan",
+            "Sarız", "Talas", "Tomarza", "Yahyalı", "Yeşilhisar",
+        },
+        [33] = new[] // Mersin (13 ilçe)
+        {
+            "Akdeniz", "Anamur", "Aydıncık", "Bozyazı", "Çamlıyayla", "Erdemli",
+            "Gülnar", "Mezitli", "Mut", "Silifke", "Tarsus", "Toroslar", "Yenişehir",
+        },
+        [26] = new[] // Eskişehir (14 ilçe)
+        {
+            "Alpu", "Beylikova", "Çifteler", "Günyüzü", "Han", "İnönü", "Mahmudiye",
+            "Mihalgazi", "Mihalıççık", "Odunpazarı", "Sarıcakaya", "Seyitgazi",
+            "Sivrihisar", "Tepebaşı",
+        },
+        [61] = new[] // Trabzon (18 ilçe)
+        {
+            "Akçaabat", "Araklı", "Arsin", "Beşikdüzü", "Çarşıbaşı", "Çaykara",
+            "Dernekpazarı", "Düzköy", "Hayrat", "Köprübaşı", "Maçka", "Of",
+            "Ortahisar", "Şalpazarı", "Sürmene", "Tonya", "Vakfıkebir", "Yomra",
+        },
+        [55] = new[] // Samsun (17 ilçe)
+        {
+            "19 Mayıs", "Alaçam", "Asarcık", "Atakum", "Ayvacık", "Bafra",
+            "Canik", "Çarşamba", "Havza", "İlkadım", "Kavak", "Ladik",
+            "Salıpazarı", "Tekkeköy", "Terme", "Vezirköprü", "Yakakent",
+        },
+        [21] = new[] // Diyarbakır (17 ilçe)
+        {
+            "Bağlar", "Bismil", "Çermik", "Çınar", "Çüngüş", "Dicle", "Eğil",
+            "Ergani", "Hani", "Hazro", "Kayapınar", "Kocaköy", "Kulp",
+            "Lice", "Silvan", "Sur", "Yenişehir",
+        },
+        [54] = new[] // Sakarya (16 ilçe)
+        {
+            "Adapazarı", "Akyazı", "Arifiye", "Erenler", "Ferizli", "Geyve",
+            "Hendek", "Karapürçek", "Karasu", "Kaynarca", "Kocaali", "Pamukova",
+            "Sapanca", "Serdivan", "Söğütlü", "Taraklı",
         },
     };
 }

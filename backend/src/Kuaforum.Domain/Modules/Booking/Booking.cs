@@ -41,11 +41,11 @@ public sealed class Booking : AggregateRoot
         string? customerNote = null)
     {
         if (services.Count == 0)
-            return Result.Failure<Booking>(Error.Validation("At least one service is required."));
+            return Result.Failure<Booking>(Error.Validation("En az bir hizmet seçilmeli."));
         if (scheduledAt < DateTimeOffset.UtcNow.AddMinutes(-1))
-            return Result.Failure<Booking>(Error.Validation("Cannot book in the past."));
+            return Result.Failure<Booking>(Error.Validation("Geçmiş tarih için randevu oluşturulamaz."));
         if (commissionRate is < 0 or > 0.5m)
-            return Result.Failure<Booking>(Error.Validation("Commission rate must be between 0 and 50%."));
+            return Result.Failure<Booking>(Error.Validation("Komisyon oranı %0 ile %50 arasında olmalı."));
 
         var totalDuration = services.Sum(s => s.DurationMinutes + s.BufferMinutes);
         var totalAmount = services.Sum(s => s.PriceMinor);
@@ -80,7 +80,7 @@ public sealed class Booking : AggregateRoot
     public Result Confirm(Guid paymentId)
     {
         if (Status != BookingStatus.Pending)
-            return Result.Failure(Error.Validation($"Cannot confirm booking in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu onaylanamaz."));
 
         Status = BookingStatus.Confirmed;
         ConfirmedAt = DateTimeOffset.UtcNow;
@@ -91,10 +91,27 @@ public sealed class Booking : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// Owner manually confirms a Pending booking without an associated payment authorization.
+    /// Used when PSP integration is unavailable (dev/Phase-1) or for in-person/walk-in flows.
+    /// </summary>
+    public Result OwnerConfirm()
+    {
+        if (Status != BookingStatus.Pending)
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu onaylanamaz."));
+
+        Status = BookingStatus.Confirmed;
+        ConfirmedAt = DateTimeOffset.UtcNow;
+        Touch();
+
+        RaiseDomainEvent(new BookingConfirmedEvent(Id, CustomerId, StylistId, ScheduledAt));
+        return Result.Success();
+    }
+
     public Result Start()
     {
         if (Status != BookingStatus.Confirmed)
-            return Result.Failure(Error.Validation($"Cannot start booking in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu başlatılamaz."));
 
         Status = BookingStatus.Started;
         StartedAt = DateTimeOffset.UtcNow;
@@ -107,7 +124,7 @@ public sealed class Booking : AggregateRoot
     public Result Complete()
     {
         if (Status != BookingStatus.Started)
-            return Result.Failure(Error.Validation($"Cannot complete booking in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu tamamlanamaz."));
 
         Status = BookingStatus.Completed;
         CompletedAt = DateTimeOffset.UtcNow;
@@ -120,7 +137,7 @@ public sealed class Booking : AggregateRoot
     public Result Cancel(BookingCancellationReason reason)
     {
         if (Status is BookingStatus.Cancelled or BookingStatus.Completed or BookingStatus.NoShow)
-            return Result.Failure(Error.Validation($"Cannot cancel booking in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu iptal edilemez."));
 
         var refundPct = ComputeRefundPercentage(reason);
 
@@ -134,12 +151,34 @@ public sealed class Booking : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// Move the booking to a new scheduled time. Only Pending or Confirmed bookings may be rescheduled.
+    /// Caller MUST verify slot availability for the new time before invoking — domain doesn't know about slots.
+    /// </summary>
+    public Result Reschedule(DateTimeOffset newScheduledAt)
+    {
+        if (Status is not (BookingStatus.Pending or BookingStatus.Confirmed))
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu yeniden planlanamaz."));
+
+        if (newScheduledAt <= DateTimeOffset.UtcNow)
+            return Result.Failure(Error.Validation("Yeni randevu zamanı gelecekte olmalı."));
+
+        var totalDuration = ScheduledEndsAt - ScheduledAt;
+        var oldScheduledAt = ScheduledAt;
+        ScheduledAt = newScheduledAt;
+        ScheduledEndsAt = newScheduledAt.Add(totalDuration);
+        Touch();
+
+        RaiseDomainEvent(new BookingRescheduledEvent(Id, CustomerId, StylistId, oldScheduledAt, newScheduledAt));
+        return Result.Success();
+    }
+
     public Result MarkNoShow()
     {
         if (Status != BookingStatus.Confirmed)
-            return Result.Failure(Error.Validation($"Cannot mark no-show in status {Status}."));
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu için gelmedi işareti konulamaz."));
         if (DateTimeOffset.UtcNow < ScheduledEndsAt)
-            return Result.Failure(Error.Validation("Cannot mark no-show before booking end time."));
+            return Result.Failure(Error.Validation("Randevu bitiş saatinden önce gelmedi işareti konulamaz."));
 
         Status = BookingStatus.NoShow;
         CancellationReason = BookingCancellationReason.NoShow;

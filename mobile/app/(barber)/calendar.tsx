@@ -1,13 +1,16 @@
-import { View, Text, StyleSheet, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, RefreshControl, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
-import { Colors, FontSize, Spacing } from '@/lib/theme';
-import { BookingApi } from '@/api/booking';
-import { formatDateTime, formatTry } from '@/lib/format';
+import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
+import { BookingApi, Booking } from '@/api/booking';
+import { formatTime, formatTry, bookingStatusInfo } from '@/lib/format';
 
 export default function BarberCalendarScreen() {
+  const router = useRouter();
   const start = new Date();
   start.setHours(0, 0, 0, 0);
   const end = new Date(start);
@@ -18,13 +21,12 @@ export default function BarberCalendarScreen() {
     queryFn: () => BookingApi.getOwnerBookings(start.toISOString(), end.toISOString()),
   });
 
-  // Group by day (yyyy-mm-dd)
-  const byDay = new Map<string, typeof query.data>();
+  const byDay = new Map<string, Booking[]>();
   (query.data ?? []).forEach((b) => {
     const key = new Date(b.scheduledAt).toISOString().slice(0, 10);
     const arr = byDay.get(key) ?? [];
     arr.push(b);
-    byDay.set(key, arr as never);
+    byDay.set(key, arr);
   });
   const days = Array.from(byDay.entries()).sort();
 
@@ -35,45 +37,133 @@ export default function BarberCalendarScreen() {
         <Text style={styles.subtitle}>Önümüzdeki 14 gün</Text>
       </View>
 
-      {query.isLoading ? (
-        <EmptyState title="Yükleniyor..." />
-      ) : days.length === 0 ? (
-        <EmptyState title="Bu 14 günde randevu yok" />
-      ) : (
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          refreshControl={<RefreshControl refreshing={query.isFetching} onRefresh={() => query.refetch()} />}
-        >
-          {days.map(([day, bookings]) => (
-            <View key={day} style={styles.section}>
-              <Text style={styles.dayHeader}>
-                {new Date(day).toLocaleDateString('tr-TR', { weekday: 'short', day: '2-digit', month: 'short' })}
-                {' · '}
-                {bookings?.length} randevu
-              </Text>
-              {bookings?.map((b) => (
-                <Card key={b.id} style={styles.row}>
-                  <Text style={styles.time}>{formatDateTime(b.scheduledAt)}</Text>
-                  <Text style={styles.amount}>{formatTry(b.totalAmountMinor)}</Text>
-                </Card>
-              ))}
-            </View>
-          ))}
-        </ScrollView>
-      )}
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={query.isFetching && !query.isLoading}
+            onRefresh={() => query.refetch()}
+            tintColor="#0EA5E9"
+          />
+        }
+      >
+        {query.isLoading ? null : query.isError ? (
+          <EmptyState
+            emoji="⚠️"
+            title="Bağlantı hatası"
+            description="Sunucuya ulaşılamıyor."
+            actionLabel="Tekrar dene"
+            onAction={() => query.refetch()}
+          />
+        ) : days.length === 0 ? (
+          <EmptyState emoji="📅" title="Önümüzdeki 14 gün boş" description="Bu süre içinde randevun yok." />
+        ) : (
+          days.map(([day, bookings]) => {
+            const date = new Date(day);
+            const dayShort = date.toLocaleDateString('tr-TR', { weekday: 'short' });
+            const dayNum = date.getDate();
+            const monthShort = date.toLocaleDateString('tr-TR', { month: 'short' });
+            const isToday = date.toDateString() === new Date().toDateString();
+            return (
+              <View key={day} style={styles.daySection}>
+                <View style={styles.dayHeader}>
+                  <View style={[styles.dateBadge, isToday && styles.dateBadgeToday]}>
+                    <Text style={[styles.dateNum, isToday && styles.dateNumToday]}>{dayNum}</Text>
+                    <Text style={[styles.dateMonth, isToday && styles.dateMonthToday]}>{monthShort}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.dayLabel}>{dayShort}</Text>
+                    <Text style={styles.dayCount}>{bookings.length} randevu</Text>
+                  </View>
+                </View>
+                <View style={styles.bookingsList}>
+                  {bookings.map((b) => {
+                    const status = bookingStatusInfo(b.status);
+                    return (
+                      <Pressable
+                        key={b.id}
+                        onPress={() => router.push(`/booking/${b.id}`)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`${formatTime(b.scheduledAt)} ${b.items[0]?.serviceName ?? ''} ${status.label}`}
+                        style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
+                      >
+                        <Card style={styles.row}>
+                          <View style={styles.rowTime}>
+                            <Text style={styles.time}>{formatTime(b.scheduledAt)}</Text>
+                            <Text style={styles.duration}>
+                              {b.items.reduce((s, i) => s + (i.durationMinutes ?? 0), 0)} dk
+                            </Text>
+                          </View>
+                          <View style={styles.rowMid}>
+                            <Text style={styles.serviceLine} numberOfLines={1}>
+                              {b.items[0]?.serviceName ?? '—'}
+                              {b.items.length > 1 ? ` +${b.items.length - 1}` : ''}
+                            </Text>
+                            {b.customerName ? (
+                              <Text style={styles.customerLine} numberOfLines={1}>👤 {b.customerName}</Text>
+                            ) : null}
+                            <Badge label={status.label} tone={status.tone} />
+                          </View>
+                          <Text style={styles.amount}>{formatTry(b.totalAmountMinor)}</Text>
+                        </Card>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </View>
+            );
+          })
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { padding: Spacing.lg },
-  title: { fontSize: FontSize.xxl, fontWeight: '700', color: Colors.text },
-  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
-  scroll: { padding: Spacing.lg, paddingTop: 0 },
-  section: { marginBottom: Spacing.lg, gap: Spacing.sm },
-  dayHeader: { fontSize: FontSize.md, fontWeight: '600', color: Colors.text, marginBottom: Spacing.xs },
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  time: { fontSize: FontSize.sm, color: Colors.text },
-  amount: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600' },
+  header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.lg, paddingBottom: Spacing.md },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
+  scroll: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingBottom: Spacing.xl,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  daySection: { marginBottom: Spacing.lg },
+  dayHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, marginBottom: Spacing.sm },
+  dateBadge: {
+    width: 56,
+    height: 56,
+    borderRadius: Radius.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dateBadgeToday: { backgroundColor: '#0EA5E9', borderColor: '#0EA5E9' },
+  dateNum: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, lineHeight: 24 },
+  dateNumToday: { color: Colors.textInverse },
+  dateMonth: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    fontWeight: FontWeight.semibold,
+  },
+  dateMonthToday: { color: Colors.textInverse, opacity: 0.85 },
+  dayLabel: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text, textTransform: 'capitalize' },
+  dayCount: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  bookingsList: { gap: Spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  rowTime: { width: 64 },
+  time: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0EA5E9' },
+  duration: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  rowMid: { flex: 1, gap: 4 },
+  serviceLine: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium },
+  customerLine: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
+  amount: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
 });

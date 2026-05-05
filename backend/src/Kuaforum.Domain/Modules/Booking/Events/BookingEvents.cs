@@ -13,3 +13,10 @@ public sealed record BookingCompletedEvent(Guid BookingId, Guid CustomerId, Guid
 public sealed record BookingCancelledEvent(Guid BookingId, BookingCancellationReason Reason, int RefundPercentage) : DomainEvent;
 
 public sealed record BookingNoShowEvent(Guid BookingId, Guid CustomerId) : DomainEvent;
+
+public sealed record BookingRescheduledEvent(
+    Guid BookingId,
+    Guid CustomerId,
+    Guid StylistId,
+    DateTimeOffset OldScheduledAt,
+    DateTimeOffset NewScheduledAt) : DomainEvent;

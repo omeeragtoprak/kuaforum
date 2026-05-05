@@ -36,13 +36,13 @@ public sealed class SubmitReviewCommandHandler(
             .FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
         if (booking is null) return Result.Failure<Guid>(Error.NotFound("Booking"));
         if (booking.CustomerId != request.CustomerId)
-            return Result.Failure<Guid>(Error.Forbidden("Not your booking."));
+            return Result.Failure<Guid>(Error.Forbidden("Bu randevu size ait değil."));
         if (booking.Status != BookingStatus.Completed)
-            return Result.Failure<Guid>(Error.Validation("Can only review completed bookings."));
+            return Result.Failure<Guid>(Error.Validation("Yalnızca tamamlanmış randevular değerlendirilebilir."));
 
         var existing = await ctx.Set<ReviewAggregate>()
             .AnyAsync(r => r.BookingId == request.BookingId, cancellationToken);
-        if (existing) return Result.Failure<Guid>(Error.Conflict("Review for this booking already exists."));
+        if (existing) return Result.Failure<Guid>(Error.Conflict("Bu randevuya zaten değerlendirme yazılmış."));
 
         var reviewResult = ReviewAggregate.Submit(
             request.CustomerId,

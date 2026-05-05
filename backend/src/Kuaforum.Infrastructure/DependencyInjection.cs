@@ -1,7 +1,9 @@
 using Hangfire;
 using Hangfire.PostgreSql;
 using Kuaforum.Application.Common.Interfaces;
+using Kuaforum.Application.Modules.Availability;
 using Kuaforum.Infrastructure.Auth;
+using Kuaforum.Infrastructure.Storage;
 using Kuaforum.Infrastructure.BackgroundJobs;
 using Kuaforum.Infrastructure.Caching;
 using Kuaforum.Infrastructure.Notifications;
@@ -11,6 +13,7 @@ using Kuaforum.Infrastructure.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using StackExchange.Redis;
 
 namespace Kuaforum.Infrastructure;
@@ -70,7 +73,31 @@ public static class DependencyInjection
         services.AddSingleton<IPaymentProvider, IyzicoPaymentProvider>();
         services.AddSingleton<IPaymentProviderRegistry, PaymentProviderRegistry>();
 
-        services.AddScoped<INotificationChannelHandler, MockPushChannel>();
+        // Push channel: Firebase Cloud Messaging if credentials configured, else log-only mock.
+        services.Configure<FcmOptions>(configuration.GetSection(FcmOptions.SectionName));
+        var fcmOpts = configuration.GetSection(FcmOptions.SectionName).Get<FcmOptions>() ?? new FcmOptions();
+        var hasFcmCreds = !string.IsNullOrWhiteSpace(fcmOpts.ServiceAccountJson)
+            || (!string.IsNullOrWhiteSpace(fcmOpts.ServiceAccountJsonPath) && File.Exists(fcmOpts.ServiceAccountJsonPath));
+        if (hasFcmCreds)
+        {
+            // Instantiate FirebaseApp eagerly via temp logger so it's available at DI time.
+            using var bootstrapFactory = LoggerFactory.Create(b => b.AddConsole());
+            var bootstrapLogger = bootstrapFactory.CreateLogger<FcmPushChannel>();
+            var firebaseApp = FirebaseAppFactory.CreateOrNull(fcmOpts, bootstrapLogger);
+            if (firebaseApp is not null)
+            {
+                services.AddSingleton(firebaseApp);
+                services.AddScoped<INotificationChannelHandler, FcmPushChannel>();
+            }
+            else
+            {
+                services.AddScoped<INotificationChannelHandler, MockPushChannel>();
+            }
+        }
+        else
+        {
+            services.AddScoped<INotificationChannelHandler, MockPushChannel>();
+        }
         services.AddScoped<INotificationChannelHandler, MockSmsChannel>();
         services.AddScoped<INotificationChannelHandler, InAppNotificationChannel>();
 
@@ -113,14 +140,21 @@ public static class DependencyInjection
         });
         services.AddScoped<HardDeleteUsersJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
+        services.AddScoped<IStylistScheduleChecker, StylistScheduleChecker>();
+        services.AddSingleton<IObjectStorage, LocalFileObjectStorage>();
         services.AddScoped<GeographySeeder>();
         services.AddScoped<DemoBarberSeeder>();
+        services.AddScoped<ComprehensiveDemoSeeder>();
         services.AddScoped<AdminSeeder>();
 
         return services;
     }
 
-    public static async Task SeedReferenceDataAsync(IServiceProvider services, bool seedDemoBarbers, CancellationToken ct = default)
+    public static async Task SeedReferenceDataAsync(
+        IServiceProvider services,
+        bool seedDemoBarbers,
+        bool seedComprehensiveDemo,
+        CancellationToken ct = default)
     {
         await using var scope = services.CreateAsyncScope();
         var geo = scope.ServiceProvider.GetRequiredService<GeographySeeder>();
@@ -133,6 +167,12 @@ public static class DependencyInjection
         {
             var demo = scope.ServiceProvider.GetRequiredService<DemoBarberSeeder>();
             await demo.SeedAsync(ct);
+        }
+
+        if (seedComprehensiveDemo)
+        {
+            var comprehensive = scope.ServiceProvider.GetRequiredService<ComprehensiveDemoSeeder>();
+            await comprehensive.SeedAsync(ct);
         }
     }
 

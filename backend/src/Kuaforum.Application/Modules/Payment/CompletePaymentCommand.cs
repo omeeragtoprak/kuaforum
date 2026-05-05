@@ -48,11 +48,11 @@ public sealed class CompletePaymentCommandHandler(
 
         if (!verification.Succeeded)
         {
-            payment.Fail(verification.FailureReason ?? "Provider verification failed.");
+            payment.Fail(verification.FailureReason ?? "Sağlayıcı doğrulaması başarısız oldu.");
             await audit.RecordAsync("payment.failed", nameof(PaymentAggregate), payment.Id.ToString(),
                 payload: new { reason = verification.FailureReason }, ct: cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
-            return Result.Failure<Guid>(Error.Validation(verification.FailureReason ?? "Payment failed."));
+            return Result.Failure<Guid>(Error.Validation(verification.FailureReason ?? "Ödeme başarısız oldu."));
         }
 
         var captureResult = payment.Capture(verification.ProviderTransactionId, verification.PspMdrMinor);

@@ -13,14 +13,14 @@ public readonly record struct EmailAddress
     public static Result<EmailAddress> TryCreate(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return Result.Failure<EmailAddress>(Error.Validation("Email is required."));
+            return Result.Failure<EmailAddress>(Error.Validation("E-posta adresi gerekli."));
 
         var trimmed = raw.Trim();
         if (trimmed.Length > 256)
-            return Result.Failure<EmailAddress>(Error.Validation("Email must be at most 256 chars."));
+            return Result.Failure<EmailAddress>(Error.Validation("E-posta adresi en fazla 256 karakter olabilir."));
 
         if (!MailAddress.TryCreate(trimmed, out var addr) || addr is null)
-            return Result.Failure<EmailAddress>(Error.Validation("Email format invalid."));
+            return Result.Failure<EmailAddress>(Error.Validation("E-posta adresi geçersiz."));
 
         return new EmailAddress(addr.Address);
     }

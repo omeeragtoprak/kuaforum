@@ -42,7 +42,7 @@ public sealed class RefreshToken : Entity
     public Result Rotate(Guid replacementTokenId, string? ip)
     {
         if (!IsActive)
-            return Result.Failure(Error.Validation("Token is not active and cannot be rotated."));
+            return Result.Failure(Error.Validation("Oturum geçerli değil, yenilenemez."));
 
         ReplacedByTokenId = replacementTokenId;
         RevokedAt = DateTimeOffset.UtcNow;

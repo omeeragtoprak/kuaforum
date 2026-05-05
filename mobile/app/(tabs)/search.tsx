@@ -1,28 +1,30 @@
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl } from 'react-native';
+import { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
+import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
-import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi, BarberSearchResult } from '@/api/barber';
-import { formatTry } from '@/lib/format';
+import { formatTry, salonGenderLabel, salonGenderTone } from '@/lib/format';
 
-const GENDER_BADGE: Record<number, { text: string; color: string }> = {
-  0: { text: 'Unisex', color: Colors.info },
-  1: { text: 'Sadece Kadın', color: '#EC4899' },
-  2: { text: 'Sadece Erkek', color: Colors.primaryDark },
-};
+type GenderFilter = 'all' | 'unisex' | 'female' | 'male' | 'walkin';
 
 export default function SearchScreen() {
   const params = useLocalSearchParams<{ cityId?: string; cityName?: string }>();
   const router = useRouter();
+  const [filter, setFilter] = useState<GenderFilter>('all');
 
   const query = useQuery({
-    queryKey: ['barbers-search', params.cityId],
+    queryKey: ['barbers-search', params.cityId, filter],
     queryFn: () =>
       BarberApi.search({
         cityId: params.cityId,
+        genderType: filter === 'unisex' ? 'Unisex' : filter === 'female' ? 'FemaleOnly' : filter === 'male' ? 'MaleOnly' : undefined,
+        walkInOnly: filter === 'walkin' ? true : undefined,
         page: 1,
         pageSize: 20,
       }),
@@ -31,102 +33,152 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()}>
+        <Pressable onPress={() => router.back()} style={styles.backBtn}>
           <Text style={styles.back}>← Geri</Text>
         </Pressable>
         <Text style={styles.title}>{params.cityName ?? 'Tüm kuaförler'}</Text>
-        <Text style={styles.subtitle}>{query.data?.totalCount ?? 0} kuaför bulundu</Text>
+        <Text style={styles.subtitle}>
+          {query.isLoading ? 'Aranıyor…' : `${query.data?.totalCount ?? 0} kuaför`}
+        </Text>
       </View>
 
-      {query.isLoading ? (
-        <EmptyState title="Yükleniyor..." />
-      ) : query.isError ? (
-        <EmptyState title="Bağlantı hatası" description="Backend'e ulaşılamıyor." />
-      ) : (query.data?.items.length ?? 0) === 0 ? (
-        <EmptyState
-          title="Bu şehirde kuaför yok"
-          description="Demo veride bu şehir kapsanmadı. İstanbul, Ankara, İzmir'de demo kuaför var (Seed:Demo=true)."
-        />
-      ) : (
-        <FlatList
-          data={query.data!.items}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-          refreshControl={<RefreshControl refreshing={query.isFetching} onRefresh={() => query.refetch()} />}
-          renderItem={({ item }) => (
-            <BarberCard barber={item} onPress={() => router.push(`/barber/${item.id}` as never)} />
-          )}
-        />
-      )}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filtersRow}
+      >
+        <Chip label="Tümü" selected={filter === 'all'} onPress={() => setFilter('all')} />
+        <Chip label="Şu an boş" selected={filter === 'walkin'} onPress={() => setFilter('walkin')} />
+        <Chip label="Unisex" selected={filter === 'unisex'} onPress={() => setFilter('unisex')} />
+        <Chip label="Kadın" selected={filter === 'female'} onPress={() => setFilter('female')} />
+        <Chip label="Erkek" selected={filter === 'male'} onPress={() => setFilter('male')} />
+      </ScrollView>
+
+      <FlatList
+        data={query.data?.items ?? []}
+        keyExtractor={(item) => item.id}
+        contentContainerStyle={styles.list}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={query.isFetching && !query.isLoading}
+            onRefresh={() => query.refetch()}
+            tintColor={Colors.primary}
+          />
+        }
+        ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
+        ListEmptyComponent={
+          query.isLoading ? null : query.isError ? (
+            <EmptyState
+              emoji="⚠️"
+              title="Bağlantı hatası"
+              description="Sunucuya ulaşılamadı."
+              actionLabel="Tekrar dene"
+              onAction={() => query.refetch()}
+            />
+          ) : (
+            <EmptyState
+              emoji="✂️"
+              title="Bu kriterde kuaför yok"
+              description="Filtreyi değiştir veya başka bir şehir seç."
+            />
+          )
+        }
+        renderItem={({ item }) => (
+          <BarberCard barber={item} onPress={() => router.push(`/barber/${item.id}` as never)} />
+        )}
+      />
     </SafeAreaView>
   );
 }
 
 function BarberCard({ barber, onPress }: { barber: BarberSearchResult; onPress: () => void }) {
-  const badge = GENDER_BADGE[barber.genderType] ?? GENDER_BADGE[0];
+  const genderTone = salonGenderTone(barber.genderType);
+  const genderLabel = salonGenderLabel(barber.genderType);
   return (
-    <Pressable onPress={onPress}>
-      <Card style={styles.card}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.shopName}>{barber.name}</Text>
-          <View style={[styles.badge, { backgroundColor: badge.color }]}>
-            <Text style={styles.badgeText}>{badge.text}</Text>
-          </View>
-        </View>
-        {barber.description ? (
-          <Text style={styles.description} numberOfLines={2}>{barber.description}</Text>
-        ) : null}
-        {barber.addressLine1 ? <Text style={styles.address}>📍 {barber.addressLine1}</Text> : null}
-        <View style={styles.footer}>
-          <Text style={styles.meta}>
-            {barber.stylistCount} stilist · {barber.serviceCount} hizmet
-          </Text>
-          {barber.minPriceMinor !== undefined && barber.minPriceMinor !== null ? (
-            <Text style={styles.price}>{formatTry(barber.minPriceMinor)}'den</Text>
+    <Card onPress={onPress} style={{ gap: Spacing.sm }}>
+      <View style={styles.cardHeader}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.shopName} numberOfLines={1}>{barber.name}</Text>
+          {barber.addressLine1 ? (
+            <Text style={styles.address} numberOfLines={1}>📍 {barber.addressLine1}</Text>
           ) : null}
         </View>
-        {barber.hasWalkInAvailable ? (
-          <View style={styles.walkInBadge}>
-            <Text style={styles.walkInText}>🟢 Şu an boş</Text>
-          </View>
+        <Badge label={genderLabel} tone={genderTone as any} />
+      </View>
+
+      {barber.description ? (
+        <Text style={styles.description} numberOfLines={2}>{barber.description}</Text>
+      ) : null}
+
+      <View style={styles.footerRow}>
+        <View style={styles.statsRow}>
+          <Text style={styles.stat}>👥 {barber.stylistCount}</Text>
+          <Text style={styles.statDivider}>·</Text>
+          <Text style={styles.stat}>✂️ {barber.serviceCount}</Text>
+        </View>
+        {barber.minPriceMinor != null ? (
+          <Text style={styles.price}>{formatTry(barber.minPriceMinor)}'den</Text>
         ) : null}
-      </Card>
-    </Pressable>
+      </View>
+
+      {barber.hasWalkInAvailable ? (
+        <View style={styles.walkInRow}>
+          <View style={styles.dot} />
+          <Text style={styles.walkInText}>Şu an müsait — sıraya gir</Text>
+        </View>
+      ) : null}
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { padding: Spacing.lg },
-  back: { color: Colors.primary, fontSize: FontSize.sm, marginBottom: Spacing.sm },
-  title: { fontSize: FontSize.xxl, fontWeight: '700', color: Colors.text },
-  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
-  list: { padding: Spacing.lg, paddingTop: 0, gap: Spacing.md },
-  card: { gap: Spacing.sm },
-  cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  shopName: { fontSize: FontSize.lg, fontWeight: '600', color: Colors.text, flex: 1 },
-  badge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: 999, marginLeft: Spacing.sm },
-  badgeText: { color: '#fff', fontSize: FontSize.xs, fontWeight: '600' },
-  description: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
+  backBtn: { alignSelf: 'flex-start', paddingVertical: 4 },
+  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6 },
+  subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
+  filtersRow: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingVertical: Spacing.md,
+    gap: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  list: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingBottom: Spacing.xl,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
+  shopName: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
   address: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  footer: {
+  description: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
+  footerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: Spacing.sm,
     paddingTop: Spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: Colors.border,
+    borderTopColor: Colors.divider,
   },
-  meta: { fontSize: FontSize.xs, color: Colors.textMuted },
-  price: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: '600' },
-  walkInBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: Spacing.sm,
-    paddingVertical: 2,
+  statsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  stat: { fontSize: FontSize.xs, color: Colors.textSecondary },
+  statDivider: { color: Colors.textMuted },
+  price: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
+  walkInRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.successSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: Radius.sm,
-    backgroundColor: 'rgba(34, 197, 94, 0.1)',
-    marginTop: Spacing.xs,
+    alignSelf: 'flex-start',
   },
-  walkInText: { fontSize: FontSize.xs, color: Colors.success, fontWeight: '600' },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.success },
+  walkInText: { fontSize: FontSize.xs, color: Colors.success, fontWeight: FontWeight.semibold },
 });

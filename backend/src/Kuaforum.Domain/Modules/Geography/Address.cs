@@ -24,9 +24,9 @@ public sealed class Address
         string? postalCode = null)
     {
         if (string.IsNullOrWhiteSpace(line1))
-            return Result.Failure<Address>(Error.Validation("Address line1 is required."));
+            return Result.Failure<Address>(Error.Validation("Adres satırı gerekli."));
         if (line1.Length > 250)
-            return Result.Failure<Address>(Error.Validation("Address line1 too long."));
+            return Result.Failure<Address>(Error.Validation("Adres satırı çok uzun (en fazla 250 karakter)."));
 
         return new Address
         {

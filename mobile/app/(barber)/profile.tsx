@@ -1,13 +1,14 @@
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
+import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
-import { Colors, FontSize, Radius, Spacing } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { apiClient } from '@/api/client';
-import { AuthApi } from '@/api/auth';
 import { useAuthStore } from '@/store/auth-store';
+import { salonGenderLabel } from '@/lib/format';
 
 export default function BarberProfileScreen() {
   const router = useRouter();
@@ -29,7 +30,6 @@ export default function BarberProfileScreen() {
         text: 'Çıkış',
         style: 'destructive',
         onPress: async () => {
-          await AuthApi.logout();
           await signOut();
           router.replace('/(auth)/login');
         },
@@ -37,86 +37,183 @@ export default function BarberProfileScreen() {
     ]);
   }
 
+  const shop = shopQuery.data;
+  const initial = (user?.displayName ?? '✂️').slice(0, 1).toUpperCase();
+  const statusInfo = shop ? statusBadge(shop.status) : null;
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
         <View style={styles.header}>
           <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{user?.displayName?.[0]?.toUpperCase() ?? '✂️'}</Text>
+            <Text style={styles.avatarText}>{initial}</Text>
           </View>
           <Text style={styles.name}>{user?.displayName ?? 'Kuaför'}</Text>
-          <Text style={styles.role}>{user?.role}</Text>
+          <Text style={styles.phone}>{user?.phone ?? '—'}</Text>
+          <View style={{ marginTop: Spacing.sm }}>
+            <Badge label="Kuaför Sahibi" tone="info" />
+          </View>
         </View>
 
-        {shopQuery.data ? (
-          <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>İşletme</Text>
-            <Row label="Ünvan" value={shopQuery.data.name ?? '—'} />
-            <Row label="Tip" value={genderLabel(shopQuery.data.genderType)} />
-            <Row label="Durum" value={statusLabel(shopQuery.data.status)} />
-            {shopQuery.data.addressLine1 ? <Row label="Adres" value={shopQuery.data.addressLine1} /> : null}
+        <Text style={styles.sectionTitle}>Salonum</Text>
+        {shop ? (
+          <Card style={{ gap: Spacing.sm }}>
+            <View style={styles.shopHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.shopName}>{shop.name}</Text>
+                {shop.addressLine1 ? (
+                  <Text style={styles.shopAddress} numberOfLines={2}>📍 {shop.addressLine1}</Text>
+                ) : null}
+              </View>
+              {statusInfo ? <Badge label={statusInfo.label} tone={statusInfo.tone as any} /> : null}
+            </View>
+            <View style={styles.metaRow}>
+              <Badge label={salonGenderLabel(shop.genderType)} tone="brand" />
+              {shop.phone ? <Badge label={shop.phone} tone="neutral" /> : null}
+            </View>
+            {shop.description ? (
+              <Text style={styles.shopDesc} numberOfLines={3}>{shop.description}</Text>
+            ) : null}
+          </Card>
+        ) : shopQuery.isLoading ? (
+          <Card>
+            <Text style={styles.muted}>Yükleniyor…</Text>
           </Card>
         ) : (
-          <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>İşletme</Text>
-            <Text style={styles.muted}>Henüz işletme oluşturulmamış. Web'den oluşturun.</Text>
+          <Card>
+            <Text style={styles.emptyTitle}>Henüz salonun yok</Text>
+            <Text style={styles.emptyDesc}>
+              Salon bilgilerini girip KYC'yi tamamlayınca müşteriler seni bulabilir.
+            </Text>
+            <View style={{ marginTop: Spacing.md }}>
+              <Button label="Salon oluştur" disabled />
+              <Text style={styles.smallHint}>Yakında — şu an web admin'den oluşturuluyor.</Text>
+            </View>
           </Card>
         )}
 
-        <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>Yapılacaklar (V1.5)</Text>
-          <Text style={styles.muted}>• Hizmet katalog yönetimi</Text>
-          <Text style={styles.muted}>• Çalışma saatleri + izin</Text>
-          <Text style={styles.muted}>• Stilist ekleme/çıkarma</Text>
-          <Text style={styles.muted}>• Walk-in toggle</Text>
-          <Text style={styles.muted}>• Gelir raporu</Text>
+        <Text style={styles.sectionTitle}>Yönetim</Text>
+        <Card padded={false}>
+          <ListRow icon="📋" label="KYC Doğrulama" hint="Belge gönder" onPress={() => router.push('/(barber)/kyc')} />
+          <Divider />
+          <ListRow icon="🕐" label="Müsaitlik" hint="Saat & izin" onPress={() => router.push('/(barber)/availability')} />
+          <Divider />
+          <ListRow icon="👥" label="Stilistler" hint="Yakında" />
+          <Divider />
+          <ListRow icon="📊" label="Gelir raporu" hint="Yakında" />
         </Card>
 
-        <Button label="Çıkış yap" variant="secondary" onPress={handleLogout} />
+        <Text style={styles.sectionTitle}>Hesap</Text>
+        <Card padded={false}>
+          <ListRow icon="🔔" label="Bildirimler" hint="Yakında" />
+          <Divider />
+          <ListRow icon="💬" label="Destek" hint="Yakında" />
+          <Divider />
+          <ListRow icon="🏷️" label="Sürüm" value="0.0.1" />
+        </Card>
 
-        <Text style={styles.footer}>Kuaforum Pro • v0.0.1</Text>
+        <View style={styles.actions}>
+          <Button label="Çıkış yap" variant="secondary" onPress={handleLogout} />
+        </View>
+
+        <Text style={styles.footer}>Kuaforum Pro • Türkiye'nin kuaför pazaryeri</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
+function ListRow({ icon, label, value, hint, onPress }: { icon: string; label: string; value?: string; hint?: string; onPress?: () => void }) {
+  const content = (
+    <View style={styles.listRow}>
+      <Text style={styles.listIcon}>{icon}</Text>
+      <Text style={styles.listLabel}>{label}</Text>
+      <View style={{ flex: 1 }} />
+      {value ? <Text style={styles.listValue}>{value}</Text> : null}
+      {hint ? <Text style={styles.listHint}>{hint}</Text> : null}
+      {onPress ? <Text style={styles.listChevron}>›</Text> : null}
     </View>
   );
+  if (onPress) {
+    return (
+      <Pressable onPress={onPress} accessibilityRole="button" accessibilityLabel={label}>
+        {content}
+      </Pressable>
+    );
+  }
+  return content;
 }
 
-function genderLabel(g: number) {
-  return g === 1 ? 'Sadece Kadın' : g === 2 ? 'Sadece Erkek' : 'Unisex';
-}
-function statusLabel(s: number) {
-  return s === 0 ? 'Taslak' : s === 1 ? 'KYC bekliyor' : s === 2 ? 'Aktif' : s === 3 ? 'Askıya alındı' : 'Kapalı';
+function Divider() { return <View style={styles.divider} />; }
+
+function statusBadge(s: number): { label: string; tone: string } {
+  switch (s) {
+    case 0: return { label: 'Taslak', tone: 'neutral' };
+    case 1: return { label: 'KYC Bekliyor', tone: 'warning' };
+    case 2: return { label: 'Aktif', tone: 'success' };
+    case 3: return { label: 'Askıya Alındı', tone: 'error' };
+    case 4: return { label: 'Kapalı', tone: 'neutral' };
+    default: return { label: '—', tone: 'neutral' };
+  }
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  scroll: { padding: Spacing.lg, gap: Spacing.lg },
-  header: { alignItems: 'center', paddingVertical: Spacing.lg },
+  scroll: {
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingBottom: Spacing.xxl,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  header: { alignItems: 'center', paddingVertical: Spacing.xl },
   avatar: {
-    width: 80,
-    height: 80,
+    width: 88,
+    height: 88,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primaryDark,
+    backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
   },
-  avatarText: { color: '#fff', fontSize: 36, fontWeight: '700' },
-  name: { fontSize: FontSize.xl, fontWeight: '600', color: Colors.text },
-  role: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: Spacing.xs },
-  section: { gap: Spacing.sm },
-  sectionTitle: { fontSize: FontSize.md, fontWeight: '700', color: Colors.text, marginBottom: Spacing.xs },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: Spacing.sm },
-  rowLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  rowValue: { fontSize: FontSize.sm, color: Colors.text, fontWeight: '500' },
-  muted: { fontSize: FontSize.sm, color: Colors.textMuted, paddingVertical: 2 },
-  footer: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.lg },
+  avatarText: { color: Colors.textInverse, fontSize: 38, fontWeight: FontWeight.bold },
+  name: { fontSize: FontSize.xl, fontWeight: FontWeight.semibold, color: Colors.text },
+  phone: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
+  sectionTitle: {
+    fontSize: FontSize.xs,
+    color: Colors.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.xs,
+    fontWeight: FontWeight.semibold,
+  },
+  shopHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
+  shopName: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
+  shopAddress: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  shopDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
+  muted: { fontSize: FontSize.sm, color: Colors.textMuted },
+  emptyTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
+  emptyDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4, lineHeight: 20 },
+  smallHint: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
+  listRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: Spacing.lg,
+    gap: Spacing.md,
+    minHeight: 52,
+  },
+  listIcon: { fontSize: 20, width: 24, textAlign: 'center' },
+  listLabel: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.medium },
+  listValue: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  listHint: { fontSize: FontSize.xs, color: Colors.textMuted },
+  listChevron: { fontSize: 18, color: Colors.textMuted, marginLeft: 4 },
+  divider: { height: 1, backgroundColor: Colors.divider, marginLeft: 56 },
+  actions: { gap: Spacing.sm, marginTop: Spacing.xl },
+  footer: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.xl },
 });

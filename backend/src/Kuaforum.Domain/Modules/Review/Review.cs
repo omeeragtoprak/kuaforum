@@ -30,9 +30,9 @@ public sealed class Review : AggregateRoot
         string? body)
     {
         if (rating is < 1 or > 5)
-            return Result.Failure<Review>(Error.Validation("Rating must be between 1 and 5."));
+            return Result.Failure<Review>(Error.Validation("Puan 1 ile 5 arasında olmalı."));
         if (body is not null && body.Length > 1000)
-            return Result.Failure<Review>(Error.Validation("Review body max 1000 chars."));
+            return Result.Failure<Review>(Error.Validation("Değerlendirme metni en fazla 1000 karakter olabilir."));
 
         var trimmedBody = string.IsNullOrWhiteSpace(body) ? null : body.Trim();
 
@@ -67,7 +67,7 @@ public sealed class Review : AggregateRoot
     public Result Approve(Guid moderatorUserId)
     {
         if (ModerationStatus is ReviewModerationStatus.Approved or ReviewModerationStatus.Rejected)
-            return Result.Failure(Error.Validation($"Cannot approve in status {ModerationStatus}."));
+            return Result.Failure(Error.Validation($"{ModerationStatus} durumundaki değerlendirme onaylanamaz."));
 
         ModerationStatus = ReviewModerationStatus.Approved;
         ModeratedAt = DateTimeOffset.UtcNow;
@@ -92,23 +92,28 @@ public sealed class Review : AggregateRoot
 
     public Result Hide(Guid moderatorUserId)
     {
+        if (ModerationStatus == ReviewModerationStatus.Hidden)
+            return Result.Failure(Error.Validation("Değerlendirme zaten gizli durumda."));
+
         ModerationStatus = ReviewModerationStatus.Hidden;
         ModeratedByUserId = moderatorUserId;
         ModeratedAt = DateTimeOffset.UtcNow;
         Touch();
+
+        RaiseDomainEvent(new ReviewHiddenEvent(Id, moderatorUserId));
         return Result.Success();
     }
 
     public Result AddReply(Guid barberOwnerUserId, string replyText)
     {
         if (Reply is not null)
-            return Result.Failure(Error.Validation("This review already has a reply."));
+            return Result.Failure(Error.Validation("Bu değerlendirmeye zaten yanıt verilmiş."));
         if (string.IsNullOrWhiteSpace(replyText))
-            return Result.Failure(Error.Validation("Reply text required."));
+            return Result.Failure(Error.Validation("Yanıt metni gerekli."));
         if (replyText.Length > 500)
-            return Result.Failure(Error.Validation("Reply max 500 chars."));
+            return Result.Failure(Error.Validation("Yanıt en fazla 500 karakter olabilir."));
         if (ModerationStatus != ReviewModerationStatus.Approved)
-            return Result.Failure(Error.Validation("Can only reply to approved reviews."));
+            return Result.Failure(Error.Validation("Yalnızca onaylanmış değerlendirmelere yanıt verilebilir."));
 
         Reply = BarberReply.Create(Id, barberOwnerUserId, replyText.Trim());
         Touch();

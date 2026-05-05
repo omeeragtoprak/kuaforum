@@ -17,7 +17,7 @@ public readonly record struct Slot
     public static Result<Slot> TryCreate(DateTimeOffset start, DateTimeOffset end)
     {
         if (end <= start)
-            return Result.Failure<Slot>(Error.Validation("End must be after start."));
+            return Result.Failure<Slot>(Error.Validation("Bitiş zamanı başlangıç zamanından sonra olmalı."));
         return new Slot(start, end);
     }
 

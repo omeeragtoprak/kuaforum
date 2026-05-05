@@ -8,7 +8,7 @@ using Microsoft.Extensions.Logging;
 namespace Kuaforum.Infrastructure.Persistence.Seeding;
 
 /// <summary>
-/// Development-only seeder. Creates 6 demo BarberShops (2 in each big city)
+/// Development-only seeder. Creates 7 demo BarberShops (2 in each big city + 1 Draft for KYC test)
 /// with owner User, stylists, services, working hours, and addresses.
 /// Idempotent: skips if any BarberShop with slug "demo-*" exists.
 ///
@@ -53,6 +53,7 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
             var ownerResult = User.CreateCustomerByPhone(ownerPhone.Value, displayName: demo.OwnerName);
             if (ownerResult.IsFailure) continue;
             var owner = ownerResult.Value;
+            owner.PromoteToBarberOwner();
             db.Users.Add(owner);
 
             var shopResult = BarberShop.Create(owner.Id, demo.ShopName, demo.GenderType);
@@ -74,9 +75,11 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
                 if (addressResult.IsSuccess) shop.SetAddress(addressResult.Value);
             }
 
-            // Approve KYC immediately for demo
-            shop.MarkPendingKyc();
-            shop.ApproveKyc(subMerchantKey: $"DEMO-SUB-{demo.Slug}");
+            if (!demo.KeepAsDraft)
+            {
+                shop.MarkPendingKyc();
+                shop.ApproveKyc(subMerchantKey: $"DEMO-SUB-{demo.Slug}");
+            }
 
             db.BarberShops.Add(shop);
 
@@ -125,7 +128,8 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
         string OwnerName,
         string OwnerPhone,
         string[] Stylists,
-        (string Name, ServiceGender Gender, int Duration, int PriceTl)[] Services);
+        (string Name, ServiceGender Gender, int Duration, int PriceTl)[] Services,
+        bool KeepAsDraft = false);
 
     private static readonly DemoShop[] DemoData =
     {
@@ -218,5 +222,14 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
                 ("Sakal Tıraşı", ServiceGender.Male, 15, 80),
                 ("Hızlı Fön", ServiceGender.Female, 20, 100),
             }),
+        new(
+            CityPlate: 34, DistrictName: "Şişli", Slug: "sisli-yeni-acilan",
+            ShopName: "Yeni Açılan Kuaför (Draft)", Description: "KYC test akışı için Draft state'te bırakılmış demo işletme.",
+            ShopPhone: "+902129999999", GenderType: SalonGenderType.Unisex,
+            AddressLine1: "Halaskargazi Cad. No:1", Latitude: 41.0532, Longitude: 28.9870,
+            OwnerName: "Yeni Sahip", OwnerPhone: "+905001000099",
+            Stylists: Array.Empty<string>(),
+            Services: Array.Empty<(string, ServiceGender, int, int)>(),
+            KeepAsDraft: true),
     };
 }

@@ -14,12 +14,12 @@ public readonly partial record struct PhoneE164
     public static Result<PhoneE164> TryCreate(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
-            return Result.Failure<PhoneE164>(Error.Validation("PhoneE164 is required."));
+            return Result.Failure<PhoneE164>(Error.Validation("Telefon numarası gerekli."));
 
         var trimmed = raw.Trim().Replace(" ", "");
         if (!TrMobilePattern.IsMatch(trimmed))
             return Result.Failure<PhoneE164>(
-                Error.Validation("PhoneE164 must be Turkish mobile in +905XXXXXXXXX format."));
+                Error.Validation("Telefon numarası +905XXXXXXXXX formatında Türkiye GSM numarası olmalı."));
 
         return new PhoneE164(trimmed);
     }

@@ -16,11 +16,27 @@ public static class BookingEndpoints
         group.MapGet("", GetMyBookingsAsync).WithName("GetMyBookings");
         group.MapGet("/{id:guid}", GetByIdAsync).WithName("GetBooking");
         group.MapPost("/{id:guid}/cancel", CancelAsync).WithName("CancelBooking");
+        group.MapPost("/{id:guid}/confirm", OwnerConfirmAsync).WithName("OwnerConfirmBooking");
         group.MapPost("/{id:guid}/start", StartAsync).WithName("StartBooking");
         group.MapPost("/{id:guid}/complete", CompleteAsync).WithName("CompleteBooking");
         group.MapPost("/{id:guid}/no-show", NoShowAsync).WithName("MarkNoShow");
+        group.MapPost("/{id:guid}/reschedule", RescheduleAsync).WithName("RescheduleBooking");
 
         return app;
+    }
+
+    private static async Task<IResult> RescheduleAsync(
+        Guid id,
+        [FromBody] RescheduleBookingRequest body,
+        IMediator m,
+        IRequestContext ctx,
+        CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var r = await m.Send(new RescheduleBookingCommand(ctx.UserId.Value, id, body.NewScheduledAt), token);
+        return r.IsSuccess
+            ? Results.Ok(r.Value)
+            : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "conflict" ? 409 : 400);
     }
 
     private static async Task<IResult> InitiateAsync(
@@ -69,6 +85,13 @@ public static class BookingEndpoints
             : Results.Problem(r.Error.Message, statusCode: 400);
     }
 
+    private static async Task<IResult> OwnerConfirmAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var r = await m.Send(new OwnerConfirmBookingCommand(ctx.UserId.Value, id), token);
+        return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+    }
+
     private static async Task<IResult> StartAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
@@ -98,4 +121,5 @@ public static class BookingEndpoints
         string? CustomerNote);
 
     public sealed record CancelBookingRequest(BookingCancellationReason Reason);
+    public sealed record RescheduleBookingRequest(DateTimeOffset NewScheduledAt);
 }

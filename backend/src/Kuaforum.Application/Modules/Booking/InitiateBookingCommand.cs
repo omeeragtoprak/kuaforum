@@ -38,6 +38,7 @@ public sealed class InitiateBookingCommandHandler(
     IApplicationDbContext db,
     IDistributedLock distributedLock,
     IBusyRangeQuery busyRangeQuery,
+    IStylistScheduleChecker scheduleChecker,
     IAuditLogger audit) : IRequestHandler<InitiateBookingCommand, Result<InitiateBookingResponse>>
 {
     private const decimal DefaultCommissionRate = 0.10m;
@@ -48,11 +49,11 @@ public sealed class InitiateBookingCommandHandler(
         var ctx = (DbContext)db;
         var stylist = await ctx.Set<Stylist>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == request.StylistId, cancellationToken);
         if (stylist is null) return Result.Failure<InitiateBookingResponse>(Error.NotFound("Stylist"));
-        if (!stylist.IsActive) return Result.Failure<InitiateBookingResponse>(Error.Validation("Stylist is inactive."));
+        if (!stylist.IsActive) return Result.Failure<InitiateBookingResponse>(Error.Validation("Stilist aktif değil."));
 
         var shop = await ctx.Set<BarberShop>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == stylist.BarberShopId, cancellationToken);
         if (shop is null || shop.Status != BarberShopStatus.Active)
-            return Result.Failure<InitiateBookingResponse>(Error.Validation("Barber shop is not active."));
+            return Result.Failure<InitiateBookingResponse>(Error.Validation("İşletme aktif değil."));
 
         var services = await ctx.Set<ServiceCatalog>().AsNoTracking()
             .Where(s => s.BarberShopId == stylist.BarberShopId
@@ -61,19 +62,23 @@ public sealed class InitiateBookingCommandHandler(
             .ToListAsync(cancellationToken);
 
         if (services.Count != request.ServiceCatalogIds.Count)
-            return Result.Failure<InitiateBookingResponse>(Error.Validation("Some services are missing or inactive."));
+            return Result.Failure<InitiateBookingResponse>(Error.Validation("Seçilen hizmetlerin bazıları bulunamadı veya aktif değil."));
 
         var totalDuration = services.Sum(s => s.DurationMinutes + s.BufferMinutes);
         var endsAt = request.ScheduledAt.AddMinutes(totalDuration);
 
+        var scheduleResult = await scheduleChecker.EnsureSlotIsBookableAsync(
+            request.StylistId, request.ScheduledAt, endsAt, cancellationToken);
+        if (scheduleResult.IsFailure) return Result.Failure<InitiateBookingResponse>(scheduleResult.Error);
+
         var lockKey = $"slot-lock:{request.StylistId}:{request.ScheduledAt:yyyyMMddHHmm}";
         await using var lockHandle = await distributedLock.TryAcquireAsync(lockKey, SlotLockDuration, cancellationToken);
         if (lockHandle is null)
-            return Result.Failure<InitiateBookingResponse>(Error.Conflict("Slot is currently being reserved by another customer. Please retry."));
+            return Result.Failure<InitiateBookingResponse>(Error.Conflict("Bu saat şu anda başka bir müşteri tarafından rezerve ediliyor. Lütfen tekrar deneyin."));
 
         var busyRanges = await busyRangeQuery.GetBusyRangesAsync(request.StylistId, request.ScheduledAt, endsAt, cancellationToken);
         if (busyRanges.Any(b => request.ScheduledAt < b.EndsAt && b.StartsAt < endsAt))
-            return Result.Failure<InitiateBookingResponse>(Error.Conflict("Slot is already booked."));
+            return Result.Failure<InitiateBookingResponse>(Error.Conflict("Bu saat dolu, başka bir saat seçin."));
 
         var orderedServices = request.ServiceCatalogIds
             .Select(id => services.First(s => s.Id == id))

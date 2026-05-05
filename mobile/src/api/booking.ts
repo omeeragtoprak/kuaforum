@@ -14,14 +14,20 @@ export type Booking = {
   id: string;
   customerId: string;
   barberShopId: string;
+  /** Optional — populated by admin/owner endpoints; undefined on customer GetMyBookings. */
+  shopName?: string;
   stylistId: string;
+  stylistName?: string;
   scheduledAt: string;
   scheduledEndsAt: string;
-  status: number;
+  status: number | string;
   totalAmountMinor: number;
   currency: string;
   refundPercentage?: number;
   items: BookingItem[];
+  customerName?: string | null;
+  customerPhone?: string | null;
+  customerNote?: string | null;
 };
 
 export const BookingApi = {
@@ -54,6 +60,13 @@ export const BookingApi = {
     const params: Record<string, string | number> = { from, to };
     if (status !== undefined) params.status = status;
     const res = await apiClient.get<Booking[]>('/v1/owner/barber-shop/bookings', { params });
+    return res.data;
+  },
+  async ownerConfirm(id: string): Promise<void> {
+    await apiClient.post(`/v1/bookings/${id}/confirm`);
+  },
+  async reschedule(id: string, newScheduledAt: string): Promise<{ bookingId: string; scheduledAt: string; scheduledEndsAt: string }> {
+    const res = await apiClient.post(`/v1/bookings/${id}/reschedule`, { newScheduledAt });
     return res.data;
   },
   async start(id: string): Promise<void> {

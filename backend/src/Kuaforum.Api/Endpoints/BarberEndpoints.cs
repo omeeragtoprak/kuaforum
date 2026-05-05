@@ -112,6 +112,20 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.Created($"/v1/services/{r.Value}", new { id = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("CreateService");
 
+        ownerGroup.MapPut("/{id:guid}/services/{serviceId:guid}", async (Guid id, Guid serviceId, [FromBody] UpdateServiceRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new UpdateServiceCommand(ctx.UserId.Value, id, serviceId, body.Name, body.Description, body.DurationMinutes, body.PriceMinor, body.BufferMinutes), token);
+            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        }).WithName("UpdateService");
+
+        ownerGroup.MapDelete("/{id:guid}/services/{serviceId:guid}", async (Guid id, Guid serviceId, IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new DeleteServiceCommand(ctx.UserId.Value, id, serviceId), token);
+            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        }).WithName("DeleteService");
+
         ownerGroup.MapPost("/{id:guid}/kyc/submit", async (Guid id, [FromBody] SubmitKycRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
@@ -136,6 +150,12 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("ToggleWalkIn");
 
+        stylistGroup.MapGet("/{id:guid}/working-hours", async (Guid id, IMediator m, CancellationToken token) =>
+        {
+            var r = await m.Send(new GetWorkingHoursQuery(id), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+        }).WithName("GetWorkingHours");
+
         stylistGroup.MapPut("/{id:guid}/working-hours", async (Guid id, [FromBody] WorkingHoursRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
@@ -143,12 +163,25 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("SetWorkingHours");
 
+        stylistGroup.MapGet("/{id:guid}/time-offs", async (Guid id, IMediator m, CancellationToken token) =>
+        {
+            var r = await m.Send(new GetTimeOffsQuery(id), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+        }).WithName("GetTimeOffs");
+
         stylistGroup.MapPost("/{id:guid}/time-off", async (Guid id, [FromBody] TimeOffRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new AddTimeOffCommand(ctx.UserId.Value, id, body.StartsAt, body.EndsAt, body.Reason), token);
             return r.IsSuccess ? Results.Created($"/v1/time-offs/{r.Value}", new { id = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("AddTimeOff");
+
+        stylistGroup.MapDelete("/{id:guid}/time-offs/{timeOffId:guid}", async (Guid id, Guid timeOffId, IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new DeleteTimeOffCommand(ctx.UserId.Value, id, timeOffId), token);
+            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        }).WithName("DeleteTimeOff");
 
         return app;
     }
@@ -160,6 +193,7 @@ public static class BarberEndpoints
     public sealed record UpdateStylistRequest(string? DisplayName, string? PhotoUrl, string? Bio, bool? IsActive);
     public sealed record ToggleWalkInRequest(bool Available);
     public sealed record CreateServiceRequest(string Name, ServiceGender Gender, int DurationMinutes, long PriceMinor, int BufferMinutes, string? Description);
+    public sealed record UpdateServiceRequest(string? Name, string? Description, int? DurationMinutes, long? PriceMinor, int? BufferMinutes);
     public sealed record WorkingHoursRequest(DayOfWeek DayOfWeek, TimeOnly OpenTime, TimeOnly CloseTime, bool IsClosed);
     public sealed record TimeOffRequest(DateTimeOffset StartsAt, DateTimeOffset EndsAt, string? Reason);
     public sealed record SubmitKycRequest(IReadOnlyList<KycDocumentRequest> Documents);

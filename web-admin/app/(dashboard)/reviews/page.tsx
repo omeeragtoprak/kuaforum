@@ -102,7 +102,7 @@ const styles: Record<string, React.CSSProperties> = {
   rowHead: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   stars: { fontSize: 20, color: '#E8B86D', letterSpacing: 2 },
   date: { fontSize: 12, color: '#9B9B9B' },
-  body: { fontSize: 14, color: '#1A1A1A', lineHeight: 1.5, paddingVertical: 4 },
+  body: { fontSize: 14, color: '#1A1A1A', lineHeight: 1.5, paddingTop: 4, paddingBottom: 4 },
   meta: { fontSize: 11, color: '#9B9B9B' },
   actions: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 },
   approveBtn: {
