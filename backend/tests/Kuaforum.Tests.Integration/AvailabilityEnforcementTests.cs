@@ -395,6 +395,70 @@ public sealed class AvailabilityEnforcementTests(IntegrationTestFactory factory)
     private sealed record UploadResponse(string StorageKey, long SizeBytes, string ContentType);
 
     [Fact]
+    public async Task Customer_cannot_reschedule_within_2h_of_original_slot()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        var customerLogin = await customerClient.DevLoginAsync("Customer");
+        customerClient.SetBearer(customerLogin.AccessToken);
+        var ownerLogin = await ownerClient.DevLoginAsync("BarberOwner");
+        ownerClient.SetBearer(ownerLogin.AccessToken);
+
+        var shop = await ownerClient.GetJson<BarberShopRow>("/v1/owner/barber-shop");
+        var stylists = await customerClient.GetJson<IReadOnlyList<StylistRow>>($"/v1/barber-shops/{shop.Id}/stylists");
+        var services = await customerClient.GetJson<IReadOnlyList<ServiceRow>>($"/v1/barber-shops/{shop.Id}/services");
+        var stylistId = stylists.First().Id;
+
+        // Initiate booking on a future Saturday afternoon (open day).
+        var futureSaturday = NextWeekdayUtc(DayOfWeek.Saturday, 60);
+        var bookingAt = new DateTimeOffset(futureSaturday.Year, futureSaturday.Month, futureSaturday.Day, 11, 0, 0, TimeSpan.Zero);
+        var initiate = await customerClient.PostAsJsonAsync("/v1/bookings", new
+        {
+            stylistId,
+            scheduledAt = bookingAt,
+            serviceCatalogIds = new[] { services.First().Id },
+            isWalkIn = false,
+            customerNote = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.Created, initiate.StatusCode);
+        var initiated = await initiate.Content.ReadFromJsonAsync<InitiateResp>(TestHelpers.Json);
+
+        // Backdate ScheduledAt to 1h from now — within the 2h cutoff for customer self-reschedule.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var ctx = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+            var soon = DateTimeOffset.UtcNow.AddHours(1);
+            var soonEnds = soon.AddMinutes(60);
+            await ctx.Database.ExecuteSqlRawAsync(
+                $"UPDATE bookings SET scheduled_at = '{soon:o}', scheduled_ends_at = '{soonEnds:o}' WHERE id = '{initiated!.BookingId}'");
+        }
+
+        var nextSaturday = NextWeekdayUtc(DayOfWeek.Saturday, 67);
+        var newAt = new DateTimeOffset(nextSaturday.Year, nextSaturday.Month, nextSaturday.Day, 11, 0, 0, TimeSpan.Zero);
+        var reschedule = await customerClient.PostAsJsonAsync($"/v1/bookings/{initiated.BookingId}/reschedule", new
+        {
+            newScheduledAt = newAt,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, reschedule.StatusCode);
+        var body = await reschedule.Content.ReadAsStringAsync();
+        Assert.Contains("2 saatten az", body);
+
+        // Owner should still be able to reschedule.
+        var ownerReschedule = await ownerClient.PostAsJsonAsync($"/v1/bookings/{initiated.BookingId}/reschedule", new
+        {
+            newScheduledAt = newAt,
+        });
+        Assert.Equal(HttpStatusCode.OK, ownerReschedule.StatusCode);
+    }
+
+    [Fact]
     public async Task ExpireWalkInJob_disables_walkin_for_stylists_older_than_2h()
     {
         await factory.ResetDatabaseAsync();

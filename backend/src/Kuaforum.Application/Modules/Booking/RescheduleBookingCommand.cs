@@ -58,6 +58,14 @@ public sealed class RescheduleBookingCommandHandler(
         if (!isCustomer && !isOwner)
             return Result.Failure<RescheduleBookingResponse>(Error.Forbidden("Bu randevuyu yeniden planlama yetkiniz yok."));
 
+        if (isCustomer && !isOwner)
+        {
+            var hoursUntilOriginal = (booking.ScheduledAt - DateTimeOffset.UtcNow).TotalHours;
+            if (hoursUntilOriginal < 2)
+                return Result.Failure<RescheduleBookingResponse>(Error.Validation(
+                    "Randevuya 2 saatten az kaldığında müşteri olarak yeniden planlayamazsın. Lütfen kuaförle iletişime geç veya randevuyu iptal et."));
+        }
+
         var totalDuration = booking.ScheduledEndsAt - booking.ScheduledAt;
         var newEndsAt = request.NewScheduledAt.Add(totalDuration);
 
