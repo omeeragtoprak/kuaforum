@@ -19,6 +19,7 @@ type AuthState = {
   setUser: (user: AuthUser | null) => void;
   setLoading: (v: boolean) => void;
   signOut: () => Promise<void>;
+  clearLocalAuth: () => void;
   hydrate: () => Promise<void>;
   isCustomer: () => boolean;
   isBarber: () => boolean;
@@ -34,6 +35,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   signOut: async () => {
     try { await AuthApi.logout(); } catch { /* ignore */ }
     await TokenStorage.clear();
+    set({ user: null, isAuthenticated: false });
+  },
+  clearLocalAuth: () => {
+    // Called by API interceptor when refresh fails. Tokens are already wiped from
+    // secure storage at that point — we just flip Zustand state so AuthGate redirects
+    // to login. No backend call (the session is already invalid).
     set({ user: null, isAuthenticated: false });
   },
   hydrate: async () => {

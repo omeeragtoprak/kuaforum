@@ -54,6 +54,12 @@ apiClient.interceptors.response.use(
       }
 
       await TokenStorage.clear();
+      // Lazy import to avoid circular dependency between auth-store ↔ api/client.
+      // Refresh failed → tokens wiped → flip Zustand state so AuthGate redirects to login.
+      try {
+        const { useAuthStore } = await import('@/store/auth-store');
+        useAuthStore.getState().clearLocalAuth();
+      } catch { /* best-effort */ }
     }
 
     return Promise.reject(error);
