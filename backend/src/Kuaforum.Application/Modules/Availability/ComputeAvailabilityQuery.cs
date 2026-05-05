@@ -32,7 +32,7 @@ public sealed class ComputeAvailabilityQueryHandler(
         if (rangeDays > 60)
             return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("Tarih aralığı en fazla 60 gün olabilir."));
 
-        if (request.ServiceCatalogIds.Count == 0)
+        if (request.ServiceCatalogIds is null || request.ServiceCatalogIds.Count == 0)
             return Result.Failure<IReadOnlyList<SlotDto>>(Error.Validation("En az bir hizmet seçilmeli."));
 
         var ctx = (DbContext)db;

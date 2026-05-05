@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Kuaforum.Tests.Integration;
@@ -392,6 +393,55 @@ public sealed class AvailabilityEnforcementTests(IntegrationTestFactory factory)
     }
 
     private sealed record UploadResponse(string StorageKey, long SizeBytes, string ContentType);
+
+    [Fact]
+    public async Task ExpireWalkInJob_disables_walkin_for_stylists_older_than_2h()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        // Toggle a stylist's walk-in via API, then back-date WalkInToggledAt > 2h.
+        using var ownerClient = factory.CreateClient();
+        var ownerLogin = await ownerClient.DevLoginAsync("BarberOwner");
+        ownerClient.SetBearer(ownerLogin.AccessToken);
+
+        var shop = await ownerClient.GetJson<BarberShopRow>("/v1/owner/barber-shop");
+        var stylists = await ownerClient.GetJson<IReadOnlyList<StylistRow>>($"/v1/barber-shops/{shop.Id}/stylists");
+        var targetStylistId = stylists.First().Id;
+
+        var toggleResp = await ownerClient.PostAsJsonAsync($"/v1/stylists/{targetStylistId}/walk-in", new { available = true });
+        Assert.Equal(HttpStatusCode.NoContent, toggleResp.StatusCode);
+
+        // Back-date toggle to 3h ago directly via DB.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var ctx = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+            var raw = $"UPDATE stylists SET walk_in_toggled_at = '{DateTimeOffset.UtcNow.AddHours(-3):o}' WHERE id = '{targetStylistId}'";
+            await ctx.Database.ExecuteSqlRawAsync(raw);
+        }
+
+        // Run the job.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var job = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.BackgroundJobs.ExpireWalkInJob>();
+            await job.RunAsync(default);
+        }
+
+        // Re-fetch and verify walk-in is off.
+        var stylistsAfter = await ownerClient.GetJson<IReadOnlyList<StylistRow>>($"/v1/barber-shops/{shop.Id}/stylists");
+        var target = stylistsAfter.First(s => s.Id == targetStylistId);
+        // StylistRow doesn't have walkInAvailable but we can check via /v1/owner/barber-shop or query DB.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var ctx = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+            var stylist = await ctx.Stylists.FirstAsync(s => s.Id == targetStylistId);
+            Assert.False(stylist.WalkInAvailable, "Walk-in should be auto-disabled by ExpireWalkInJob.");
+        }
+    }
 
     private static DateTime NextWeekdayUtc(DayOfWeek target, int minDaysAhead)
     {

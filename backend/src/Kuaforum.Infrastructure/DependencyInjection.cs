@@ -139,6 +139,7 @@ public static class DependencyInjection
             opts.Queues = ["default", "critical"];
         });
         services.AddScoped<HardDeleteUsersJob>();
+        services.AddScoped<ExpireWalkInJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<IStylistScheduleChecker, StylistScheduleChecker>();
         services.AddSingleton<IObjectStorage, LocalFileObjectStorage>();
@@ -183,6 +184,12 @@ public static class DependencyInjection
             recurringJobId: HardDeleteUsersJob.JobId,
             methodCall: job => job.RunAsync(CancellationToken.None),
             cronExpression: HardDeleteUsersJob.CronExpression,
+            options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        manager.AddOrUpdate<ExpireWalkInJob>(
+            recurringJobId: ExpireWalkInJob.JobId,
+            methodCall: job => job.RunAsync(CancellationToken.None),
+            cronExpression: ExpireWalkInJob.CronExpression,
             options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 }

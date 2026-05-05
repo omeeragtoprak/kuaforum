@@ -270,9 +270,9 @@ export default function BarberDetailScreen() {
           </Section>
         ) : null}
 
-        {summary && reviewsQuery.data!.items.length > 0 ? (
+        {summary && (reviewsQuery.data?.items?.length ?? 0) > 0 ? (
           <Section title={`Yorumlar (${summary.count})`} subtitle={`Ortalama ⭐ ${summary.average.toFixed(1)}`}>
-            {reviewsQuery.data!.items.map((r) => (
+            {(reviewsQuery.data?.items ?? []).map((r) => (
               <Card key={r.id} style={{ gap: 6 }}>
                 <View style={styles.reviewHead}>
                   <Text style={styles.reviewStars}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</Text>

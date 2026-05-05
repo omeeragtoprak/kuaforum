@@ -1,11 +1,21 @@
 import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'axios';
+import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { TokenStorage } from '@/lib/secure-storage';
+
+// Backend dev port is 5100. Android emulator can't reach host's localhost — needs 10.0.2.2.
+// iOS simulator and web share host networking. Override with EXPO_PUBLIC_API_BASE_URL on
+// physical devices (set to your dev machine's LAN IP, e.g. http://192.168.1.x:5100).
+const DEFAULT_DEV_BASE_URL = Platform.select({
+  android: 'http://10.0.2.2:5100',
+  ios: 'http://localhost:5100',
+  default: 'http://localhost:5100',
+});
 
 const API_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ??
   (Constants.expoConfig?.extra as { apiBaseUrl?: string })?.apiBaseUrl ??
-  'http://localhost:5000';
+  DEFAULT_DEV_BASE_URL;
 
 export const apiClient: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
