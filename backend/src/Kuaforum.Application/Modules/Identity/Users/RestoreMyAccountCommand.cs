@@ -1,3 +1,4 @@
+using FluentValidation;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Identity;
@@ -7,6 +8,14 @@ using Microsoft.EntityFrameworkCore;
 namespace Kuaforum.Application.Modules.Identity.Users;
 
 public sealed record RestoreMyAccountCommand(Guid UserId) : ICommand;
+
+public sealed class RestoreMyAccountCommandValidator : AbstractValidator<RestoreMyAccountCommand>
+{
+    public RestoreMyAccountCommandValidator()
+    {
+        RuleFor(x => x.UserId).NotEmpty();
+    }
+}
 
 public sealed class RestoreMyAccountCommandHandler(
     IApplicationDbContext db,

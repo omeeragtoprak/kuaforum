@@ -1,3 +1,4 @@
+using FluentValidation;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Identity;
@@ -7,6 +8,15 @@ using Microsoft.EntityFrameworkCore;
 namespace Kuaforum.Application.Modules.Identity.Users.Sessions;
 
 public sealed record RevokeSessionCommand(Guid UserId, Guid SessionId) : ICommand;
+
+public sealed class RevokeSessionCommandValidator : AbstractValidator<RevokeSessionCommand>
+{
+    public RevokeSessionCommandValidator()
+    {
+        RuleFor(x => x.UserId).NotEmpty();
+        RuleFor(x => x.SessionId).NotEmpty();
+    }
+}
 
 public sealed class RevokeSessionCommandHandler(
     IApplicationDbContext db,
