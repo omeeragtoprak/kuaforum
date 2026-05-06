@@ -1,6 +1,6 @@
 import { apiClient } from './client';
 
-export type City = { id: string; plateCode: number; name: string; slug: string };
+export type City = { id: string; plateCode: number; name: string; slug: string; activeShopCount: number };
 export type District = { id: string; cityId: string; name: string; slug: string };
 export type Neighborhood = { id: string; districtId: string; name: string; slug: string; postalCode?: string };
 

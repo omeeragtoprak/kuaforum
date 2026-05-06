@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, TextInput } from 'react-native';
+import { View, Text, StyleSheet, SectionList, Pressable, RefreshControl, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
-import { Card } from '@/components/Card';
-import { Badge } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Radius, Spacing, Layout, Shadow } from '@/lib/theme';
 import { GeographyApi, City } from '@/api/geography';
 import { useAuthStore } from '@/store/auth-store';
 import { normalizeTr } from '@/lib/format';
+
+type CitySection = { title: string; key: 'with' | 'without'; data: City[] };
 
 export default function DiscoverScreen() {
   const router = useRouter();
@@ -21,21 +21,36 @@ export default function DiscoverScreen() {
     queryFn: () => GeographyApi.getCities(),
   });
 
-  const filtered = useMemo(() => {
+  const { sections, totalShops, totalActiveCities } = useMemo(() => {
     const list = citiesQuery.data ?? [];
-    if (!query.trim()) return list;
-    const q = normalizeTr(query.trim());
-    return list.filter((c) => normalizeTr(c.name).includes(q));
+    const q = query.trim() ? normalizeTr(query.trim()) : null;
+    const filtered = q ? list.filter((c) => normalizeTr(c.name).includes(q)) : list;
+
+    const withShops = filtered.filter((c) => c.activeShopCount > 0)
+      .sort((a, b) => b.activeShopCount - a.activeShopCount || a.name.localeCompare(b.name, 'tr'));
+    const withoutShops = filtered.filter((c) => c.activeShopCount === 0)
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr'));
+
+    const out: CitySection[] = [];
+    if (withShops.length > 0) out.push({ title: 'Hizmet veren şehirler', key: 'with', data: withShops });
+    if (withoutShops.length > 0) out.push({ title: 'Yakında açılacak', key: 'without', data: withoutShops });
+
+    return {
+      sections: out,
+      totalShops: list.reduce((s, c) => s + c.activeShopCount, 0),
+      totalActiveCities: list.filter((c) => c.activeShopCount > 0).length,
+    };
   }, [citiesQuery.data, query]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <FlatList
-        data={filtered}
+      <SectionList
+        sections={sections}
         keyExtractor={(c) => c.id}
         contentContainerStyle={styles.list}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        stickySectionHeadersEnabled={false}
         refreshControl={
           <RefreshControl
             refreshing={citiesQuery.isFetching && !citiesQuery.isLoading}
@@ -53,6 +68,20 @@ export default function DiscoverScreen() {
               <Text style={styles.subtitle}>Yakındaki kuaförlerden hızlıca randevu al.</Text>
             </View>
 
+            {!citiesQuery.isLoading && totalShops > 0 ? (
+              <View style={styles.statsBanner} accessible accessibilityLabel={`${totalShops} aktif kuaför, ${totalActiveCities} şehirde`}>
+                <View style={styles.statBlock}>
+                  <Text style={styles.statValue}>{totalShops}</Text>
+                  <Text style={styles.statLabel}>aktif kuaför</Text>
+                </View>
+                <View style={styles.statDivider} />
+                <View style={styles.statBlock}>
+                  <Text style={styles.statValue}>{totalActiveCities}</Text>
+                  <Text style={styles.statLabel}>şehirde hizmet</Text>
+                </View>
+              </View>
+            ) : null}
+
             <View style={styles.searchBox}>
               <Text style={styles.searchIcon}>🔍</Text>
               <TextInput
@@ -61,17 +90,15 @@ export default function DiscoverScreen() {
                 placeholder="Şehir ara…"
                 placeholderTextColor={Colors.textMuted}
                 style={styles.searchInput}
+                accessibilityLabel="Şehir ara"
+                returnKeyType="search"
               />
               {query ? (
-                <Pressable onPress={() => setQuery('')}>
+                <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityLabel="Aramayı temizle">
                   <Text style={styles.clearIcon}>✕</Text>
                 </Pressable>
               ) : null}
             </View>
-
-            <Text style={styles.sectionLabel}>
-              {citiesQuery.isLoading ? 'Yükleniyor…' : `${filtered.length} şehir`}
-            </Text>
           </View>
         }
         ListEmptyComponent={
@@ -91,24 +118,56 @@ export default function DiscoverScreen() {
             />
           )
         }
-        renderItem={({ item }) => (
-          <Pressable
-            onPress={() =>
-              router.push({ pathname: '/(tabs)/search', params: { cityId: item.id, cityName: item.name } })
-            }
-            style={({ pressed }) => [styles.cityRow, pressed && styles.pressed]}
-          >
-            <View style={styles.cityIconWrap}>
-              <Text style={styles.cityIcon}>🏙️</Text>
-            </View>
-            <View style={styles.cityBody}>
-              <Text style={styles.cityName}>{item.name}</Text>
-              <Text style={styles.cityHint}>Plaka {item.plateCode.toString().padStart(2, '0')}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
+        renderSectionHeader={({ section }) => (
+          <Text style={[styles.sectionLabel, section.key === 'without' && styles.sectionLabelMuted]}>
+            {section.title} · {section.data.length}
+          </Text>
         )}
+        renderItem={({ item, section }) => {
+          const hasShops = item.activeShopCount > 0;
+          return (
+            <Pressable
+              onPress={() => {
+                if (hasShops) {
+                  router.push({ pathname: '/(tabs)/search', params: { cityId: item.id, cityName: item.name } });
+                }
+              }}
+              disabled={!hasShops}
+              accessibilityRole="button"
+              accessibilityLabel={
+                hasShops
+                  ? `${item.name}, ${item.activeShopCount} aktif kuaför`
+                  : `${item.name}, henüz kuaför yok`
+              }
+              accessibilityState={{ disabled: !hasShops }}
+              style={({ pressed }) => [
+                styles.cityRow,
+                !hasShops && styles.cityRowMuted,
+                pressed && hasShops && styles.pressed,
+              ]}
+            >
+              <View style={[styles.cityIconWrap, !hasShops && styles.cityIconWrapMuted]}>
+                <Text style={styles.cityIcon}>🏙️</Text>
+              </View>
+              <View style={styles.cityBody}>
+                <Text style={[styles.cityName, !hasShops && styles.cityNameMuted]}>{item.name}</Text>
+                <Text style={styles.cityHint}>Plaka {item.plateCode.toString().padStart(2, '0')}</Text>
+              </View>
+              {hasShops ? (
+                <View style={styles.countBadge}>
+                  <Text style={styles.countBadgeText}>
+                    {item.activeShopCount} kuaför
+                  </Text>
+                </View>
+              ) : (
+                <Text style={styles.soonText}>yakında</Text>
+              )}
+              {hasShops ? <Text style={styles.chevron}>›</Text> : null}
+            </Pressable>
+          );
+        }}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
+        SectionSeparatorComponent={() => <View style={{ height: Spacing.lg }} />}
       />
     </SafeAreaView>
   );
@@ -123,10 +182,26 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  hero: { paddingTop: Spacing.lg, paddingBottom: Spacing.lg },
+  hero: { paddingTop: Spacing.lg, paddingBottom: Spacing.md },
   greeting: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 6 },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
+
+  statsBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.primarySoft,
+    borderRadius: Radius.lg,
+    paddingVertical: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    marginBottom: Spacing.md,
+    ...Shadow.sm,
+  },
+  statBlock: { flex: 1, alignItems: 'center' },
+  statDivider: { width: 1, alignSelf: 'stretch', backgroundColor: Colors.border, marginHorizontal: Spacing.sm },
+  statValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.primary },
+  statLabel: { fontSize: FontSize.xs, color: Colors.primary, opacity: 0.85, marginTop: 2 },
+
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -142,14 +217,17 @@ const styles = StyleSheet.create({
   searchIcon: { fontSize: 16 },
   searchInput: { flex: 1, fontSize: FontSize.md, color: Colors.text, paddingVertical: 10 },
   clearIcon: { color: Colors.textMuted, fontSize: 16, paddingHorizontal: 4 },
+
   sectionLabel: {
     fontSize: FontSize.xs,
-    color: Colors.textMuted,
+    color: Colors.textSecondary,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: Spacing.sm,
-    fontWeight: FontWeight.semibold,
+    fontWeight: FontWeight.bold,
   },
+  sectionLabelMuted: { color: Colors.textMuted },
+
   cityRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -160,7 +238,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
+  cityRowMuted: { opacity: 0.6, backgroundColor: Colors.background },
   pressed: { opacity: 0.85, transform: [{ scale: 0.99 }] },
+
   cityIconWrap: {
     width: 44,
     height: 44,
@@ -169,10 +249,27 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  cityIconWrapMuted: { backgroundColor: Colors.divider },
   cityIcon: { fontSize: 22 },
+
   cityBody: { flex: 1 },
   cityName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
+  cityNameMuted: { color: Colors.textSecondary },
   cityHint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  chevron: { fontSize: 24, color: Colors.textMuted },
+
+  countBadge: {
+    backgroundColor: Colors.primary,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.sm + 2,
+    paddingVertical: 4,
+  },
+  countBadgeText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    color: Colors.textInverse,
+  },
+  soonText: { fontSize: FontSize.xs, color: Colors.textMuted, fontStyle: 'italic' },
+
+  chevron: { fontSize: 24, color: Colors.textMuted, marginLeft: 4 },
   separator: { height: Spacing.sm },
 });
