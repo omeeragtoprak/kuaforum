@@ -1343,6 +1343,10 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(256)")
                         .HasColumnName("recipient");
 
+                    b.Property<Guid?>("RelatedBookingId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("related_booking_id");
+
                     b.Property<DateTimeOffset?>("SentAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("sent_at");

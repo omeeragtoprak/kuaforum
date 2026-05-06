@@ -8,7 +8,8 @@ public sealed record NotificationRequest(
     string TemplateKey,
     string Recipient,
     string Subject,
-    string Body);
+    string Body,
+    Guid? RelatedBookingId = null);
 
 public sealed record NotificationDeliveryResult(
     bool Succeeded,

@@ -158,6 +158,13 @@ public static class DependencyInjection
         CancellationToken ct = default)
     {
         await using var scope = services.CreateAsyncScope();
+
+        // Apply pending EF migrations before any seeder hits the schema. Idempotent —
+        // already-applied migrations are no-ops. Required so fresh Testcontainers DBs
+        // and brand-new prod boots don't fail on missing tables/columns.
+        var ctx = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await ctx.Database.MigrateAsync(ct);
+
         var geo = scope.ServiceProvider.GetRequiredService<GeographySeeder>();
         await geo.SeedAsync(ct);
 

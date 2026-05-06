@@ -34,6 +34,7 @@ public sealed class NotificationLog : Entity
     public DateTimeOffset? FailedAt { get; private set; }
     public bool IsRead { get; private set; }
     public DateTimeOffset? ReadAt { get; private set; }
+    public Guid? RelatedBookingId { get; private set; }
 
     public static NotificationLog Create(
         Guid? userId,
@@ -41,7 +42,8 @@ public sealed class NotificationLog : Entity
         string templateKey,
         string recipient,
         string subject,
-        string body)
+        string body,
+        Guid? relatedBookingId = null)
     {
         return new NotificationLog
         {
@@ -53,6 +55,7 @@ public sealed class NotificationLog : Entity
             Body = body,
             Status = NotificationStatus.Pending,
             IsRead = false,
+            RelatedBookingId = relatedBookingId,
         };
     }
 

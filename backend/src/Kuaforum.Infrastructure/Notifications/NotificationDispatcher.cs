@@ -19,7 +19,8 @@ public sealed class NotificationDispatcher(
 
         var log = NotificationLog.Create(
             request.UserId, request.Channel, request.TemplateKey,
-            request.Recipient, request.Subject, request.Body);
+            request.Recipient, request.Subject, request.Body,
+            relatedBookingId: request.RelatedBookingId);
         ctx.Set<NotificationLog>().Add(log);
 
         if (!_byChannel.TryGetValue(request.Channel, out var handler))

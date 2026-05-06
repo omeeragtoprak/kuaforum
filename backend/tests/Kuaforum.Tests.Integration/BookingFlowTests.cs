@@ -52,8 +52,10 @@ public sealed class BookingFlowTests(IntegrationTestFactory factory)
         Assert.NotEmpty(services);
         var service = services.First();
 
-        // act 1: customer initiates booking 60 days ahead at 14:00 UTC (avoids any conflict)
+        // act 1: customer initiates booking 60+ days ahead at 14:00 UTC, skipping Sunday
+        // (demo seed has Sunday closed; without skip the schedule check fails).
         var futureDate = DateTime.UtcNow.Date.AddDays(60);
+        while (futureDate.DayOfWeek == DayOfWeek.Sunday) futureDate = futureDate.AddDays(1);
         var futureTime = new DateTimeOffset(futureDate.Year, futureDate.Month, futureDate.Day, 14, 0, 0, TimeSpan.Zero);
         var initiateResp = await customerClient.PostAsJsonAsync("/v1/bookings", new
         {

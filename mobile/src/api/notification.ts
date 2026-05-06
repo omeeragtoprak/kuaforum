@@ -8,6 +8,7 @@ export type NotificationFeedItem = {
   isRead: boolean;
   readAt: string | null;
   createdAt: string;
+  relatedBookingId?: string | null;
 };
 
 export type NotificationFeed = {

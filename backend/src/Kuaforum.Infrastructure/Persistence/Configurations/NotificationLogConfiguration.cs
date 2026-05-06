@@ -24,6 +24,7 @@ internal sealed class NotificationLogConfiguration : IEntityTypeConfiguration<No
         builder.Property(x => x.FailedAt).HasColumnName("failed_at");
         builder.Property(x => x.IsRead).HasColumnName("is_read").HasDefaultValue(false);
         builder.Property(x => x.ReadAt).HasColumnName("read_at");
+        builder.Property(x => x.RelatedBookingId).HasColumnName("related_booking_id");
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");
 

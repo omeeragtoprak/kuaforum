@@ -68,10 +68,7 @@ public sealed class FcmPushChannel : INotificationChannelHandler
                 Title = request.Subject,
                 Body = request.Body,
             },
-            Data = new Dictionary<string, string>
-            {
-                ["templateKey"] = request.TemplateKey,
-            },
+            Data = BuildDataPayload(request),
             Android = new AndroidConfig { Priority = Priority.High },
             Apns = new ApnsConfig
             {
@@ -94,6 +91,17 @@ public sealed class FcmPushChannel : INotificationChannelHandler
             _logger.LogError(ex, "FCM dispatch failed for user {UserId}", request.UserId);
             return new NotificationDeliveryResult(false, null, ex.Message);
         }
+    }
+
+    private static Dictionary<string, string> BuildDataPayload(NotificationRequest request)
+    {
+        var data = new Dictionary<string, string>
+        {
+            ["templateKey"] = request.TemplateKey,
+        };
+        if (request.RelatedBookingId is { } bookingId)
+            data["bookingId"] = bookingId.ToString();
+        return data;
     }
 
     private async Task DeactivateInvalidTokensAsync(

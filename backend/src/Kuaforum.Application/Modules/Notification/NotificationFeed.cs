@@ -14,7 +14,8 @@ public sealed record NotificationFeedItemDto(
     string Body,
     bool IsRead,
     DateTimeOffset? ReadAt,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    Guid? RelatedBookingId);
 
 public sealed record NotificationFeedDto(
     int UnreadCount,
@@ -39,7 +40,7 @@ public sealed class GetMyNotificationsQueryHandler(IApplicationDbContext db)
             .OrderByDescending(n => n.CreatedAt)
             .Take(take)
             .Select(n => new NotificationFeedItemDto(
-                n.Id, n.TemplateKey, n.Subject, n.Body, n.IsRead, n.ReadAt, n.CreatedAt))
+                n.Id, n.TemplateKey, n.Subject, n.Body, n.IsRead, n.ReadAt, n.CreatedAt, n.RelatedBookingId))
             .ToListAsync(ct);
 
         var unread = await ctx.Set<NotificationLog>().AsNoTracking()

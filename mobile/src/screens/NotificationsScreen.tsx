@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { EmptyState } from '@/components/EmptyState';
 import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
@@ -32,6 +33,7 @@ function templateEmoji(key: string): string {
 
 export function NotificationsScreen({ accent }: { accent: string }) {
   const qc = useQueryClient();
+  const router = useRouter();
 
   const query = useQuery({
     queryKey: ['notifications'],
@@ -110,6 +112,7 @@ export function NotificationsScreen({ accent }: { accent: string }) {
             accent={accent}
             onPress={() => {
               if (!item.isRead) markRead.mutate(item.id);
+              if (item.relatedBookingId) router.push(`/booking/${item.relatedBookingId}` as never);
             }}
           />
         )}

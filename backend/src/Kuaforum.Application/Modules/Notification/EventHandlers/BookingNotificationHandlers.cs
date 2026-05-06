@@ -17,7 +17,8 @@ internal static class NotificationHelpers
         string templateKey,
         string subject,
         string body,
-        CancellationToken ct)
+        CancellationToken ct,
+        Guid? relatedBookingId = null)
     {
         await dispatcher.DispatchAsync(new NotificationRequest(
             UserId: userId,
@@ -25,7 +26,8 @@ internal static class NotificationHelpers
             TemplateKey: templateKey,
             Recipient: $"user:{userId:N}",
             Subject: subject,
-            Body: body), ct);
+            Body: body,
+            RelatedBookingId: relatedBookingId), ct);
     }
 }
 
@@ -62,7 +64,8 @@ public sealed class BookingConfirmedNotificationHandler(
             var body = $"{shop?.Name ?? "Kuaför"} — {stylist?.DisplayName ?? "stilist"} ile {localTime} randevun hazır.";
 
             await NotificationHelpers.DispatchInAppAsync(dispatcher, customer.Id,
-                "booking.confirmed.customer", subject, body, cancellationToken);
+                "booking.confirmed.customer", subject, body, cancellationToken,
+                relatedBookingId: booking.Id);
 
             await dispatcher.DispatchAsync(new NotificationRequest(
                 UserId: customer.Id,
@@ -70,7 +73,8 @@ public sealed class BookingConfirmedNotificationHandler(
                 TemplateKey: "booking.confirmed.customer",
                 Recipient: $"fcm-token-{customer.Id:N}",
                 Subject: subject,
-                Body: body), cancellationToken);
+                Body: body,
+                RelatedBookingId: booking.Id), cancellationToken);
 
             if (!string.IsNullOrEmpty(customer.PhoneE164))
             {
@@ -80,7 +84,8 @@ public sealed class BookingConfirmedNotificationHandler(
                     TemplateKey: "booking.confirmed.customer.sms",
                     Recipient: customer.PhoneE164,
                     Subject: subject,
-                    Body: body), cancellationToken);
+                    Body: body,
+                    RelatedBookingId: booking.Id), cancellationToken);
             }
         }
 
@@ -94,7 +99,8 @@ public sealed class BookingConfirmedNotificationHandler(
                 var body = $"{stylist?.DisplayName ?? "Stilist"} için {localTime} yeni randevu.";
 
                 await NotificationHelpers.DispatchInAppAsync(dispatcher, owner.Id,
-                    "booking.confirmed.barber", subject, body, cancellationToken);
+                    "booking.confirmed.barber", subject, body, cancellationToken,
+                    relatedBookingId: booking.Id);
 
                 await dispatcher.DispatchAsync(new NotificationRequest(
                     UserId: owner.Id,
@@ -102,7 +108,8 @@ public sealed class BookingConfirmedNotificationHandler(
                     TemplateKey: "booking.confirmed.barber",
                     Recipient: $"fcm-token-{owner.Id:N}",
                     Subject: subject,
-                    Body: body), cancellationToken);
+                    Body: body,
+                    RelatedBookingId: booking.Id), cancellationToken);
             }
         }
     }
@@ -132,7 +139,8 @@ public sealed class BookingCancelledNotificationHandler(
         if (customer is not null)
         {
             await NotificationHelpers.DispatchInAppAsync(dispatcher, customer.Id,
-                "booking.cancelled", "Randevu iptal edildi", refundText, cancellationToken);
+                "booking.cancelled", "Randevu iptal edildi", refundText, cancellationToken,
+                relatedBookingId: booking.Id);
 
             await dispatcher.DispatchAsync(new NotificationRequest(
                 UserId: customer.Id,
@@ -140,7 +148,8 @@ public sealed class BookingCancelledNotificationHandler(
                 TemplateKey: "booking.cancelled",
                 Recipient: $"fcm-token-{customer.Id:N}",
                 Subject: "Randevu iptal edildi",
-                Body: refundText), cancellationToken);
+                Body: refundText,
+                RelatedBookingId: booking.Id), cancellationToken);
         }
 
         if (shop is not null)
@@ -154,7 +163,8 @@ public sealed class BookingCancelledNotificationHandler(
                 var body = $"{localTime} randevusu iptal edildi.";
 
                 await NotificationHelpers.DispatchInAppAsync(dispatcher, owner.Id,
-                    "booking.cancelled.barber", subject, body, cancellationToken);
+                    "booking.cancelled.barber", subject, body, cancellationToken,
+                    relatedBookingId: booking.Id);
             }
         }
     }
@@ -172,7 +182,8 @@ public sealed class BookingStartedNotificationHandler(
         if (booking is null) return;
 
         await NotificationHelpers.DispatchInAppAsync(dispatcher, booking.CustomerId,
-            "booking.started", "Randevun başladı", "Stilistin randevuna başladı. İyi gelmesi dileğiyle!", cancellationToken);
+            "booking.started", "Randevun başladı", "Stilistin randevuna başladı. İyi gelmesi dileğiyle!", cancellationToken,
+            relatedBookingId: booking.Id);
     }
 }
 
@@ -191,7 +202,8 @@ public sealed class BookingCompletedNotificationHandler(
         var body = "Randevun tamamlandı. Deneyimini puanlayarak diğer müşterilere yardımcı ol.";
 
         await NotificationHelpers.DispatchInAppAsync(dispatcher, booking.CustomerId,
-            "booking.completed", subject, body, cancellationToken);
+            "booking.completed", subject, body, cancellationToken,
+            relatedBookingId: booking.Id);
 
         await dispatcher.DispatchAsync(new NotificationRequest(
             UserId: booking.CustomerId,
@@ -199,7 +211,8 @@ public sealed class BookingCompletedNotificationHandler(
             TemplateKey: "booking.completed",
             Recipient: $"fcm-token-{booking.CustomerId:N}",
             Subject: subject,
-            Body: body), cancellationToken);
+            Body: body,
+            RelatedBookingId: booking.Id), cancellationToken);
     }
 }
 
@@ -212,7 +225,8 @@ public sealed class BookingNoShowNotificationHandler(
         var body = "Randevuna gelmediğin için iade yapılmadı. Bir sonraki randevunda görüşmek üzere.";
 
         await NotificationHelpers.DispatchInAppAsync(dispatcher, notification.CustomerId,
-            "booking.no_show", subject, body, cancellationToken);
+            "booking.no_show", subject, body, cancellationToken,
+            relatedBookingId: notification.BookingId);
     }
 }
 
@@ -237,7 +251,8 @@ public sealed class BookingRescheduledNotificationHandler(
             "booking.rescheduled.customer",
             "Randevu yeniden planlandı",
             $"{shop?.Name ?? "Kuaför"} — Eski: {oldLocal} → Yeni: {newLocal}",
-            cancellationToken);
+            cancellationToken,
+            relatedBookingId: booking.Id);
 
         if (shop is not null)
         {
@@ -245,7 +260,8 @@ public sealed class BookingRescheduledNotificationHandler(
                 "booking.rescheduled.barber",
                 "Randevu zamanı değişti",
                 $"Bir randevu {oldLocal} → {newLocal} olarak güncellendi.",
-                cancellationToken);
+                cancellationToken,
+                relatedBookingId: booking.Id);
         }
     }
 }
