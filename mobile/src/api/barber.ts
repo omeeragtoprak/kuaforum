@@ -55,6 +55,8 @@ export type BarberSearchResult = {
   serviceCount: number;
   minPriceMinor?: number;
   hasWalkInAvailable: boolean;
+  ratingAverage?: number | null;
+  ratingCount: number;
 };
 
 export type SearchBarbersResponse = {

@@ -95,14 +95,29 @@ export default function SearchScreen() {
 function BarberCard({ barber, onPress }: { barber: BarberSearchResult; onPress: () => void }) {
   const genderTone = salonGenderTone(barber.genderType);
   const genderLabel = salonGenderLabel(barber.genderType);
+  const hasRating = barber.ratingCount > 0 && barber.ratingAverage != null;
   return (
     <Card onPress={onPress} style={{ gap: Spacing.sm }}>
       <View style={styles.cardHeader}>
         <View style={{ flex: 1 }}>
           <Text style={styles.shopName} numberOfLines={1}>{barber.name}</Text>
-          {barber.addressLine1 ? (
-            <Text style={styles.address} numberOfLines={1}>📍 {barber.addressLine1}</Text>
-          ) : null}
+          <View style={styles.ratingRow}>
+            {hasRating ? (
+              <>
+                <Text style={styles.ratingStars}>⭐</Text>
+                <Text style={styles.ratingValue}>{barber.ratingAverage!.toFixed(1)}</Text>
+                <Text style={styles.ratingCount}>({barber.ratingCount})</Text>
+              </>
+            ) : (
+              <Text style={styles.ratingNew}>✨ Yeni</Text>
+            )}
+            {barber.addressLine1 ? (
+              <>
+                <Text style={styles.ratingDot}>·</Text>
+                <Text style={styles.address} numberOfLines={1}>📍 {barber.addressLine1}</Text>
+              </>
+            ) : null}
+          </View>
         </View>
         <Badge label={genderLabel} tone={genderTone as any} />
       </View>
@@ -155,7 +170,13 @@ const styles = StyleSheet.create({
   },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
   shopName: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
-  address: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, flexWrap: 'wrap' },
+  ratingStars: { fontSize: 12 },
+  ratingValue: { fontSize: FontSize.xs, color: Colors.text, fontWeight: FontWeight.bold },
+  ratingCount: { fontSize: FontSize.xs, color: Colors.textMuted },
+  ratingNew: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
+  ratingDot: { fontSize: FontSize.xs, color: Colors.textMuted, marginHorizontal: 2 },
+  address: { fontSize: FontSize.xs, color: Colors.textMuted, flexShrink: 1 },
   description: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
   footerRow: {
     flexDirection: 'row',

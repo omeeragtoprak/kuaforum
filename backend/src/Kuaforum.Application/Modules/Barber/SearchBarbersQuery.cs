@@ -2,6 +2,8 @@ using FluentValidation;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Review;
+using ReviewAggregate = Kuaforum.Domain.Modules.Review.Review;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,7 +29,9 @@ public sealed record BarberSearchResultDto(
     int StylistCount,
     int ServiceCount,
     long? MinPriceMinor,
-    bool HasWalkInAvailable);
+    bool HasWalkInAvailable,
+    double? RatingAverage,
+    int RatingCount);
 
 public sealed record SearchBarbersResponse(
     IReadOnlyList<BarberSearchResultDto> Items,
@@ -79,6 +83,11 @@ public sealed class SearchBarbersQueryHandler(IApplicationDbContext db)
                     .FirstOrDefault(),
                 HasWalkIn = ctx.Set<Stylist>()
                     .Any(st => st.BarberShopId == s.Id && st.IsActive && st.WalkInAvailable),
+                RatingAverage = ctx.Set<ReviewAggregate>()
+                    .Where(r => r.BarberShopId == s.Id && r.ModerationStatus == ReviewModerationStatus.Approved)
+                    .Average(r => (double?)r.Rating),
+                RatingCount = ctx.Set<ReviewAggregate>()
+                    .Count(r => r.BarberShopId == s.Id && r.ModerationStatus == ReviewModerationStatus.Approved),
             })
             .ToListAsync(ct);
 
@@ -86,7 +95,8 @@ public sealed class SearchBarbersQueryHandler(IApplicationDbContext db)
             p.Shop.Id, p.Shop.Name, p.Shop.Slug, p.Shop.Description,
             p.Shop.GenderType, p.Shop.AddressLine1,
             p.Shop.Latitude, p.Shop.Longitude,
-            p.StylistCount, p.ServiceCount, p.MinPrice, p.HasWalkIn))
+            p.StylistCount, p.ServiceCount, p.MinPrice, p.HasWalkIn,
+            p.RatingAverage, p.RatingCount))
             .ToList();
 
         // Optional walk-in filter (post-query for simplicity)
