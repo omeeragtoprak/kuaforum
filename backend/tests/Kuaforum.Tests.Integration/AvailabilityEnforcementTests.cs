@@ -459,6 +459,132 @@ public sealed class AvailabilityEnforcementTests(IntegrationTestFactory factory)
     }
 
     [Fact]
+    public async Task AutoNoShowJob_marks_overdue_confirmed_bookings_as_no_show()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        var customerLogin = await customerClient.DevLoginAsync("Customer");
+        customerClient.SetBearer(customerLogin.AccessToken);
+        var ownerLogin = await ownerClient.DevLoginAsync("BarberOwner");
+        ownerClient.SetBearer(ownerLogin.AccessToken);
+
+        var shop = await ownerClient.GetJson<BarberShopRow>("/v1/owner/barber-shop");
+        var stylists = await customerClient.GetJson<IReadOnlyList<StylistRow>>($"/v1/barber-shops/{shop.Id}/stylists");
+        var services = await customerClient.GetJson<IReadOnlyList<ServiceRow>>($"/v1/barber-shops/{shop.Id}/services");
+        var stylistId = stylists.First().Id;
+
+        var futureSaturday = NextWeekdayUtc(DayOfWeek.Saturday, 60);
+        var bookingAt = new DateTimeOffset(futureSaturday.Year, futureSaturday.Month, futureSaturday.Day, 11, 0, 0, TimeSpan.Zero);
+        var initiate = await customerClient.PostAsJsonAsync("/v1/bookings", new
+        {
+            stylistId,
+            scheduledAt = bookingAt,
+            serviceCatalogIds = new[] { services.First().Id },
+            isWalkIn = false,
+            customerNote = (string?)null,
+        });
+        var initiated = await initiate.Content.ReadFromJsonAsync<InitiateResp>(TestHelpers.Json);
+
+        var confirmResp = await ownerClient.PostAsync($"/v1/bookings/{initiated!.BookingId}/confirm", null);
+        Assert.Equal(HttpStatusCode.NoContent, confirmResp.StatusCode);
+
+        // Back-date the booking so ScheduledEndsAt + 30min grace has elapsed.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var ctx = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+            var pastStart = DateTimeOffset.UtcNow.AddHours(-2);
+            var pastEnd = DateTimeOffset.UtcNow.AddMinutes(-45);
+            await ctx.Database.ExecuteSqlRawAsync(
+                $"UPDATE bookings SET scheduled_at = '{pastStart:o}', scheduled_ends_at = '{pastEnd:o}' WHERE id = '{initiated.BookingId}'");
+        }
+
+        // Run the job.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var job = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.BackgroundJobs.AutoNoShowJob>();
+            await job.RunAsync(default);
+        }
+
+        // Verify status flipped via API (avoids fragile direct enum comparison).
+        var detail = await customerClient.GetJson<BookingStatusOnly>($"/v1/bookings/{initiated.BookingId}");
+        Assert.Equal("NoShow", detail.Status);
+    }
+
+    private sealed record BookingStatusOnly(string Status);
+
+    [Fact]
+    public async Task BookingReminderJob_sends_T24_reminder_only_once_per_booking()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        var customerLogin = await customerClient.DevLoginAsync("Customer");
+        customerClient.SetBearer(customerLogin.AccessToken);
+        var ownerLogin = await ownerClient.DevLoginAsync("BarberOwner");
+        ownerClient.SetBearer(ownerLogin.AccessToken);
+
+        var shop = await ownerClient.GetJson<BarberShopRow>("/v1/owner/barber-shop");
+        var stylists = await customerClient.GetJson<IReadOnlyList<StylistRow>>($"/v1/barber-shops/{shop.Id}/stylists");
+        var services = await customerClient.GetJson<IReadOnlyList<ServiceRow>>($"/v1/barber-shops/{shop.Id}/services");
+        var stylistId = stylists.First().Id;
+
+        // Pick a far-future Confirmed booking, then back-date ScheduledAt to ~24h from now.
+        var futureSaturday = NextWeekdayUtc(DayOfWeek.Saturday, 60);
+        var bookingAt = new DateTimeOffset(futureSaturday.Year, futureSaturday.Month, futureSaturday.Day, 11, 0, 0, TimeSpan.Zero);
+        var initiate = await customerClient.PostAsJsonAsync("/v1/bookings", new
+        {
+            stylistId,
+            scheduledAt = bookingAt,
+            serviceCatalogIds = new[] { services.First().Id },
+            isWalkIn = false,
+            customerNote = (string?)null,
+        });
+        var initiated = await initiate.Content.ReadFromJsonAsync<InitiateResp>(TestHelpers.Json);
+        await ownerClient.PostAsync($"/v1/bookings/{initiated!.BookingId}/confirm", null);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var ctx = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+            var soon = DateTimeOffset.UtcNow.AddHours(24);
+            var soonEnd = soon.AddMinutes(60);
+            await ctx.Database.ExecuteSqlRawAsync(
+                $"UPDATE bookings SET scheduled_at = '{soon:o}', scheduled_ends_at = '{soonEnd:o}' WHERE id = '{initiated.BookingId}'");
+        }
+
+        // Run job twice — second run must be a no-op (idempotent).
+        async Task RunJobAsync()
+        {
+            using var scope = factory.Services.CreateScope();
+            var job = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.BackgroundJobs.BookingReminderJob>();
+            await job.RunAsync(default);
+        }
+
+        await RunJobAsync();
+        await RunJobAsync();
+
+        // Customer feed should have exactly one T-24h reminder.
+        var feed = await customerClient.GetJson<NotificationFeedShape>("/v1/notifications");
+        var reminders = feed.Items.Where(i => i.TemplateKey == "booking.reminder.t24").ToList();
+        Assert.Single(reminders);
+    }
+
+    private sealed record NotificationFeedShape(int UnreadCount, IReadOnlyList<NotificationItemShape> Items);
+    private sealed record NotificationItemShape(Guid Id, string TemplateKey, string Subject, string Body, bool IsRead, DateTimeOffset? ReadAt, DateTimeOffset CreatedAt, Guid? RelatedBookingId);
+
+    [Fact]
     public async Task ExpireWalkInJob_disables_walkin_for_stylists_older_than_2h()
     {
         await factory.ResetDatabaseAsync();

@@ -140,6 +140,8 @@ public static class DependencyInjection
         });
         services.AddScoped<HardDeleteUsersJob>();
         services.AddScoped<ExpireWalkInJob>();
+        services.AddScoped<AutoNoShowJob>();
+        services.AddScoped<BookingReminderJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<IStylistScheduleChecker, StylistScheduleChecker>();
         services.AddSingleton<IObjectStorage, LocalFileObjectStorage>();
@@ -197,6 +199,18 @@ public static class DependencyInjection
             recurringJobId: ExpireWalkInJob.JobId,
             methodCall: job => job.RunAsync(CancellationToken.None),
             cronExpression: ExpireWalkInJob.CronExpression,
+            options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        manager.AddOrUpdate<AutoNoShowJob>(
+            recurringJobId: AutoNoShowJob.JobId,
+            methodCall: job => job.RunAsync(CancellationToken.None),
+            cronExpression: AutoNoShowJob.CronExpression,
+            options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        manager.AddOrUpdate<BookingReminderJob>(
+            recurringJobId: BookingReminderJob.JobId,
+            methodCall: job => job.RunAsync(CancellationToken.None),
+            cronExpression: BookingReminderJob.CronExpression,
             options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 }
