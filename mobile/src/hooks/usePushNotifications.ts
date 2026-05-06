@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { useRouter } from 'expo-router';
 import { DeviceTokenApi } from '@/api/device-token';
 import { useAuthStore } from '@/store/auth-store';
 
@@ -12,6 +13,7 @@ import { useAuthStore } from '@/store/auth-store';
  */
 export function usePushNotifications() {
   const isAuthed = useAuthStore((s) => s.isAuthenticated);
+  const router = useRouter();
   const fcmTokenRef = useRef<string | null>(null);
 
   // Only run on builds where expo-notifications is supported.
@@ -75,6 +77,33 @@ export function usePushNotifications() {
       cancelled = true;
     };
   }, [isAuthed, isStandalone]);
+
+  // Tap-to-deep-link: when a push notification is tapped, route to the booking
+  // detail if backend included bookingId in the data payload (FcmPushChannel).
+  // Same lazy-load guard as registration above so Expo Go is unaffected.
+  useEffect(() => {
+    if (!isStandalone || !isAuthed) return;
+    let subscription: { remove: () => void } | null = null;
+
+    (async () => {
+      try {
+        const Notifications = await import('expo-notifications');
+        subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+          const data = response.notification.request.content.data as Record<string, unknown> | undefined;
+          const bookingId = typeof data?.bookingId === 'string' ? data.bookingId : null;
+          if (bookingId) {
+            router.push(`/booking/${bookingId}` as never);
+          }
+        });
+      } catch {
+        // Expo Go or stripped build — ignore.
+      }
+    })();
+
+    return () => {
+      subscription?.remove();
+    };
+  }, [isAuthed, isStandalone, router]);
 
   // On logout, unregister the previously registered token.
   useEffect(() => {

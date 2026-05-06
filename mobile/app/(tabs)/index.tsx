@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { EmptyState } from '@/components/EmptyState';
+import { SkeletonCityRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout, Shadow } from '@/lib/theme';
 import { GeographyApi, City } from '@/api/geography';
 import { useAuthStore } from '@/store/auth-store';
@@ -102,7 +103,9 @@ export default function DiscoverScreen() {
           </View>
         }
         ListEmptyComponent={
-          citiesQuery.isLoading ? null : citiesQuery.isError ? (
+          citiesQuery.isLoading ? (
+            <SkeletonList count={6} render={() => <SkeletonCityRow />} />
+          ) : citiesQuery.isError ? (
             <EmptyState
               emoji="⚠️"
               title="Bağlantı hatası"

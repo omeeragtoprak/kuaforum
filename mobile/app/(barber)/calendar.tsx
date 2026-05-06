@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
+import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
 import { formatTime, formatTry, bookingStatusInfo } from '@/lib/format';
@@ -48,7 +49,9 @@ export default function BarberCalendarScreen() {
           />
         }
       >
-        {query.isLoading ? null : query.isError ? (
+        {query.isLoading ? (
+          <SkeletonList count={4} render={() => <SkeletonBookingRow />} />
+        ) : query.isError ? (
           <EmptyState
             emoji="⚠️"
             title="Bağlantı hatası"

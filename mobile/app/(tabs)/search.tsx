@@ -7,6 +7,7 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
+import { SkeletonShopCard, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi, BarberSearchResult } from '@/api/barber';
 import { formatTry, salonGenderLabel, salonGenderTone } from '@/lib/format';
@@ -68,7 +69,9 @@ export default function SearchScreen() {
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
         ListEmptyComponent={
-          query.isLoading ? null : query.isError ? (
+          query.isLoading ? (
+            <SkeletonList count={4} render={() => <SkeletonShopCard />} />
+          ) : query.isError ? (
             <EmptyState
               emoji="⚠️"
               title="Bağlantı hatası"

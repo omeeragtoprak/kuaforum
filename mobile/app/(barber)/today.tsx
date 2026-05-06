@@ -5,6 +5,7 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
+import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
 import { extractApiError } from '@/api/client';
@@ -86,7 +87,9 @@ export default function BarberTodayScreen() {
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
         ListEmptyComponent={
-          query.isLoading ? null : query.isError ? (
+          query.isLoading ? (
+            <SkeletonList count={3} render={() => <SkeletonBookingRow />} />
+          ) : query.isError ? (
             <EmptyState
               emoji="⚠️"
               title="Bağlantı hatası"
