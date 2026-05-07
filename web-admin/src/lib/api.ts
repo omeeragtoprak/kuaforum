@@ -1,6 +1,6 @@
 'use client';
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5000';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5100';
 const TOKEN_KEY = 'kuaforum.admin.access_token';
 
 export const adminAuth = {
