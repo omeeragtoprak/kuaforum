@@ -14,6 +14,8 @@ public sealed record SearchBarbersQuery(
     Guid? DistrictId,
     SalonGenderType? GenderType,
     bool? OpenWalkInOnly,
+    double? MinRating,
+    long? MaxPriceMinor,
     int Page,
     int PageSize) : IQuery<SearchBarbersResponse>;
 
@@ -45,6 +47,8 @@ public sealed class SearchBarbersQueryValidator : AbstractValidator<SearchBarber
     {
         RuleFor(x => x.Page).GreaterThan(0);
         RuleFor(x => x.PageSize).InclusiveBetween(1, 50);
+        RuleFor(x => x.MinRating!.Value).InclusiveBetween(0, 5).When(x => x.MinRating.HasValue);
+        RuleFor(x => x.MaxPriceMinor!.Value).GreaterThan(0).When(x => x.MaxPriceMinor.HasValue);
     }
 }
 
@@ -64,6 +68,22 @@ public sealed class SearchBarbersQueryHandler(IApplicationDbContext db)
         if (request.GenderType.HasValue)
             query = query.Where(s => s.GenderType == request.GenderType.Value
                                     || s.GenderType == SalonGenderType.Unisex);
+
+        if (request.MaxPriceMinor.HasValue)
+        {
+            var maxPrice = request.MaxPriceMinor.Value;
+            query = query.Where(s => ctx.Set<ServiceCatalog>()
+                .Where(sv => sv.BarberShopId == s.Id && sv.IsActive)
+                .Min(sv => (long?)sv.PriceMinor) <= maxPrice);
+        }
+
+        if (request.MinRating.HasValue)
+        {
+            var minRating = request.MinRating.Value;
+            query = query.Where(s => ctx.Set<ReviewAggregate>()
+                .Where(r => r.BarberShopId == s.Id && r.ModerationStatus == ReviewModerationStatus.Approved)
+                .Average(r => (double?)r.Rating) >= minRating);
+        }
 
         var total = await query.CountAsync(ct);
 

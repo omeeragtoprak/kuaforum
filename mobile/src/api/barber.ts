@@ -72,6 +72,9 @@ export type SearchBarbersParams = {
   /** Backend accepts enum names (Unisex/FemaleOnly/MaleOnly) or int (0/1/2) thanks to JsonStringEnumConverter. */
   genderType?: 'Unisex' | 'FemaleOnly' | 'MaleOnly' | number;
   walkInOnly?: boolean;
+  minRating?: number;
+  /** TL minor units (kuruş). 1 TL = 100. */
+  maxPriceMinor?: number;
   page?: number;
   pageSize?: number;
 };

@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Pressable, RefreshControl, ScrollView, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
+import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonShopCard, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
@@ -13,19 +14,28 @@ import { BarberApi, BarberSearchResult } from '@/api/barber';
 import { formatTry, salonGenderLabel, salonGenderTone } from '@/lib/format';
 
 type GenderFilter = 'all' | 'unisex' | 'female' | 'male' | 'walkin';
+type RatingFilter = null | 3 | 4 | 4.5;
+type PriceFilter = null | 200 | 500 | 1000 | 2000;
 
 export default function SearchScreen() {
   const params = useLocalSearchParams<{ cityId?: string; cityName?: string }>();
   const router = useRouter();
   const [filter, setFilter] = useState<GenderFilter>('all');
+  const [minRating, setMinRating] = useState<RatingFilter>(null);
+  const [maxPrice, setMaxPrice] = useState<PriceFilter>(null);
+  const [filterModalOpen, setFilterModalOpen] = useState(false);
+
+  const advancedActiveCount = (minRating !== null ? 1 : 0) + (maxPrice !== null ? 1 : 0);
 
   const query = useQuery({
-    queryKey: ['barbers-search', params.cityId, filter],
+    queryKey: ['barbers-search', params.cityId, filter, minRating, maxPrice],
     queryFn: () =>
       BarberApi.search({
         cityId: params.cityId,
         genderType: filter === 'unisex' ? 'Unisex' : filter === 'female' ? 'FemaleOnly' : filter === 'male' ? 'MaleOnly' : undefined,
         walkInOnly: filter === 'walkin' ? true : undefined,
+        minRating: minRating ?? undefined,
+        maxPriceMinor: maxPrice ? maxPrice * 100 : undefined,
         page: 1,
         pageSize: 20,
       }),
@@ -48,12 +58,32 @@ export default function SearchScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.filtersRow}
       >
+        <Pressable
+          onPress={() => setFilterModalOpen(true)}
+          style={[styles.filterTrigger, advancedActiveCount > 0 && styles.filterTriggerActive]}
+          accessibilityRole="button"
+          accessibilityLabel={`Gelişmiş filtre, ${advancedActiveCount} aktif`}
+        >
+          <Text style={[styles.filterTriggerText, advancedActiveCount > 0 && styles.filterTriggerTextActive]}>
+            ⚙ Filtre{advancedActiveCount > 0 ? ` · ${advancedActiveCount}` : ''}
+          </Text>
+        </Pressable>
         <Chip label="Tümü" selected={filter === 'all'} onPress={() => setFilter('all')} />
         <Chip label="Şu an boş" selected={filter === 'walkin'} onPress={() => setFilter('walkin')} />
         <Chip label="Unisex" selected={filter === 'unisex'} onPress={() => setFilter('unisex')} />
         <Chip label="Kadın" selected={filter === 'female'} onPress={() => setFilter('female')} />
         <Chip label="Erkek" selected={filter === 'male'} onPress={() => setFilter('male')} />
       </ScrollView>
+
+      <FilterModal
+        visible={filterModalOpen}
+        onClose={() => setFilterModalOpen(false)}
+        minRating={minRating}
+        setMinRating={setMinRating}
+        maxPrice={maxPrice}
+        setMaxPrice={setMaxPrice}
+      />
+
 
       <FlatList
         data={query.data?.items ?? []}
@@ -150,6 +180,59 @@ function BarberCard({ barber, onPress }: { barber: BarberSearchResult; onPress: 
   );
 }
 
+function FilterModal({
+  visible,
+  onClose,
+  minRating,
+  setMinRating,
+  maxPrice,
+  setMaxPrice,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  minRating: RatingFilter;
+  setMinRating: (v: RatingFilter) => void;
+  maxPrice: PriceFilter;
+  setMaxPrice: (v: PriceFilter) => void;
+}) {
+  function reset() {
+    setMinRating(null);
+    setMaxPrice(null);
+  }
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <Pressable style={styles.modalBackdrop} onPress={onClose}>
+        <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+          <View style={styles.modalHandle} />
+          <Text style={styles.modalTitle}>Gelişmiş filtre</Text>
+
+          <Text style={styles.modalSection}>Minimum puan</Text>
+          <View style={styles.modalChips}>
+            <Chip label="Tümü" selected={minRating === null} onPress={() => setMinRating(null)} />
+            <Chip label="3+" selected={minRating === 3} onPress={() => setMinRating(3)} />
+            <Chip label="4+" selected={minRating === 4} onPress={() => setMinRating(4)} />
+            <Chip label="4.5+" selected={minRating === 4.5} onPress={() => setMinRating(4.5)} />
+          </View>
+
+          <Text style={styles.modalSection}>Maksimum fiyat</Text>
+          <View style={styles.modalChips}>
+            <Chip label="Tümü" selected={maxPrice === null} onPress={() => setMaxPrice(null)} />
+            <Chip label="200₺" selected={maxPrice === 200} onPress={() => setMaxPrice(200)} />
+            <Chip label="500₺" selected={maxPrice === 500} onPress={() => setMaxPrice(500)} />
+            <Chip label="1000₺" selected={maxPrice === 1000} onPress={() => setMaxPrice(1000)} />
+            <Chip label="2000₺" selected={maxPrice === 2000} onPress={() => setMaxPrice(2000)} />
+          </View>
+
+          <View style={styles.modalActions}>
+            <Button label="Sıfırla" variant="ghost" onPress={reset} />
+            <Button label="Uygula" onPress={onClose} />
+          </View>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
@@ -164,6 +247,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  filterTrigger: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 8,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.borderStrong,
+  },
+  filterTriggerActive: { backgroundColor: Colors.primarySoft, borderColor: Colors.primary },
+  filterTriggerText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
+  filterTriggerTextActive: { color: Colors.primary },
+
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: Radius.lg,
+    borderTopRightRadius: Radius.lg,
+    padding: Spacing.lg,
+    gap: Spacing.md,
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: Colors.borderStrong,
+    alignSelf: 'center', marginBottom: 4,
+  },
+  modalTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
+  modalSection: {
+    fontSize: FontSize.xs, color: Colors.textSecondary,
+    textTransform: 'uppercase', letterSpacing: 0.5,
+    fontWeight: FontWeight.semibold, marginTop: Spacing.sm,
+  },
+  modalChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  modalActions: { flexDirection: 'row', gap: Spacing.sm, justifyContent: 'flex-end', marginTop: Spacing.md },
   list: {
     paddingHorizontal: Layout.screenPaddingX,
     paddingBottom: Spacing.xl,

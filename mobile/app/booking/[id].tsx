@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Alert, Pressable, TextInput, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -234,8 +234,11 @@ export default function BookingDetailScreen() {
 
         <View style={styles.headerBlock}>
           <Text style={styles.title}>Randevu</Text>
-          <View style={{ marginTop: 8 }}>
+          <View style={styles.headerStatusRow}>
             <Badge label={status.label} tone={status.tone} />
+            {(isBookingPending(b.status) || isBookingConfirmed(b.status)) ? (
+              <CountdownBadge scheduledAt={b.scheduledAt} />
+            ) : null}
           </View>
           <Text style={styles.dateText}>{formatDateTime(b.scheduledAt)}</Text>
           <Text style={styles.durationText}>{formatDuration(totalDuration)} · {b.items.length} hizmet</Text>
@@ -387,6 +390,53 @@ export default function BookingDetailScreen() {
   );
 }
 
+function CountdownBadge({ scheduledAt }: { scheduledAt: string }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(t);
+  }, []);
+
+  const diffMs = new Date(scheduledAt).getTime() - now;
+  if (diffMs <= 0) return null;
+
+  const minutes = Math.floor(diffMs / 60_000);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  let label: string;
+  let tone: 'urgent' | 'soon' | 'normal';
+  if (minutes < 60) {
+    label = `⏱️ ${minutes} dk kaldı`;
+    tone = 'urgent';
+  } else if (hours < 24) {
+    label = `⏱️ ${hours} saat kaldı`;
+    tone = 'soon';
+  } else if (days < 7) {
+    label = `📅 ${days} gün kaldı`;
+    tone = 'normal';
+  } else {
+    label = `📅 ${days} gün kaldı`;
+    tone = 'normal';
+  }
+
+  return (
+    <View style={[
+      styles.countdown,
+      tone === 'urgent' && styles.countdownUrgent,
+      tone === 'soon' && styles.countdownSoon,
+    ]}>
+      <Text style={[
+        styles.countdownText,
+        tone === 'urgent' && styles.countdownTextUrgent,
+        tone === 'soon' && styles.countdownTextSoon,
+      ]}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
 function DetailRow({ icon, label, value }: { icon: string; label: string; value: string }) {
   return (
     <View style={styles.detailRow}>
@@ -416,6 +466,18 @@ const styles = StyleSheet.create({
   back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   headerBlock: { paddingTop: Spacing.sm, paddingBottom: Spacing.md },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  headerStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  countdown: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.infoSoft,
+  },
+  countdownText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.info },
+  countdownSoon: { backgroundColor: Colors.warningSoft },
+  countdownTextSoon: { color: Colors.warning },
+  countdownUrgent: { backgroundColor: Colors.errorSoft },
+  countdownTextUrgent: { color: Colors.error },
   dateText: { fontSize: FontSize.lg, color: Colors.text, fontWeight: FontWeight.semibold, marginTop: Spacing.md },
   durationText: { fontSize: FontSize.sm, color: Colors.textMuted, marginTop: 4 },
   sectionTitle: {

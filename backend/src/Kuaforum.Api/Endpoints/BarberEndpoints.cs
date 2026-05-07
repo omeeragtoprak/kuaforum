@@ -20,6 +20,8 @@ public static class BarberEndpoints
             [FromQuery] Guid? districtId,
             [FromQuery] SalonGenderType? genderType,
             [FromQuery] bool? walkInOnly,
+            [FromQuery] double? minRating,
+            [FromQuery] long? maxPriceMinor,
             [FromQuery] int? page,
             [FromQuery] int? pageSize,
             IMediator m,
@@ -30,6 +32,8 @@ public static class BarberEndpoints
                 DistrictId: districtId,
                 GenderType: genderType,
                 OpenWalkInOnly: walkInOnly,
+                MinRating: minRating,
+                MaxPriceMinor: maxPriceMinor,
                 Page: page is null or <= 0 ? 1 : page.Value,
                 PageSize: pageSize is null or <= 0 ? 20 : Math.Min(pageSize.Value, 50)), ct);
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);

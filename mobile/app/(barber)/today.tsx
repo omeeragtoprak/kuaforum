@@ -9,6 +9,7 @@ import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
 import { extractApiError } from '@/api/client';
+import { Haptics } from '@/lib/haptics';
 import {
   formatTime, formatTry, formatPhoneTr,
   bookingStatusInfo, isBookingConfirmed, isBookingInProgress,
@@ -29,18 +30,27 @@ export default function BarberTodayScreen() {
 
   const startMut = useMutation({
     mutationFn: (id: string) => BookingApi.start(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['owner-bookings-today'] }),
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onSuccess: () => {
+      Haptics.success();
+      qc.invalidateQueries({ queryKey: ['owner-bookings-today'] });
+    },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
   const completeMut = useMutation({
     mutationFn: (id: string) => BookingApi.complete(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['owner-bookings-today'] }),
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onSuccess: () => {
+      Haptics.success();
+      qc.invalidateQueries({ queryKey: ['owner-bookings-today'] });
+    },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
   const noShowMut = useMutation({
     mutationFn: (id: string) => BookingApi.markNoShow(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['owner-bookings-today'] }),
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onSuccess: () => {
+      Haptics.warning();
+      qc.invalidateQueries({ queryKey: ['owner-bookings-today'] });
+    },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const list = query.data ?? [];

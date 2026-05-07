@@ -10,6 +10,7 @@ import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/the
 import { BookingApi } from '@/api/booking';
 import { extractApiError } from '@/api/client';
 import { formatDateTime, formatDuration, formatTry } from '@/lib/format';
+import { Haptics } from '@/lib/haptics';
 
 export default function ConfirmBookingScreen() {
   const params = useLocalSearchParams<{
@@ -38,12 +39,14 @@ export default function ConfirmBookingScreen() {
         note || undefined,
         false,
       );
+      Haptics.success();
       Alert.alert(
         '✅ Randevu oluşturuldu',
         'Randevun "Beklemede" durumunda kaydedildi. Kuaför onayladığında bildirim alacaksın.',
         [{ text: 'Randevularıma git', onPress: () => router.replace('/(tabs)/bookings') }],
       );
     } catch (err) {
+      Haptics.error();
       Alert.alert('Hata', extractApiError(err));
     } finally {
       setLoading(false);
