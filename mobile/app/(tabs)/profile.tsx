@@ -7,8 +7,10 @@ import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
+import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
 import { maskPhone } from '@/lib/format';
+import { Haptics } from '@/lib/haptics';
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -40,20 +42,50 @@ export default function ProfileScreen() {
   }
 
   async function handleDeleteAccount() {
+    // KVKK gereği iki kademeli onay — kazara silmeyi engellemek için.
     Alert.alert(
-      'Hesabı sil',
-      '30 gün soft delete penceresi var, bu sürede geri yükleyebilirsin. Devam ediyor musun?',
+      'Hesabını sileceksin',
+      'Profilin gizlenir, randevularına erişimini kaybedersin. 30 gün içinde tekrar giriş yaparsan hesabın geri yüklenir; bu süre dolduktan sonra veriler kalıcı olarak siliniyor (KVKK m.7).',
       [
         { text: 'Vazgeç', style: 'cancel' },
         {
-          text: 'Sil',
+          text: 'Devam et',
           style: 'destructive',
           onPress: () => {
-            Alert.alert('Bilgi', 'Hesap silme akışı backend hazır, mobile UI bir sonraki sürümde bağlanacak.');
+            Alert.alert(
+              'Son onay',
+              'Bu işlem hemen başlatılır. Emin misin?',
+              [
+                { text: 'Vazgeç', style: 'cancel' },
+                {
+                  text: 'Hesabı sil',
+                  style: 'destructive',
+                  onPress: confirmDeleteAccount,
+                },
+              ],
+            );
           },
         },
       ],
     );
+  }
+
+  async function confirmDeleteAccount() {
+    try {
+      await AuthApi.deleteMyAccount();
+      Haptics.warning();
+      Alert.alert(
+        'Hesabın silindi',
+        '30 gün içinde aynı telefon/e-posta ile giriş yaparsan otomatik geri yüklenir. Görüşmek üzere.',
+        [{ text: 'Tamam', onPress: async () => {
+          await signOut();
+          router.replace('/(auth)/login');
+        }}],
+      );
+    } catch (err) {
+      Haptics.error();
+      Alert.alert('Hata', extractApiError(err));
+    }
   }
 
   const initial = displayName.slice(0, 1).toUpperCase();

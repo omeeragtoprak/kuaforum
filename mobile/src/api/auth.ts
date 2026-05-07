@@ -70,4 +70,12 @@ export const AuthApi = {
     const res = await apiClient.get('/v1/users/me');
     return res.data;
   },
+
+  async deleteMyAccount(): Promise<void> {
+    await apiClient.delete('/v1/users/me');
+  },
+
+  async restoreMyAccount(): Promise<void> {
+    await apiClient.post('/v1/users/me/restore');
+  },
 };
