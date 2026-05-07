@@ -140,6 +140,16 @@ export const BarberApi = {
     const res = await apiClient.get<Stylist[]>(`/v1/barber-shops/${shopId}/stylists`);
     return res.data;
   },
+  async addStylist(shopId: string, displayName: string): Promise<{ id: string }> {
+    const res = await apiClient.post(`/v1/owner/barber-shop/${shopId}/stylists`, { displayName });
+    return res.data;
+  },
+  async updateStylist(stylistId: string, body: { displayName?: string; photoUrl?: string; bio?: string; isActive?: boolean }): Promise<void> {
+    await apiClient.patch(`/v1/stylists/${stylistId}`, body);
+  },
+  async toggleStylistWalkIn(stylistId: string, available: boolean): Promise<void> {
+    await apiClient.post(`/v1/stylists/${stylistId}/walk-in`, { available });
+  },
   async getServices(shopId: string): Promise<Service[]> {
     const res = await apiClient.get<Service[]>(`/v1/barber-shops/${shopId}/services`);
     return res.data;

@@ -123,6 +123,38 @@ export default function AvailabilityScreen() {
     onError: (err) => Alert.alert('Hata', extractApiError(err)),
   });
 
+  const addStylistMut = useMutation({
+    mutationFn: async (displayName: string) => {
+      if (!shopQuery.data?.id) throw new Error('Salon yüklenmedi.');
+      const res = await BarberApi.addStylist(shopQuery.data.id, displayName);
+      return res;
+    },
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['my-stylists', shopQuery.data?.id] });
+      setSelectedStylistId(res.id); // yeni eklenen otomatik seçili
+      setShowAddStylist(false);
+      setNewStylistName('');
+    },
+    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+  });
+
+  const updateStylistMut = useMutation({
+    mutationFn: async (args: { id: string; displayName?: string; isActive?: boolean }) => {
+      const { id, ...body } = args;
+      await BarberApi.updateStylist(id, body);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-stylists', shopQuery.data?.id] });
+      setEditingStylist(null);
+    },
+    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+  });
+
+  const [showAddStylist, setShowAddStylist] = useState(false);
+  const [newStylistName, setNewStylistName] = useState('');
+  const [editingStylist, setEditingStylist] = useState<Stylist | null>(null);
+  const [editingName, setEditingName] = useState('');
+
   const [editing, setEditing] = useState<WorkingHours | null>(null);
   const [timePickerFor, setTimePickerFor] = useState<'open' | 'close' | null>(null);
   const [editingOpen, setEditingOpen] = useState('09:00');
@@ -226,24 +258,35 @@ export default function AvailabilityScreen() {
         <Text style={styles.title}>Müsaitlik</Text>
         <Text style={styles.subtitle}>Çalışma saatlerini ve izin günlerini buradan yönet.</Text>
 
-        {stylists.length > 1 ? (
-          <View style={styles.stylistChips}>
-            {stylists.map((s) => {
-              const active = (selectedStylistId ?? stylists[0]?.id) === s.id;
-              return (
-                <Pressable
-                  key={s.id}
-                  onPress={() => setSelectedStylistId(s.id)}
-                  style={[styles.chip, active && styles.chipActive]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Çalışan: ${s.displayName}`}
-                >
-                  <Text style={[styles.chipText, active && styles.chipTextActive]}>{s.displayName}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        ) : null}
+        <View style={styles.stylistChips}>
+          {stylists.map((s) => {
+            const active = (selectedStylistId ?? stylists[0]?.id) === s.id;
+            return (
+              <Pressable
+                key={s.id}
+                onPress={() => setSelectedStylistId(s.id)}
+                onLongPress={() => {
+                  setEditingStylist(s);
+                  setEditingName(s.displayName);
+                }}
+                delayLongPress={400}
+                style={[styles.chip, active && styles.chipActive]}
+                accessibilityRole="button"
+                accessibilityLabel={`Çalışan: ${s.displayName}. Düzenlemek için uzun bas.`}
+              >
+                <Text style={[styles.chipText, active && styles.chipTextActive]}>{s.displayName}</Text>
+              </Pressable>
+            );
+          })}
+          <Pressable
+            onPress={() => setShowAddStylist(true)}
+            style={[styles.chip, styles.chipAdd]}
+            accessibilityRole="button"
+            accessibilityLabel="Yeni çalışan ekle"
+          >
+            <Text style={styles.chipAddText}>+ Yeni çalışan</Text>
+          </Pressable>
+        </View>
 
         <Text style={styles.sectionTitle}>Çalışma saatleri</Text>
         <Card>
@@ -410,6 +453,103 @@ export default function AvailabilityScreen() {
         }}
         onClose={() => setToTimePickerFor(null)}
       />
+
+      <Modal visible={showAddStylist} transparent animationType="slide" onRequestClose={() => setShowAddStylist(false)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setShowAddStylist(false)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Yeni çalışan</Text>
+            <Text style={styles.stylistHint}>
+              Eklediğin çalışana otomatik olarak Pzt-Cmt 09:00-19:00 çalışma saatleri atanır.
+              Sonradan değiştirebilirsin.
+            </Text>
+            <Input
+              label="Görünen ad"
+              value={newStylistName}
+              onChangeText={setNewStylistName}
+              placeholder="Örn: Selin Kaya"
+              maxLength={80}
+            />
+            <View style={styles.modalActions}>
+              <Button label="Vazgeç" variant="ghost" onPress={() => { setShowAddStylist(false); setNewStylistName(''); }} />
+              <Button
+                label="Ekle"
+                onPress={() => {
+                  const name = newStylistName.trim();
+                  if (name.length < 2) {
+                    Alert.alert('Geçersiz', 'En az 2 karakter girmelisin.');
+                    return;
+                  }
+                  addStylistMut.mutate(name);
+                }}
+                loading={addStylistMut.isPending}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal visible={!!editingStylist} transparent animationType="slide" onRequestClose={() => setEditingStylist(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setEditingStylist(null)}>
+          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.modalTitle}>Çalışanı düzenle</Text>
+            <Input
+              label="Görünen ad"
+              value={editingName}
+              onChangeText={setEditingName}
+              maxLength={80}
+            />
+            <View style={styles.stylistDangerRow}>
+              <Text style={styles.stylistDangerLabel}>
+                {editingStylist?.isActive ? 'Aktif çalışıyor' : 'Pasif (görünmüyor)'}
+              </Text>
+              <Pressable
+                style={editingStylist?.isActive ? styles.stylistDeactivateBtn : styles.stylistActivateBtn}
+                onPress={() => {
+                  if (!editingStylist) return;
+                  Alert.alert(
+                    editingStylist.isActive ? 'Çalışanı pasifleştir' : 'Çalışanı aktif et',
+                    editingStylist.isActive
+                      ? 'Pasif çalışan müşterilere görünmez. Aktif randevuları etkilenmez.'
+                      : 'Çalışan tekrar müşterilere görünmeye başlar.',
+                    [
+                      { text: 'Vazgeç', style: 'cancel' },
+                      {
+                        text: editingStylist.isActive ? 'Pasifleştir' : 'Aktif et',
+                        style: editingStylist.isActive ? 'destructive' : 'default',
+                        onPress: () => updateStylistMut.mutate({ id: editingStylist.id, isActive: !editingStylist.isActive }),
+                      },
+                    ],
+                  );
+                }}
+              >
+                <Text style={editingStylist?.isActive ? styles.stylistDeactivateText : styles.stylistActivateText}>
+                  {editingStylist?.isActive ? 'Pasifleştir' : 'Aktif et'}
+                </Text>
+              </Pressable>
+            </View>
+            <View style={styles.modalActions}>
+              <Button label="Vazgeç" variant="ghost" onPress={() => setEditingStylist(null)} />
+              <Button
+                label="Kaydet"
+                onPress={() => {
+                  if (!editingStylist) return;
+                  const name = editingName.trim();
+                  if (name.length < 2) {
+                    Alert.alert('Geçersiz', 'En az 2 karakter girmelisin.');
+                    return;
+                  }
+                  if (name === editingStylist.displayName) {
+                    setEditingStylist(null);
+                    return;
+                  }
+                  updateStylistMut.mutate({ id: editingStylist.id, displayName: name });
+                }}
+                loading={updateStylistMut.isPending}
+              />
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -533,6 +673,35 @@ const styles = StyleSheet.create({
   chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   chipText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
   chipTextActive: { color: Colors.textInverse },
+  chipAdd: { backgroundColor: Colors.surfaceAlt, borderStyle: 'dashed', borderColor: Colors.borderStrong },
+  chipAddText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
+
+  stylistHint: { fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 16, marginBottom: Spacing.sm },
+  stylistDangerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    marginTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+    paddingTop: Spacing.md,
+  },
+  stylistDangerLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
+  stylistDeactivateBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.errorSoft,
+  },
+  stylistDeactivateText: { fontSize: FontSize.xs, color: Colors.error, fontWeight: FontWeight.bold },
+  stylistActivateBtn: {
+    paddingHorizontal: Spacing.md,
+    paddingVertical: 6,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.successSoft,
+  },
+  stylistActivateText: { fontSize: FontSize.xs, color: Colors.success, fontWeight: FontWeight.bold },
 
   sectionTitle: {
     fontSize: FontSize.lg,
