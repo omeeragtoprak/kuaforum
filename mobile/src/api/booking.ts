@@ -1,5 +1,15 @@
 import { apiClient } from './client';
 
+export type OwnerDashboardStats = {
+  thisWeekCompletedCount: number;
+  thisWeekRevenueMinor: number;
+  lastWeekCompletedCount: number;
+  lastWeekRevenueMinor: number;
+  revenueDeltaPercent: number;
+  topServiceName: string | null;
+  topServiceBookingCount: number;
+};
+
 export type BookingStatus = 'Pending' | 'Confirmed' | 'Started' | 'Completed' | 'Cancelled' | 'NoShow';
 
 export type BookingItem = {
@@ -52,6 +62,11 @@ export const BookingApi = {
   },
   async cancel(id: string, reason: number): Promise<{ refundPercentage: number }> {
     const res = await apiClient.post(`/v1/bookings/${id}/cancel`, { reason });
+    return res.data;
+  },
+
+  async getOwnerStats(): Promise<OwnerDashboardStats> {
+    const res = await apiClient.get<OwnerDashboardStats>('/v1/owner/barber-shop/stats');
     return res.data;
   },
 

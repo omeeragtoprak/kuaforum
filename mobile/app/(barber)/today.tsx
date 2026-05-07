@@ -28,6 +28,12 @@ export default function BarberTodayScreen() {
     queryFn: () => BookingApi.getOwnerBookings(today.toISOString(), tomorrow.toISOString()),
   });
 
+  const statsQuery = useQuery({
+    queryKey: ['owner-dashboard-stats'],
+    queryFn: () => BookingApi.getOwnerStats(),
+    staleTime: 5 * 60_000,
+  });
+
   const startMut = useMutation({
     mutationFn: (id: string) => BookingApi.start(id),
     onSuccess: () => {
@@ -81,6 +87,36 @@ export default function BarberTodayScreen() {
             <Text style={styles.statLabel}>Ciro</Text>
           </View>
         </View>
+
+        {statsQuery.data ? (
+          <View style={styles.trendCard} accessible accessibilityLabel={`Bu hafta ${formatTry(statsQuery.data.thisWeekRevenueMinor)} ciro, geçen haftaya göre yüzde ${statsQuery.data.revenueDeltaPercent} fark`}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.trendLabel}>BU HAFTA</Text>
+              <Text style={styles.trendValue}>{formatTry(statsQuery.data.thisWeekRevenueMinor)}</Text>
+              <Text style={styles.trendSub}>{statsQuery.data.thisWeekCompletedCount} tamamlanan</Text>
+            </View>
+            <View style={[
+              styles.deltaPill,
+              statsQuery.data.revenueDeltaPercent >= 0 ? styles.deltaPillPositive : styles.deltaPillNegative,
+            ]}>
+              <Text style={[
+                styles.deltaText,
+                statsQuery.data.revenueDeltaPercent >= 0 ? styles.deltaTextPositive : styles.deltaTextNegative,
+              ]}>
+                {statsQuery.data.revenueDeltaPercent >= 0 ? '↑ ' : '↓ '}
+                %{Math.abs(statsQuery.data.revenueDeltaPercent)}
+              </Text>
+              <Text style={styles.deltaCompare}>geçen haftaya göre</Text>
+            </View>
+            {statsQuery.data.topServiceName ? (
+              <View style={styles.topService}>
+                <Text style={styles.topServiceLabel}>EN POPÜLER (30g)</Text>
+                <Text style={styles.topServiceName} numberOfLines={1}>{statsQuery.data.topServiceName}</Text>
+                <Text style={styles.topServiceCount}>{statsQuery.data.topServiceBookingCount} randevu</Text>
+              </View>
+            ) : null}
+          </View>
+        ) : null}
       </View>
 
       <FlatList
@@ -260,6 +296,47 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
   statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  trendCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    backgroundColor: '#F0F9FF',
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginTop: Spacing.md,
+    gap: Spacing.md,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  trendLabel: {
+    fontSize: 10,
+    color: '#0369A1',
+    fontWeight: FontWeight.bold,
+    letterSpacing: 0.5,
+  },
+  trendValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#0C4A6E', marginTop: 2 },
+  trendSub: { fontSize: FontSize.xs, color: '#0369A1', marginTop: 2 },
+  deltaPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 6,
+    borderRadius: Radius.md,
+    alignItems: 'center',
+  },
+  deltaPillPositive: { backgroundColor: Colors.successSoft },
+  deltaPillNegative: { backgroundColor: Colors.errorSoft },
+  deltaText: { fontSize: FontSize.md, fontWeight: FontWeight.bold },
+  deltaTextPositive: { color: Colors.success },
+  deltaTextNegative: { color: Colors.error },
+  deltaCompare: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
+  topService: {
+    flexBasis: '100%',
+    paddingTop: Spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#BAE6FD',
+  },
+  topServiceLabel: { fontSize: 10, color: '#0369A1', fontWeight: FontWeight.bold, letterSpacing: 0.5 },
+  topServiceName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#0C4A6E', marginTop: 2 },
+  topServiceCount: { fontSize: FontSize.xs, color: '#0369A1' },
   list: {
     paddingHorizontal: Layout.screenPaddingX,
     paddingBottom: Spacing.xl,

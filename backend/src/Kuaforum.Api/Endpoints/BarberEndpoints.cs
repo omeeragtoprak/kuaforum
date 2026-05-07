@@ -67,6 +67,13 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).WithName("GetMyBarberShop");
 
+        ownerGroup.MapGet("/stats", async (IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new GetOwnerDashboardStatsQuery(ctx.UserId.Value), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+        }).WithName("GetOwnerDashboardStats");
+
         ownerGroup.MapGet("/bookings", async (
             [FromQuery] DateTimeOffset? from, [FromQuery] DateTimeOffset? to,
             [FromQuery] BookingStatus? status,
