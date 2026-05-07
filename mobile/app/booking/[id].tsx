@@ -10,6 +10,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
 import { extractApiError } from '@/api/client';
+import { Haptics } from '@/lib/haptics';
 import {
   formatDateTime, formatDuration, formatTry, formatPhoneTr,
   bookingStatusInfo, isBookingUpcoming,
@@ -37,6 +38,7 @@ export default function BookingDetailScreen() {
   const rescheduleMutation = useMutation({
     mutationFn: (newScheduledAt: string) => BookingApi.reschedule(id!, newScheduledAt),
     onSuccess: () => {
+      Haptics.success();
       Alert.alert('Yeniden planlandı', 'Randevu yeni saate taşındı.');
       setShowRescheduleForm(false);
       qc.invalidateQueries({ queryKey: ['booking', id] });
@@ -44,70 +46,86 @@ export default function BookingDetailScreen() {
       qc.invalidateQueries({ queryKey: ['owner-bookings-2weeks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const cancelMutation = useMutation({
     mutationFn: (reason: number) => BookingApi.cancel(id!, reason),
     onSuccess: (data) => {
-      Alert.alert('İptal edildi', `İade oranı: %${data.refundPercentage}`);
+      Haptics.warning();
+      const refundMsg = data.refundPercentage > 0
+        ? `İade oranı: %${data.refundPercentage}\n\nİade ödeme sağlayıcısı üzerinden 1-3 iş günü içinde kartına yansır.`
+        : 'İade hakkı yok (geç iptal). Bir dahaki sefere daha erken bildirmen avantajına olur.';
+      Alert.alert('İptal edildi', refundMsg);
       qc.invalidateQueries({ queryKey: ['booking', id] });
       qc.invalidateQueries({ queryKey: ['my-bookings'] });
       qc.invalidateQueries({ queryKey: ['owner-bookings-2weeks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const ownerConfirmMutation = useMutation({
     mutationFn: () => BookingApi.ownerConfirm(id!),
     onSuccess: () => {
+      Haptics.success();
       Alert.alert('Onaylandı', 'Randevu onaylandı, müşteriye bildirim gönderildi.');
       qc.invalidateQueries({ queryKey: ['booking', id] });
       qc.invalidateQueries({ queryKey: ['owner-bookings-2weeks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const startMutation = useMutation({
     mutationFn: () => BookingApi.start(id!),
     onSuccess: () => {
+      Haptics.success();
       qc.invalidateQueries({ queryKey: ['booking', id] });
       qc.invalidateQueries({ queryKey: ['owner-bookings-2weeks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const completeMutation = useMutation({
     mutationFn: () => BookingApi.complete(id!),
     onSuccess: () => {
+      Haptics.success();
       Alert.alert('Tamamlandı', 'Randevu tamamlandı. Müşteri yorum yapabilir.');
       qc.invalidateQueries({ queryKey: ['booking', id] });
       qc.invalidateQueries({ queryKey: ['owner-bookings-2weeks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const noShowMutation = useMutation({
     mutationFn: () => BookingApi.markNoShow(id!),
     onSuccess: () => {
+      Haptics.warning();
       qc.invalidateQueries({ queryKey: ['booking', id] });
       qc.invalidateQueries({ queryKey: ['owner-bookings-2weeks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   function handleCancel() {
+    if (!query.data) return;
     const reasonCode = isBarber ? 5 : 0;
+    const previewPct = previewRefundPercent(query.data.scheduledAt, isBarber);
+    const previewLine = isBarber
+      ? '✅ Kuaför iptali → müşteri %100 iade alır'
+      : previewPct === 100
+        ? '✅ Şu an iptal edersen tam iade alırsın (24+ saat var)'
+        : previewPct === 50
+          ? '⚠️ Şu an iptal edersen yarım iade alırsın (12-24 saat var)'
+          : '❌ Şu an iptal edersen iade yok (12 saatten az)';
+
     Alert.alert(
       'Randevuyu iptal et',
-      isBarber
-        ? 'Kuaför iptali — müşteri %100 iade alır.'
-        : 'Kademeli iade uygulanır:\n• 24 saat öncesine kadar: %100\n• 12-24 saat: %50\n• 0-12 saat: iade yok',
+      `${previewLine}\n\nİade kademeleri:\n• 24+ saat öncesi: %100\n• 12-24 saat: %50\n• 12 saatten az: iade yok`,
       [
         { text: 'Vazgeç', style: 'cancel' },
         { text: 'İptal et', style: 'destructive', onPress: () => cancelMutation.mutate(reasonCode) },
@@ -394,6 +412,19 @@ export default function BookingDetailScreen() {
       </ScrollView>
     </SafeAreaView>
   );
+}
+
+/**
+ * Mirror of backend Booking.ComputeRefundPercentage for customer-side preview.
+ * Owner branch always returns 100 (BarberRequested). Keep these tiers in sync
+ * if backend rule changes — backend is authoritative on actual cancel.
+ */
+function previewRefundPercent(scheduledAt: string, isBarber: boolean): number {
+  if (isBarber) return 100;
+  const hoursUntil = (new Date(scheduledAt).getTime() - Date.now()) / (1000 * 60 * 60);
+  if (hoursUntil >= 24) return 100;
+  if (hoursUntil >= 12) return 50;
+  return 0;
 }
 
 function CountdownBadge({ scheduledAt }: { scheduledAt: string }) {
