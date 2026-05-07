@@ -113,6 +113,13 @@ function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => voi
           <Text style={styles.upcomingText}>Yaklaşan randevu</Text>
         </View>
       ) : null}
+
+      {(booking.status === 'Completed' || booking.status === 4) && booking.hasReview === false ? (
+        <View style={styles.reviewPrompt}>
+          <Text style={styles.reviewPromptText}>⭐ Bu randevu için yorum yazmadın</Text>
+          <Text style={styles.reviewPromptHint}>Karta dokun → "Yorum yap"</Text>
+        </View>
+      ) : null}
     </Card>
   );
 }
@@ -160,4 +167,12 @@ const styles = StyleSheet.create({
   },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: Colors.info },
   upcomingText: { fontSize: FontSize.xs, color: Colors.info, fontWeight: FontWeight.semibold },
+  reviewPrompt: {
+    backgroundColor: Colors.warningSoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: Radius.sm,
+  },
+  reviewPromptText: { fontSize: FontSize.xs, color: Colors.warning, fontWeight: FontWeight.bold },
+  reviewPromptHint: { fontSize: 10, color: Colors.warning, opacity: 0.8, marginTop: 1 },
 });

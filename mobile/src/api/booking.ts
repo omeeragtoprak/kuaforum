@@ -38,6 +38,7 @@ export type Booking = {
   customerName?: string | null;
   customerPhone?: string | null;
   customerNote?: string | null;
+  hasReview?: boolean;
 };
 
 export const BookingApi = {

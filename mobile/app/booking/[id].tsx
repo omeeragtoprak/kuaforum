@@ -178,7 +178,8 @@ export default function BookingDetailScreen() {
   const b = query.data;
   const status = bookingStatusInfo(b.status);
   const canCancel = isBookingUpcoming(b.status);
-  const canReview = !isBarber && isBookingCompleted(b.status);
+  const canReview = !isBarber && isBookingCompleted(b.status) && !b.hasReview;
+  const alreadyReviewed = !isBarber && isBookingCompleted(b.status) && !!b.hasReview;
   const ownerCanConfirm = isBarber && isBookingPending(b.status);
   const ownerCanStart = isBarber && isBookingConfirmed(b.status);
   const ownerCanComplete = isBarber && isBookingInProgress(b.status);
@@ -384,6 +385,11 @@ export default function BookingDetailScreen() {
               onPress={() => router.push({ pathname: '/review/submit', params: { bookingId: b.id } })}
             />
           ) : null}
+          {alreadyReviewed ? (
+            <View style={styles.reviewDoneBox} accessible accessibilityLabel="Bu randevuya yorum yazıldı">
+              <Text style={styles.reviewDoneText}>✅ Bu randevu için yorumun alındı, teşekkürler.</Text>
+            </View>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -473,6 +479,13 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
     backgroundColor: Colors.infoSoft,
   },
+  reviewDoneBox: {
+    backgroundColor: Colors.successSoft,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    alignItems: 'center',
+  },
+  reviewDoneText: { fontSize: FontSize.sm, color: Colors.success, fontWeight: FontWeight.semibold },
   countdownText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.info },
   countdownSoon: { backgroundColor: Colors.warningSoft },
   countdownTextSoon: { color: Colors.warning },

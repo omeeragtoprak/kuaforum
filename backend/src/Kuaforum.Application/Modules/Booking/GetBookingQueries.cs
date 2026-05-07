@@ -4,6 +4,7 @@ using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Identity;
 using BookingAggregate = Kuaforum.Domain.Modules.Booking.Booking;
 using Kuaforum.Domain.Modules.Booking;
+using ReviewAggregate = Kuaforum.Domain.Modules.Review.Review;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,7 +28,8 @@ public sealed record BookingDto(
     string? CustomerPhone = null,
     string? CustomerNote = null,
     string? ShopName = null,
-    string? StylistName = null);
+    string? StylistName = null,
+    bool HasReview = false);
 
 public sealed record GetMyBookingsQuery(Guid CustomerId, BookingStatus? StatusFilter) : IQuery<IReadOnlyList<BookingDto>>;
 
@@ -65,6 +67,13 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
             .Select(s => new { s.Id, s.DisplayName })
             .ToDictionaryAsync(s => s.Id, ct);
 
+        var bookingIds = list.Select(b => b.Id).ToList();
+        var reviewedBookingIds = await ctx.Set<ReviewAggregate>().AsNoTracking()
+            .Where(r => bookingIds.Contains(r.BookingId))
+            .Select(r => r.BookingId)
+            .ToListAsync(ct);
+        var reviewedSet = reviewedBookingIds.ToHashSet();
+
         var result = list.Select(b =>
         {
             customers.TryGetValue(b.CustomerId, out var c);
@@ -81,7 +90,8 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
                 CustomerPhone: c?.PhoneE164,
                 CustomerNote: b.CustomerNote,
                 ShopName: sh?.Name,
-                StylistName: st?.DisplayName);
+                StylistName: st?.DisplayName,
+                HasReview: reviewedSet.Contains(b.Id));
         }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(result);
@@ -125,6 +135,9 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             .Select(s => s.DisplayName)
             .FirstOrDefaultAsync(ct);
 
+        var hasReview = await ctx.Set<ReviewAggregate>().AsNoTracking()
+            .AnyAsync(r => r.BookingId == booking.Id, ct);
+
         return Result.Success(new BookingDto(
             booking.Id, booking.CustomerId, booking.BarberShopId, booking.StylistId,
             booking.ScheduledAt, booking.ScheduledEndsAt, booking.Status,
@@ -136,6 +149,7 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             CustomerPhone: customer?.PhoneE164,
             CustomerNote: booking.CustomerNote,
             ShopName: shopMeta,
-            StylistName: stylistMeta));
+            StylistName: stylistMeta,
+            HasReview: hasReview));
     }
 }
