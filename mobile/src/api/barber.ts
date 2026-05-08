@@ -111,6 +111,16 @@ export type UploadKycResponse = {
   contentType: string;
 };
 
+/** KycStatus enum: 0=Pending, 1=UnderReview, 2=Approved, 3=Rejected */
+export type MyKycStatus = {
+  submissionId: string | null;
+  status: number | string | null;
+  rejectionReason: string | null;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  documentCount: number;
+};
+
 export const BarberApi = {
   async search(params: SearchBarbersParams): Promise<SearchBarbersResponse> {
     const res = await apiClient.get<SearchBarbersResponse>('/v1/barber-shops/search', { params });
@@ -118,6 +128,10 @@ export const BarberApi = {
   },
   async submitKyc(shopId: string, documents: KycDocumentRequest[]): Promise<{ id: string }> {
     const res = await apiClient.post(`/v1/owner/barber-shop/${shopId}/kyc/submit`, { documents });
+    return res.data;
+  },
+  async getMyKycStatus(): Promise<MyKycStatus> {
+    const res = await apiClient.get<MyKycStatus>('/v1/owner/barber-shop/kyc/status');
     return res.data;
   },
   async uploadKycDocument(args: { uri: string; name: string; contentType: string }): Promise<UploadKycResponse> {

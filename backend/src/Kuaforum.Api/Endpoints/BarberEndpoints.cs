@@ -144,6 +144,13 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.Ok(new { submissionId = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("SubmitKyc");
 
+        ownerGroup.MapGet("/kyc/status", async (IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new GetMyKycStatusQuery(ctx.UserId.Value), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+        }).WithName("GetMyKycStatus");
+
         // Stylist actions
         var stylistGroup = app.MapGroup("/v1/stylists").WithTags("Stylists").RequireAuthorization();
 
