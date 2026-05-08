@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { adminApi, ApiClientError, type AdminBookingDto, formatDateTime, formatTry } from '@/lib/api';
 
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
@@ -26,8 +26,10 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState<number | ''>('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [cancelModal, setCancelModal] = useState<AdminBookingDto | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     setLoading(true);
     setError(null);
     adminApi
@@ -47,6 +49,15 @@ export default function BookingsPage() {
       })
       .finally(() => setLoading(false));
   }, [page, search, statusFilter]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Auto-dismiss success toast
+  useEffect(() => {
+    if (!successToast) return;
+    const t = setTimeout(() => setSuccessToast(null), 4000);
+    return () => clearTimeout(t);
+  }, [successToast]);
 
   const totalPages = Math.max(1, Math.ceil(total / 25));
 
@@ -83,6 +94,7 @@ export default function BookingsPage() {
       </div>
 
       {error ? <div style={styles.error}>{error}</div> : null}
+      {successToast ? <div style={styles.toast}>{successToast}</div> : null}
 
       <div style={styles.tableWrap}>
         <table style={styles.table}>
@@ -130,19 +142,9 @@ export default function BookingsPage() {
                       {cancellable ? (
                         <button
                           style={styles.cancelBtn}
-                          onClick={async () => {
-                            const reason = window.prompt('İptal sebebi (audit için):');
-                            if (!reason) return;
-                            try {
-                              const res = await adminApi.cancelBooking(b.id, reason);
-                              alert(`İptal edildi. İade %${res.refundPercentage}`);
-                              setPage((p) => p);
-                            } catch (err) {
-                              alert(err instanceof ApiClientError ? err.message : 'Hata');
-                            }
-                          }}
+                          onClick={() => setCancelModal(b)}
                         >
-                          İptal et
+                          Admin iptal
                         </button>
                       ) : (
                         <span style={styles.subtext}>—</span>
@@ -175,6 +177,77 @@ export default function BookingsPage() {
           Sonraki →
         </button>
       </div>
+
+      {cancelModal ? (
+        <CancelModal
+          booking={cancelModal}
+          onClose={() => setCancelModal(null)}
+          onDone={(refundPct) => {
+            setCancelModal(null);
+            setSuccessToast(`Randevu admin tarafından iptal edildi. İade: %${refundPct}`);
+            load();
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function CancelModal({
+  booking, onClose, onDone,
+}: { booking: AdminBookingDto; onClose: () => void; onDone: (refundPct: number) => void }) {
+  const [reason, setReason] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    const trimmed = reason.trim();
+    if (trimmed.length < 8) {
+      setErr('Sebep en az 8 karakter (audit log için).');
+      return;
+    }
+    setSubmitting(true); setErr(null);
+    try {
+      const res = await adminApi.cancelBooking(booking.id, trimmed);
+      onDone(res.refundPercentage);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Hata');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div style={styles.backdrop} onClick={onClose}>
+      <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+        <div style={styles.modalHeader}>
+          <h2 style={styles.modalTitle}>Admin iptali</h2>
+          <button style={styles.closeX} onClick={onClose}>✕</button>
+        </div>
+        <p style={styles.modalBody}>
+          <strong>{booking.customerName ?? 'Müşteri'} — {booking.shopName}</strong><br />
+          {formatDateTime(booking.scheduledAt)} · {formatTry(booking.totalAmountMinor)}
+        </p>
+        <div style={styles.adminWarn}>
+          ⚠️ Admin iptali müşteriye <strong>%100 iade</strong> ile sonuçlanır
+          (BarberRequested kategorisi). Sebep audit log'a kalıcı yazılır.
+        </div>
+        <label style={styles.label}>Sebep (en az 8 karakter)</label>
+        <textarea
+          value={reason}
+          onChange={(e) => setReason(e.target.value.slice(0, 500))}
+          rows={3}
+          style={styles.textarea}
+          placeholder="Örn: İşletme askıya alındı, müşteri şikayeti üzerine, dolandırıcılık şüphesi…"
+        />
+        {err ? <div style={styles.error}>{err}</div> : null}
+        <div style={styles.modalActions}>
+          <button style={styles.btnGhost} onClick={onClose} disabled={submitting}>Vazgeç</button>
+          <button style={styles.btnDanger} onClick={submit} disabled={submitting}>
+            {submitting ? 'İptal ediliyor…' : 'İptal et'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -191,6 +264,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   totalBadge: { fontSize: 13, color: '#6B6B6B' },
   error: { padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 6, marginBottom: 12 },
+  toast: { padding: 12, background: '#F0FDF4', color: '#166534', borderRadius: 6, marginBottom: 12, fontWeight: 500 },
   tableWrap: { background: '#fff', borderRadius: 12, border: '1px solid #E5E5E5', overflow: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
   th: {
@@ -224,7 +298,46 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#991B1B',
     borderRadius: 6,
     fontSize: 12,
-    fontWeight: 500,
+    fontWeight: 600,
     cursor: 'pointer',
+  },
+
+  backdrop: {
+    position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.5)',
+    display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+  },
+  modal: {
+    background: '#fff', borderRadius: 14, width: '92%', maxWidth: 500,
+    padding: 24, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
+  },
+  modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  modalTitle: { fontSize: 20, fontWeight: 700, color: '#1A1A1A', margin: 0 },
+  closeX: { background: 'none', border: 'none', fontSize: 18, cursor: 'pointer', color: '#6B6B6B' },
+  modalBody: { fontSize: 14, color: '#475569', marginTop: 0, marginBottom: 16, lineHeight: 1.5 },
+  adminWarn: {
+    background: '#FEF3C7',
+    color: '#92400E',
+    padding: 12,
+    borderRadius: 8,
+    fontSize: 13,
+    marginBottom: 16,
+    lineHeight: 1.5,
+  },
+  label: {
+    fontSize: 12, fontWeight: 600, color: '#475569', textTransform: 'uppercase',
+    letterSpacing: 0.5, display: 'block', marginBottom: 6,
+  },
+  textarea: {
+    width: '100%', padding: '10px 12px', border: '1px solid #CBD5E1', borderRadius: 8,
+    fontSize: 14, resize: 'vertical', fontFamily: 'inherit',
+  },
+  modalActions: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20 },
+  btnGhost: {
+    background: '#F1F5F9', color: '#475569', border: 'none',
+    padding: '8px 18px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  },
+  btnDanger: {
+    background: '#EF4444', color: '#fff', border: 'none',
+    padding: '8px 18px', borderRadius: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer',
   },
 };

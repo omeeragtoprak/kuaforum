@@ -1,17 +1,21 @@
-import { View, Text, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable, Switch } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { apiClient } from '@/api/client';
+import { BarberApi, Stylist } from '@/api/barber';
+import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
 import { salonGenderLabel } from '@/lib/format';
+import { Haptics } from '@/lib/haptics';
 
 export default function BarberProfileScreen() {
   const router = useRouter();
+  const qc = useQueryClient();
   const signOut = useAuthStore((s) => s.signOut);
   const user = useAuthStore((s) => s.user);
 
@@ -21,6 +25,23 @@ export default function BarberProfileScreen() {
       const res = await apiClient.get('/v1/owner/barber-shop');
       return res.data;
     },
+  });
+
+  const stylistsQuery = useQuery({
+    queryKey: ['my-stylists', shopQuery.data?.id],
+    queryFn: () => BarberApi.getStylists(shopQuery.data!.id),
+    enabled: !!shopQuery.data?.id,
+  });
+
+  const toggleWalkInMut = useMutation({
+    mutationFn: async (args: { stylistId: string; available: boolean }) => {
+      await BarberApi.toggleStylistWalkIn(args.stylistId, args.available);
+    },
+    onSuccess: () => {
+      Haptics.success();
+      qc.invalidateQueries({ queryKey: ['my-stylists', shopQuery.data?.id] });
+    },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   async function handleLogout() {
@@ -95,15 +116,43 @@ export default function BarberProfileScreen() {
           </Card>
         )}
 
+        {stylistsQuery.data && stylistsQuery.data.length > 0 ? (
+          <>
+            <Text style={styles.sectionTitle}>Şu an müsait modu</Text>
+            <Card>
+              <Text style={styles.walkInHint}>
+                ⚡ Müşteri keşfette "Şu an boş" filtresi açtığında stilistini görür.
+                Açılan toggle 2 saat sonra otomatik kapanır (sahte vaatleri önler).
+              </Text>
+              {stylistsQuery.data.filter((s) => s.isActive).map((s, idx) => (
+                <View key={s.id} style={[styles.walkInRow, idx > 0 && styles.walkInRowBorder]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.walkInName}>{s.displayName}</Text>
+                    <Text style={styles.walkInStatus}>
+                      {s.walkInAvailable ? '🟢 Şu an müsait' : '⚪ Pasif'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={s.walkInAvailable}
+                    onValueChange={(value) => toggleWalkInMut.mutate({ stylistId: s.id, available: value })}
+                    trackColor={{ true: Colors.success, false: '#E5E7EB' }}
+                    accessibilityLabel={`${s.displayName} şu an müsait toggle`}
+                  />
+                </View>
+              ))}
+            </Card>
+          </>
+        ) : null}
+
         <Text style={styles.sectionTitle}>Yönetim</Text>
         <Card padded={false}>
           <ListRow icon="📋" label="KYC Doğrulama" hint="Belge gönder" onPress={() => router.push('/(barber)/kyc')} />
           <Divider />
           <ListRow icon="🕐" label="Müsaitlik" hint="Saat & izin" onPress={() => router.push('/(barber)/availability')} />
           <Divider />
-          <ListRow icon="👥" label="Stilistler" hint="Yakında" />
+          <ListRow icon="👥" label="Stilistler" hint="Düzenle" onPress={() => router.push('/(barber)/availability')} />
           <Divider />
-          <ListRow icon="📊" label="Gelir raporu" hint="Yakında" />
+          <ListRow icon="✂️" label="Hizmetler" hint="CRUD" onPress={() => router.push('/(barber)/services')} />
         </Card>
 
         <Text style={styles.sectionTitle}>Hesap</Text>
@@ -200,6 +249,25 @@ const styles = StyleSheet.create({
   emptyTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
   emptyDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4, lineHeight: 20 },
   smallHint: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
+
+  walkInHint: {
+    fontSize: FontSize.xs,
+    color: Colors.textSecondary,
+    lineHeight: 16,
+    marginBottom: Spacing.sm,
+  },
+  walkInRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: Spacing.sm,
+    gap: Spacing.md,
+  },
+  walkInRowBorder: {
+    borderTopWidth: 1,
+    borderTopColor: Colors.divider,
+  },
+  walkInName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
+  walkInStatus: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
