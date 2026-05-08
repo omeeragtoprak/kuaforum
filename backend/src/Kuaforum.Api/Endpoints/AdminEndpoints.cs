@@ -86,6 +86,23 @@ public static class AdminEndpoints
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).WithName("AdminListBarberShops");
 
+        group.MapPost("/barber-shops/{id:guid}/suspend", async (
+            Guid id, [FromBody] SuspendShopRequest body,
+            IMediator m, IRequestContext ctx, CancellationToken ct) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new SuspendBarberShopCommand(ctx.UserId.Value, id, body.Reason), ct);
+            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        }).WithName("AdminSuspendBarberShop");
+
+        group.MapPost("/barber-shops/{id:guid}/reactivate", async (
+            Guid id, IMediator m, IRequestContext ctx, CancellationToken ct) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new ReactivateBarberShopCommand(ctx.UserId.Value, id), ct);
+            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        }).WithName("AdminReactivateBarberShop");
+
         group.MapPost("/bookings/{id:guid}/cancel", async (
             Guid id, [FromBody] AdminCancelBookingRequest body,
             IMediator m, IRequestContext ctx, CancellationToken ct) =>
@@ -101,6 +118,7 @@ public static class AdminEndpoints
     }
 
     public sealed record AdminCancelBookingRequest(string Reason);
+    public sealed record SuspendShopRequest(string Reason);
 
     public sealed record ReviewKycRequest(bool Approve, string? RejectionReason, string? SubMerchantKey);
     public sealed record SuspendUserRequest(string Reason);

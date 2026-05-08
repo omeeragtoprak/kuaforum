@@ -176,6 +176,17 @@ export const adminApi = {
     qs.set('pageSize', String(params.pageSize ?? 25));
     return apiFetch<AdminBarberShopsPage>(`/v1/admin/barber-shops?${qs}`);
   },
+  async suspendBarberShop(shopId: string, reason: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/barber-shops/${shopId}/suspend`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+  async reactivateBarberShop(shopId: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/barber-shops/${shopId}/reactivate`, {
+      method: 'POST',
+    });
+  },
 };
 
 export type AdminBookingsQuery = {
