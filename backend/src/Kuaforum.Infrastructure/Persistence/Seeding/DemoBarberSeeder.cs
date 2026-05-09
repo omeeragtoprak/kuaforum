@@ -8,9 +8,11 @@ using Microsoft.Extensions.Logging;
 namespace Kuaforum.Infrastructure.Persistence.Seeding;
 
 /// <summary>
-/// Development-only seeder. Creates 7 demo BarberShops (2 in each big city + 1 Draft for KYC test)
-/// with owner User, stylists, services, working hours, and addresses.
-/// Idempotent: skips if any BarberShop with slug "demo-*" exists.
+/// Development-only seeder. Creates 13 demo BarberShops (2 İstanbul + 2 Ankara +
+/// 2 İzmir + 1 Draft İstanbul + 6 Erzurum) with owner User, stylists, services,
+/// working hours, and addresses. Erzurum yoğun seed çünkü demo customer'ın
+/// varsayılan şehri — Keşfet sayfasında ilk açılışta dolu liste görünmeli.
+/// Idempotent: skips if demo phone numbers already exist.
 ///
 /// PRODUCTION: This seeder should NEVER run. Real shops onboard via barber panel.
 /// </summary>
@@ -231,5 +233,98 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
             Stylists: Array.Empty<string>(),
             Services: Array.Empty<(string, ServiceGender, int, int)>(),
             KeepAsDraft: true),
+
+        // Erzurum (plate 25) — demo customer'ın varsayılan şehri.
+        // Çeşitlilik: 3 merkez ilçeye dağıtılmış, gender mix, fiyat aralığı geniş.
+        new(
+            CityPlate: 25, DistrictName: "Yakutiye", Slug: "yakutiye-merkez-erkek",
+            ShopName: "Çifte Minare Berber", Description: "Tarihi merkezde 25 yıllık aile berberi, klasik tıraş + sakal.",
+            ShopPhone: "+904421110001", GenderType: SalonGenderType.MaleOnly,
+            AddressLine1: "Cumhuriyet Cad. No:42", Latitude: 39.9042, Longitude: 41.2658,
+            OwnerName: "Mustafa Erzurumlu", OwnerPhone: "+905001000010",
+            Stylists: new[] { "Mustafa Erzurumlu", "Recep Çırak" },
+            Services: new (string, ServiceGender, int, int)[]
+            {
+                ("Erkek Saç Kesim", ServiceGender.Male, 25, 180),
+                ("Sakal Tıraşı", ServiceGender.Male, 15, 100),
+                ("Klasik Tıraş (Ustura)", ServiceGender.Male, 30, 220),
+                ("Saç + Sakal", ServiceGender.Male, 35, 250),
+            }),
+        new(
+            CityPlate: 25, DistrictName: "Yakutiye", Slug: "yakutiye-stil-kadin",
+            ShopName: "Stil Studio Erzurum", Description: "Modern saç tasarım, balyaj, ombre uzmanı kadın kuaförü.",
+            ShopPhone: "+904421110002", GenderType: SalonGenderType.FemaleOnly,
+            AddressLine1: "Atatürk Cad. No:78", Latitude: 39.9089, Longitude: 41.2628,
+            OwnerName: "Elif Yıldız", OwnerPhone: "+905001000011",
+            Stylists: new[] { "Elif Yıldız", "Sevgi Bal", "Merve Tanrıkulu" },
+            Services: new (string, ServiceGender, int, int)[]
+            {
+                ("Saç Kesim (Kadın)", ServiceGender.Female, 45, 350),
+                ("Saç Boyama (Tek Renk)", ServiceGender.Female, 90, 1100),
+                ("Balyaj", ServiceGender.Female, 180, 2400),
+                ("Ombre", ServiceGender.Female, 150, 1800),
+                ("Fön + Şekillendirme", ServiceGender.Female, 30, 220),
+                ("Saç Bakım Maskesi", ServiceGender.Female, 30, 320),
+            }),
+        new(
+            CityPlate: 25, DistrictName: "Palandöken", Slug: "palandoken-aile-unisex",
+            ShopName: "Palandöken Aile Kuaförü", Description: "Aile dostu, tüm yaşlara hizmet, uygun fiyat.",
+            ShopPhone: "+904422220003", GenderType: SalonGenderType.Unisex,
+            AddressLine1: "Hilalkent Cad. No:15", Latitude: 39.8843, Longitude: 41.2839,
+            OwnerName: "Hasan Polat", OwnerPhone: "+905001000012",
+            Stylists: new[] { "Hasan Polat", "Aysel Polat" },
+            Services: new (string, ServiceGender, int, int)[]
+            {
+                ("Erkek Saç Kesim", ServiceGender.Male, 20, 150),
+                ("Kadın Saç Kesim", ServiceGender.Female, 35, 250),
+                ("Çocuk Saç Kesim", ServiceGender.Any, 20, 100),
+                ("Sakal Tıraşı", ServiceGender.Male, 15, 80),
+                ("Fön", ServiceGender.Female, 25, 180),
+            }),
+        new(
+            CityPlate: 25, DistrictName: "Palandöken", Slug: "palandoken-vip-erkek",
+            ShopName: "VIP Berber Lounge", Description: "Premium erkek bakımı, kahve eşliğinde rahatlık.",
+            ShopPhone: "+904422220004", GenderType: SalonGenderType.MaleOnly,
+            AddressLine1: "Ejder Bulv. No:90", Latitude: 39.8801, Longitude: 41.2891,
+            OwnerName: "Burak Demir", OwnerPhone: "+905001000013",
+            Stylists: new[] { "Burak Demir", "Onur Kaya", "Mehmet Sönmez" },
+            Services: new (string, ServiceGender, int, int)[]
+            {
+                ("VIP Saç + Sakal Paketi", ServiceGender.Male, 60, 600),
+                ("Saç Kesim", ServiceGender.Male, 30, 280),
+                ("Sakal Şekillendirme", ServiceGender.Male, 25, 180),
+                ("Ustura Tıraşı", ServiceGender.Male, 30, 250),
+                ("Yüz Bakımı", ServiceGender.Male, 45, 350),
+                ("Saç Boyama (Erkek)", ServiceGender.Male, 60, 450),
+            }),
+        new(
+            CityPlate: 25, DistrictName: "Aziziye", Slug: "aziziye-mahalle-unisex",
+            ShopName: "Mahalle Kuaförü Aziziye", Description: "Mahalle esnafı, samimi ortam, hızlı servis.",
+            ShopPhone: "+904423330005", GenderType: SalonGenderType.Unisex,
+            AddressLine1: "Atatürk Mah. No:7", Latitude: 39.9523, Longitude: 41.1432,
+            OwnerName: "Fatma Şen", OwnerPhone: "+905001000014",
+            Stylists: new[] { "Fatma Şen" },
+            Services: new (string, ServiceGender, int, int)[]
+            {
+                ("Saç Kesim (Kadın)", ServiceGender.Female, 30, 180),
+                ("Saç Kesim (Erkek)", ServiceGender.Male, 20, 120),
+                ("Manikür", ServiceGender.Female, 30, 150),
+                ("Kalıcı Oje", ServiceGender.Female, 45, 280),
+            }),
+        new(
+            CityPlate: 25, DistrictName: "Yakutiye", Slug: "yakutiye-genc-unisex",
+            ShopName: "Genç Trend Kuaför", Description: "Üniversite öğrencisi indirimi, modern kesim.",
+            ShopPhone: "+904421110006", GenderType: SalonGenderType.Unisex,
+            AddressLine1: "Üniversite Cad. No:55", Latitude: 39.9062, Longitude: 41.2451,
+            OwnerName: "Kerem Atatürk", OwnerPhone: "+905001000015",
+            Stylists: new[] { "Kerem Atatürk", "Selin Demir" },
+            Services: new (string, ServiceGender, int, int)[]
+            {
+                ("Erkek Saç Kesim", ServiceGender.Male, 20, 130),
+                ("Kadın Saç Kesim", ServiceGender.Female, 30, 200),
+                ("Hızlı Fön", ServiceGender.Female, 15, 100),
+                ("Sakal Tıraşı", ServiceGender.Male, 12, 80),
+                ("Renklendirme", ServiceGender.Female, 90, 950),
+            }),
     };
 }

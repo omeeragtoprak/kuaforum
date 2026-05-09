@@ -64,6 +64,11 @@ internal static class Tr81CitySeed
             "Karacabey", "Keles", "Kestel", "Mudanya", "Mustafakemalpaşa",
             "Nilüfer", "Orhaneli", "Orhangazi", "Osmangazi", "Yenişehir", "Yıldırım",
         },
+        [25] = new[] // Erzurum (3 merkez ilçe + sık kullanılanlar)
+        {
+            "Yakutiye", "Palandöken", "Aziziye", "Pasinler", "Horasan", "Aşkale",
+            "Oltu", "Tortum", "İspir", "Şenkaya",
+        },
         [7] = new[] // Antalya (19 ilçe)
         {
             "Akseki", "Aksu", "Alanya", "Demre", "Döşemealtı", "Elmalı", "Finike",

@@ -210,9 +210,6 @@ export const BarberApi = {
   async deleteService(shopId: string, serviceId: string): Promise<void> {
     await apiClient.delete(`/v1/owner/barber-shop/${shopId}/services/${serviceId}`);
   },
-  async toggleStylistWalkIn(stylistId: string, available: boolean): Promise<void> {
-    await apiClient.post(`/v1/stylists/${stylistId}/walk-in`, { available });
-  },
 
   async getWorkingHours(stylistId: string): Promise<WorkingHours[]> {
     const res = await apiClient.get<WorkingHours[]>(`/v1/stylists/${stylistId}/working-hours`);
