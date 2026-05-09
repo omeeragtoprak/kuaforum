@@ -1,5 +1,7 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
+using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Identity;
 using ReviewAggregate = Kuaforum.Domain.Modules.Review.Review;
 using Kuaforum.Domain.Modules.Review;
 using MediatR;
@@ -16,6 +18,19 @@ public sealed record ReviewDto(
     DateTimeOffset CreatedAt,
     string? ReplyBody,
     DateTimeOffset? ReplyAt);
+
+/// Admin moderation queue için zenginleştirilmiş — anonim ID yerine şehir/salon/müşteri adı.
+public sealed record PendingReviewDto(
+    Guid Id,
+    Guid CustomerId,
+    string? CustomerName,
+    Guid BarberShopId,
+    string? BarberShopName,
+    Guid StylistId,
+    string? StylistName,
+    int Rating,
+    string? Body,
+    DateTimeOffset CreatedAt);
 
 public sealed record ShopRatingSummary(double Average, int Count);
 
@@ -52,25 +67,53 @@ public sealed class GetReviewsByShopQueryHandler(IApplicationDbContext db) : IRe
     }
 }
 
-public sealed record GetPendingReviewsQuery(int Page, int PageSize) : IQuery<IReadOnlyList<ReviewDto>>;
+public sealed record GetPendingReviewsQuery(int Page, int PageSize) : IQuery<IReadOnlyList<PendingReviewDto>>;
 
-public sealed class GetPendingReviewsQueryHandler(IApplicationDbContext db) : IRequestHandler<GetPendingReviewsQuery, Result<IReadOnlyList<ReviewDto>>>
+public sealed class GetPendingReviewsQueryHandler(IApplicationDbContext db) : IRequestHandler<GetPendingReviewsQuery, Result<IReadOnlyList<PendingReviewDto>>>
 {
-    public async Task<Result<IReadOnlyList<ReviewDto>>> Handle(GetPendingReviewsQuery request, CancellationToken ct)
+    public async Task<Result<IReadOnlyList<PendingReviewDto>>> Handle(GetPendingReviewsQuery request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
         var page = Math.Max(1, request.Page);
         var size = Math.Clamp(request.PageSize, 1, 50);
 
-        var items = await ctx.Set<ReviewAggregate>().AsNoTracking()
+        var rows = await ctx.Set<ReviewAggregate>().AsNoTracking()
             .Where(r => r.ModerationStatus == ReviewModerationStatus.Pending)
             .OrderBy(r => r.CreatedAt)
             .Skip((page - 1) * size)
             .Take(size)
-            .Select(r => new ReviewDto(
-                r.Id, r.CustomerId, r.StylistId, r.Rating, r.Body, r.CreatedAt, null, null))
             .ToListAsync(ct);
 
-        return Result.Success<IReadOnlyList<ReviewDto>>(items);
+        var customerIds = rows.Select(r => r.CustomerId).Distinct().ToList();
+        var customers = await ctx.Set<User>().AsNoTracking()
+            .Where(u => customerIds.Contains(u.Id))
+            .Select(u => new { u.Id, u.DisplayName })
+            .ToDictionaryAsync(u => u.Id, ct);
+
+        var shopIds = rows.Select(r => r.BarberShopId).Distinct().ToList();
+        var shops = await ctx.Set<BarberShop>().AsNoTracking()
+            .Where(s => shopIds.Contains(s.Id))
+            .Select(s => new { s.Id, s.Name })
+            .ToDictionaryAsync(s => s.Id, ct);
+
+        var stylistIds = rows.Select(r => r.StylistId).Distinct().ToList();
+        var stylists = await ctx.Set<Stylist>().AsNoTracking()
+            .Where(s => stylistIds.Contains(s.Id))
+            .Select(s => new { s.Id, s.DisplayName })
+            .ToDictionaryAsync(s => s.Id, ct);
+
+        var dtos = rows.Select(r =>
+        {
+            customers.TryGetValue(r.CustomerId, out var c);
+            shops.TryGetValue(r.BarberShopId, out var sh);
+            stylists.TryGetValue(r.StylistId, out var st);
+            return new PendingReviewDto(
+                r.Id, r.CustomerId, c?.DisplayName,
+                r.BarberShopId, sh?.Name,
+                r.StylistId, st?.DisplayName,
+                r.Rating, r.Body, r.CreatedAt);
+        }).ToList();
+
+        return Result.Success<IReadOnlyList<PendingReviewDto>>(dtos);
     }
 }

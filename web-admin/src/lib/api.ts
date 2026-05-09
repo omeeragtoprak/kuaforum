@@ -76,7 +76,11 @@ export type KycQueueItem = {
 export type PendingReview = {
   id: string;
   customerId: string;
+  customerName?: string | null;
+  barberShopId: string;
+  barberShopName?: string | null;
   stylistId: string;
+  stylistName?: string | null;
   rating: number;
   body?: string;
   createdAt: string;
