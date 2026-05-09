@@ -66,23 +66,27 @@ export default function BarberShopsPage() {
   return (
     <div>
       <h1 style={styles.h1}>Kuaförler</h1>
+      <p style={styles.subtitle}>{total} salon · sayfa {page}/{totalPages}</p>
       <div style={styles.filters}>
-        <input
-          placeholder="Salon adı veya slug…"
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          style={styles.input}
-        />
+        <div style={styles.searchBox}>
+          <span style={styles.searchIcon}>🔍</span>
+          <input
+            placeholder="Salon adı veya slug ara…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            style={styles.search}
+          />
+        </div>
         <select
           value={String(statusFilter)}
           onChange={(e) => {
             setStatusFilter(e.target.value === '' ? '' : Number(e.target.value));
             setPage(1);
           }}
-          style={styles.input}
+          style={styles.select}
         >
           <option value="">Tüm durumlar</option>
           <option value="0">Hazırlık</option>
@@ -90,11 +94,25 @@ export default function BarberShopsPage() {
           <option value="2">Askıda</option>
           <option value="3">Kapalı</option>
         </select>
-        <span style={styles.totalBadge}>Toplam: {total}</span>
       </div>
 
       {error ? <div style={styles.error}>{error}</div> : null}
 
+      {loading ? (
+        <div style={styles.skeletonWrap}>
+          {[0, 1, 2, 3, 4].map((i) => <div key={i} style={styles.skeletonRow} />)}
+        </div>
+      ) : items.length === 0 ? (
+        <div style={styles.empty}>
+          <div style={styles.emptyEmoji}>💈</div>
+          <div style={styles.emptyTitle}>Eşleşen salon yok</div>
+          <div style={styles.emptyDesc}>
+            {search || statusFilter !== ''
+              ? 'Farklı bir arama/filtre dene veya filtreleri temizle.'
+              : 'Henüz hiç salon kaydı yok.'}
+          </div>
+        </div>
+      ) : (
       <div style={styles.tableWrap}>
         <table style={styles.table}>
           <thead>
@@ -107,16 +125,11 @@ export default function BarberShopsPage() {
               <th style={styles.th}>Tamamlanmış randevu</th>
               <th style={styles.th}>Durum</th>
               <th style={styles.th}>Oluşturulma</th>
-              <th style={styles.th}>Aksiyon</th>
+              <th style={styles.thRight}>Aksiyon</th>
             </tr>
           </thead>
           <tbody>
-            {loading ? (
-              <tr><td style={styles.td} colSpan={9}>Yükleniyor…</td></tr>
-            ) : items.length === 0 ? (
-              <tr><td style={styles.td} colSpan={9}>Kayıt bulunamadı.</td></tr>
-            ) : (
-              items.map((s) => {
+            {items.map((s) => {
                 const status = STATUS_LABEL[String(s.status)] ?? { label: '—', color: '#6B7280' };
                 return (
                   <tr key={s.id}>
@@ -159,11 +172,11 @@ export default function BarberShopsPage() {
                     </td>
                   </tr>
                 );
-              })
-            )}
+              })}
           </tbody>
         </table>
       </div>
+      )}
 
       <div style={styles.pagination}>
         <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} style={styles.pageBtn}>
@@ -294,11 +307,39 @@ function ModalShell({
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  h1: { fontSize: 28, fontWeight: 700, marginTop: 0, marginBottom: 16, color: '#1A1A1A' },
-  filters: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' },
+  h1: { fontSize: 32, fontWeight: 700, marginTop: 0, marginBottom: 4, color: '#1A1A1A' },
+  subtitle: { color: '#6B6B6B', marginTop: 0, marginBottom: 24 },
+  filters: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 16, flexWrap: 'wrap' },
+  searchBox: {
+    flex: 1, minWidth: 240, display: 'flex', alignItems: 'center', gap: 8,
+    border: '1px solid #E5E5E5', borderRadius: 8, padding: '0 12px', background: '#fff',
+  },
+  searchIcon: { fontSize: 14, color: '#9B9B9B' },
+  search: { flex: 1, padding: '10px 0', border: 'none', fontSize: 14, outline: 'none', background: 'transparent' },
+  select: {
+    padding: '10px 12px', border: '1px solid #E5E5E5', borderRadius: 8, fontSize: 14,
+    background: '#fff', cursor: 'pointer', minWidth: 160,
+  },
   input: { padding: '8px 12px', border: '1px solid #D4D4D4', borderRadius: 6, fontSize: 14, minWidth: 200 },
   totalBadge: { fontSize: 13, color: '#6B6B6B' },
   error: { padding: 12, background: '#FEF2F2', color: '#991B1B', borderRadius: 6, marginBottom: 12 },
+  skeletonWrap: { display: 'flex', flexDirection: 'column', gap: 8 },
+  skeletonRow: {
+    height: 56, background: 'linear-gradient(90deg, #F1F5F9 0%, #E2E8F0 50%, #F1F5F9 100%)',
+    backgroundSize: '200% 100%', borderRadius: 8, animation: 'shimmer 1.6s linear infinite',
+  },
+  empty: {
+    padding: 64, textAlign: 'center' as const, background: '#fff',
+    borderRadius: 12, border: '1px solid #E5E5E5',
+  },
+  emptyEmoji: { fontSize: 48, marginBottom: 8 },
+  emptyTitle: { fontSize: 16, fontWeight: 600, color: '#1A1A1A', marginBottom: 4 },
+  emptyDesc: { fontSize: 13, color: '#6B6B6B' },
+  thRight: {
+    textAlign: 'right' as const, padding: '12px 16px', background: '#F5F5F5',
+    fontWeight: 600, color: '#3F2E2E', borderBottom: '1px solid #E5E5E5',
+    fontSize: 12, textTransform: 'uppercase' as const, letterSpacing: 0.4,
+  },
   tableWrap: { background: '#fff', borderRadius: 12, border: '1px solid #E5E5E5', overflow: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse', fontSize: 13 },
   th: {
