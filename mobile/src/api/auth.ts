@@ -78,4 +78,44 @@ export const AuthApi = {
   async restoreMyAccount(): Promise<void> {
     await apiClient.post('/v1/users/me/restore');
   },
+
+  async getMySessions(): Promise<Session[]> {
+    const res = await apiClient.get<Session[]>('/v1/users/me/sessions');
+    return res.data;
+  },
+
+  async revokeSession(sessionId: string): Promise<void> {
+    await apiClient.delete(`/v1/users/me/sessions/${sessionId}`);
+  },
+
+  async getMyConsents(): Promise<Consent[]> {
+    const res = await apiClient.get<Consent[]>('/v1/users/me/consents');
+    return res.data;
+  },
+
+  async updateConsent(purpose: ConsentPurposeKey, grant: boolean): Promise<void> {
+    await apiClient.patch('/v1/users/me/consents', { purpose, grant });
+  },
+};
+
+export type Session = {
+  id: string;
+  deviceFingerprint: string;
+  deviceName: string | null;
+  createdAt: string;
+  expiresAt: string;
+  lastUsedAt: string | null;
+  lastUsedIp: string | null;
+  isCurrent: boolean;
+};
+
+export type ConsentPurposeKey = 'TermsOfService' | 'Marketing' | 'Location' | 'HealthData';
+
+export type Consent = {
+  /** Backend serializes enum as string when JsonStringEnumConverter active. */
+  purpose: ConsentPurposeKey | number;
+  granted: boolean;
+  version: string;
+  grantedAt: string;
+  revokedAt: string | null;
 };

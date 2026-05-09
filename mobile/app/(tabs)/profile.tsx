@@ -118,11 +118,11 @@ export default function ProfileScreen() {
 
         <Text style={styles.sectionTitle}>Hesap</Text>
         <Card style={styles.section} padded={false}>
-          <ListRow icon="🔔" label="Bildirimler" hint="Yakında" disabled />
+          <ListRow icon="🔐" label="Aktif oturumlar" onPress={() => router.push('/account/sessions' as never)} />
+          <Divider />
+          <ListRow icon="🛡️" label="Gizlilik & Rızalar (KVKK)" onPress={() => router.push('/account/consents' as never)} />
           <Divider />
           <ListRow icon="🌐" label="Dil" value="Türkçe" disabled />
-          <Divider />
-          <ListRow icon="🛡️" label="Gizlilik (KVKK)" hint="Yakında" disabled />
         </Card>
 
         <Text style={styles.sectionTitle}>Yardım</Text>
