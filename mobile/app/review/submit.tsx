@@ -7,6 +7,7 @@ import { Input } from '@/components/Input';
 import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
 import { ReviewApi } from '@/api/review';
 import { extractApiError } from '@/api/client';
+import { Haptics } from '@/lib/haptics';
 
 export default function ReviewSubmitScreen() {
   const { bookingId } = useLocalSearchParams<{ bookingId: string }>();
@@ -21,12 +22,14 @@ export default function ReviewSubmitScreen() {
     setLoading(true);
     try {
       await ReviewApi.submit(bookingId!, rating, body || undefined);
+      Haptics.success();
       Alert.alert(
         '🙏 Yorumun alındı',
         'Yorumun inceleniyor. Onaylanınca profilde görünür.',
         [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
       );
     } catch (err) {
+      Haptics.error();
       Alert.alert('Hata', extractApiError(err));
     } finally {
       setLoading(false);
@@ -59,7 +62,7 @@ export default function ReviewSubmitScreen() {
               {[1, 2, 3, 4, 5].map((s) => (
                 <Pressable
                   key={s}
-                  onPress={() => setRating(s)}
+                  onPress={() => { Haptics.light(); setRating(s); }}
                   style={styles.starBtn}
                   hitSlop={6}
                   accessibilityRole="button"

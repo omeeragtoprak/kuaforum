@@ -15,6 +15,7 @@ import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/the
 import { BarberApi, type Service } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { formatDuration, formatTry, serviceGenderLabel } from '@/lib/format';
+import { Haptics } from '@/lib/haptics';
 
 const GENDER_OPTIONS = [
   { value: 0, label: 'Herkes' },
@@ -78,11 +79,12 @@ export default function BarberServicesScreen() {
       });
     },
     onSuccess: () => {
+      Haptics.success();
       qc.invalidateQueries({ queryKey: ['my-shop-services'] });
       setModalOpen(false);
       reset();
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const updateMut = useMutation({
@@ -99,17 +101,18 @@ export default function BarberServicesScreen() {
       });
     },
     onSuccess: () => {
+      Haptics.success();
       qc.invalidateQueries({ queryKey: ['my-shop-services'] });
       setModalOpen(false);
       reset();
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id: string) => BarberApi.deleteService(shopQuery.data!.id, id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['my-shop-services'] }),
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onSuccess: () => { Haptics.warning(); qc.invalidateQueries({ queryKey: ['my-shop-services'] }); },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   function handleDelete(s: Service) {

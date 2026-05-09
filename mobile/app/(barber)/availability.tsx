@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
 import { BarberApi, Stylist, WorkingHours, TimeOff, DayOfWeekKey } from '@/api/barber';
 import { extractApiError } from '@/api/client';
+import { Haptics } from '@/lib/haptics';
 
 const DAY_LABEL: Record<DayOfWeekKey, string> = {
   Monday: 'Pazartesi',
@@ -101,8 +102,8 @@ export default function AvailabilityScreen() {
       if (!stylist) throw new Error('Çalışan seçilmedi.');
       await BarberApi.setWorkingHours(stylist.id, body);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['working-hours', stylist?.id] }),
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onSuccess: () => { Haptics.success(); qc.invalidateQueries({ queryKey: ['working-hours', stylist?.id] }); },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const addTimeOffMut = useMutation({
@@ -110,8 +111,8 @@ export default function AvailabilityScreen() {
       if (!stylist) throw new Error('Çalışan seçilmedi.');
       await BarberApi.addTimeOff(stylist.id, body);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['time-offs', stylist?.id] }),
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onSuccess: () => { Haptics.success(); qc.invalidateQueries({ queryKey: ['time-offs', stylist?.id] }); },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const deleteTimeOffMut = useMutation({
@@ -119,8 +120,8 @@ export default function AvailabilityScreen() {
       if (!stylist) throw new Error('Çalışan seçilmedi.');
       await BarberApi.deleteTimeOff(stylist.id, timeOffId);
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['time-offs', stylist?.id] }),
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onSuccess: () => { Haptics.warning(); qc.invalidateQueries({ queryKey: ['time-offs', stylist?.id] }); },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const addStylistMut = useMutation({
@@ -130,12 +131,13 @@ export default function AvailabilityScreen() {
       return res;
     },
     onSuccess: (res) => {
+      Haptics.success();
       qc.invalidateQueries({ queryKey: ['my-stylists', shopQuery.data?.id] });
       setSelectedStylistId(res.id); // yeni eklenen otomatik seçili
       setShowAddStylist(false);
       setNewStylistName('');
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const updateStylistMut = useMutation({
@@ -144,10 +146,11 @@ export default function AvailabilityScreen() {
       await BarberApi.updateStylist(id, body);
     },
     onSuccess: () => {
+      Haptics.success();
       qc.invalidateQueries({ queryKey: ['my-stylists', shopQuery.data?.id] });
       setEditingStylist(null);
     },
-    onError: (err) => Alert.alert('Hata', extractApiError(err)),
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
   const [showAddStylist, setShowAddStylist] = useState(false);
