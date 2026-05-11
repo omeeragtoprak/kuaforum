@@ -1,34 +1,67 @@
+import { useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
+import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
-import { Button } from '@/components/Button';
 import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
-import { formatDateTime, formatTry, bookingStatusInfo, isBookingUpcoming } from '@/lib/format';
+import {
+  formatDateTime, formatTry, bookingStatusInfo,
+  isBookingUpcoming, isBookingCompleted, isBookingCancelled,
+} from '@/lib/format';
+
+type FilterKey = 'all' | 'upcoming' | 'completed' | 'cancelled';
 
 export default function BookingsScreen() {
   const router = useRouter();
+  const [filter, setFilter] = useState<FilterKey>('all');
   const query = useQuery({
     queryKey: ['my-bookings'],
     queryFn: () => BookingApi.getMine(),
   });
+
+  const all = query.data ?? [];
+  const counts = useMemo(() => ({
+    all: all.length,
+    upcoming: all.filter((b) => isBookingUpcoming(b.status)).length,
+    completed: all.filter((b) => isBookingCompleted(b.status)).length,
+    cancelled: all.filter((b) => isBookingCancelled(b.status)).length,
+  }), [all]);
+
+  const filtered = useMemo(() => {
+    switch (filter) {
+      case 'upcoming': return all.filter((b) => isBookingUpcoming(b.status));
+      case 'completed': return all.filter((b) => isBookingCompleted(b.status));
+      case 'cancelled': return all.filter((b) => isBookingCancelled(b.status));
+      default: return all;
+    }
+  }, [all, filter]);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Randevularım</Text>
         <Text style={styles.subtitle}>
-          {query.isLoading ? 'Yükleniyor…' : `${query.data?.length ?? 0} randevu`}
+          {query.isLoading ? 'Yükleniyor…' : `${all.length} randevu`}
         </Text>
       </View>
 
+      {all.length > 0 ? (
+        <View style={styles.filtersRow}>
+          <Chip label={`Tümü · ${counts.all}`} selected={filter === 'all'} onPress={() => setFilter('all')} />
+          <Chip label={`Yaklaşan · ${counts.upcoming}`} selected={filter === 'upcoming'} onPress={() => setFilter('upcoming')} />
+          <Chip label={`Tamamlanan · ${counts.completed}`} selected={filter === 'completed'} onPress={() => setFilter('completed')} />
+          <Chip label={`İptal · ${counts.cancelled}`} selected={filter === 'cancelled'} onPress={() => setFilter('cancelled')} />
+        </View>
+      ) : null}
+
       <FlatList
-        data={query.data ?? []}
+        data={filtered}
         keyExtractor={(b) => b.id}
         contentContainerStyle={styles.list}
         showsVerticalScrollIndicator={false}
@@ -51,13 +84,21 @@ export default function BookingsScreen() {
               actionLabel="Tekrar dene"
               onAction={() => query.refetch()}
             />
-          ) : (
+          ) : all.length === 0 ? (
             <EmptyState
               emoji="📅"
               title="Henüz randevun yok"
               description="Keşfet sekmesinden bir kuaför bul ve ilk randevunu oluştur."
               actionLabel="Kuaför bul"
               onAction={() => router.push('/(tabs)/' as never)}
+            />
+          ) : (
+            <EmptyState
+              emoji="🔎"
+              title={emptyFilterTitle(filter)}
+              description="Bu filtreye uyan randevu yok. Başka bir filtre dene."
+              actionLabel="Tüm randevuları göster"
+              onAction={() => setFilter('all')}
             />
           )
         }
@@ -67,6 +108,15 @@ export default function BookingsScreen() {
       />
     </SafeAreaView>
   );
+}
+
+function emptyFilterTitle(f: FilterKey): string {
+  switch (f) {
+    case 'upcoming': return 'Yaklaşan randevu yok';
+    case 'completed': return 'Tamamlanan randevu yok';
+    case 'cancelled': return 'İptal edilmiş randevu yok';
+    default: return 'Eşleşen randevu yok';
+  }
 }
 
 function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => void }) {
@@ -114,7 +164,7 @@ function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => voi
         </View>
       ) : null}
 
-      {(booking.status === 'Completed' || booking.status === 4) && booking.hasReview === false ? (
+      {isBookingCompleted(booking.status) && booking.hasReview === false ? (
         <View style={styles.reviewPrompt}>
           <Text style={styles.reviewPromptText}>⭐ Bu randevu için yorum yazmadın</Text>
           <Text style={styles.reviewPromptHint}>Karta dokun → "Yorum yap"</Text>
@@ -126,9 +176,16 @@ function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => voi
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
-  header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.lg, paddingBottom: Spacing.md },
+  header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
+  filtersRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingHorizontal: Layout.screenPaddingX,
+    paddingBottom: Spacing.sm,
+  },
   list: {
     paddingHorizontal: Layout.screenPaddingX,
     paddingBottom: Spacing.xl,

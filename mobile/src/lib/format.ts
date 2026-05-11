@@ -165,6 +165,14 @@ export function isBookingInProgress(s: unknown): boolean {
   return s === 2 || s === '2' || s === 'Started' || s === 'InProgress';
 }
 
+/** İptal edilmiş veya gelmemiş (4/Cancelled, 5/NoShow). */
+export function isBookingCancelled(s: unknown): boolean {
+  return (
+    s === 4 || s === '4' || s === 'Cancelled' ||
+    s === 5 || s === '5' || s === 'NoShow'
+  );
+}
+
 /** Aktif statüleri (1, 2, 3) — ciro hesabı için. */
 export function isBookingRevenueCounted(s: unknown): boolean {
   return (
