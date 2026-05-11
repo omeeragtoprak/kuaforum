@@ -14,5 +14,5 @@ public abstract class Entity
 
     public void ClearDomainEvents() => _domainEvents.Clear();
 
-    protected void Touch() => UpdatedAt = DateTimeOffset.UtcNow;
+    protected virtual void Touch() => UpdatedAt = DateTimeOffset.UtcNow;
 }
