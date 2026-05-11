@@ -97,6 +97,10 @@ public sealed class ReplyToReviewCommandHandler(IApplicationDbContext db, IAudit
         var result = review.AddReply(request.BarberOwnerUserId, request.Body);
         if (result.IsFailure) return result;
 
+        // EF Core navigation set ettiğimizde Reply'ı Modified olarak track ediyor
+        // (Include null ile attach edildiği için). Yeni satır → manuel Added.
+        ctx.Set<BarberReply>().Add(review.Reply!);
+
         await audit.RecordAsync("review.reply_added", nameof(ReviewAggregate), review.Id.ToString(),
             actorUserId: request.BarberOwnerUserId, ct: cancellationToken);
         await db.SaveChangesAsync(cancellationToken);

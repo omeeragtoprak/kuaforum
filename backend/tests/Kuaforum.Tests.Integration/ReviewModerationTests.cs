@@ -123,9 +123,15 @@ public sealed class ReviewModerationTests(IntegrationTestFactory factory)
         var pendingAfter = await adminClient.GetJson<IReadOnlyList<PendingReviewItemDto>>("/v1/admin/reviews/pending");
         Assert.DoesNotContain(pendingAfter, p => p.Id == submitted.Id);
 
-        // NOTE: Owner reply (POST /v1/reviews/{id}/reply) currently fails with
-        // DbUpdateConcurrencyException after Approve. Tracked separately —
-        // not asserted here so the moderation flow stays green.
+        // act 4: owner replies — verify reply persists and surfaces publicly
+        var reply = await ownerClient.PostAsJsonAsync($"/v1/reviews/{submitted.Id}/reply", new { body = "Teşekkürler, tekrar bekleriz!" });
+        var replyBody = await reply.Content.ReadAsStringAsync();
+        Assert.True(reply.IsSuccessStatusCode, $"Reply failed: {(int)reply.StatusCode} {replyBody}");
+
+        var afterReplyList = await customerClient.GetJson<ReviewListResp>($"/v1/barber-shops/{ownerShop.Id}/reviews");
+        var withReply = afterReplyList.Items.Single(r => r.Id == submitted.Id);
+        Assert.Equal("Teşekkürler, tekrar bekleriz!", withReply.ReplyBody);
+        Assert.NotNull(withReply.ReplyAt);
     }
 
     [Fact]

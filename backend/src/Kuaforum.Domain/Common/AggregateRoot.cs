@@ -2,7 +2,7 @@ namespace Kuaforum.Domain.Common;
 
 public abstract class AggregateRoot : Entity
 {
-    public uint Version { get; protected set; }
+    public long Version { get; protected set; }
 
     /// <summary>
     /// Aggregate mutation Touch'ı çağırır → UpdatedAt + Version bump.
