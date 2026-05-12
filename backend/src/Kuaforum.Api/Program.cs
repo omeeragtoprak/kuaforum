@@ -9,6 +9,22 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Sentry: DSN ortam değişkeninden gelir. Boş DSN = SDK disabled (overhead yok).
+// Sentry SDK null DSN'de exception fırlatır, "" ile disable et.
+// AttachStacktrace + TracesSampleRate appsettings.Production.json'da config edilmiş.
+var sentryDsnConfig = builder.Configuration["Sentry:Dsn"];
+if (!string.IsNullOrWhiteSpace(sentryDsnConfig) && !sentryDsnConfig.Contains("${SENTRY_DSN"))
+{
+    builder.WebHost.UseSentry(options =>
+    {
+        options.Dsn = sentryDsnConfig;
+        options.Environment = builder.Configuration["Sentry:Environment"] ?? builder.Environment.EnvironmentName;
+        options.TracesSampleRate = builder.Configuration.GetValue<double?>("Sentry:TracesSampleRate") ?? 0;
+        options.AttachStacktrace = builder.Configuration.GetValue<bool>("Sentry:AttachStacktrace");
+        options.SendDefaultPii = false; // KVKK: PII Sentry'e gönderilmez
+    });
+}
+
 builder.Host.UseSerilog((context, services, configuration) =>
 {
     configuration
@@ -17,6 +33,18 @@ builder.Host.UseSerilog((context, services, configuration) =>
         .Enrich.FromLogContext()
         .Enrich.WithMachineName()
         .Enrich.WithEnvironmentName();
+
+    // Sentry: Serilog → Sentry breadcrumb/event köprüsü. DSN yoksa skip.
+    var sentryDsn = context.Configuration["Sentry:Dsn"];
+    if (!string.IsNullOrWhiteSpace(sentryDsn) && !sentryDsn.Contains("${SENTRY_DSN"))
+    {
+        configuration.WriteTo.Sentry(o =>
+        {
+            o.MinimumBreadcrumbLevel = Serilog.Events.LogEventLevel.Information;
+            o.MinimumEventLevel = Serilog.Events.LogEventLevel.Error;
+            o.Dsn = sentryDsn;
+        });
+    }
 });
 
 builder.Services.AddOpenApi();
