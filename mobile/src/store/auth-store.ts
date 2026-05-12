@@ -33,7 +33,10 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setUser: (user) => set({ user, isAuthenticated: !!user, isLoading: false }),
   setLoading: (v) => set({ isLoading: v }),
   signOut: async () => {
-    try { await AuthApi.logout(); } catch { /* ignore */ }
+    try { await AuthApi.logout(); } catch (err) {
+      const { ErrorReporter } = await import('@/lib/error-reporter');
+      ErrorReporter.capture(err, { tag: 'auth.logout' });
+    }
     await TokenStorage.clear();
     set({ user: null, isAuthenticated: false });
   },
@@ -62,8 +65,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isAuthenticated: true,
         isLoading: false,
       });
-    } catch {
-      // token expired/invalid
+    } catch (err) {
+      // token expired/invalid — beklenen path (401/403) sessizce geçer;
+      // network/parse hatasında reporter'a düşer.
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      if (status !== 401 && status !== 403) {
+        const { ErrorReporter } = await import('@/lib/error-reporter');
+        ErrorReporter.capture(err, { tag: 'auth.hydrate', extra: { status } });
+      }
       await TokenStorage.clear();
       set({ isAuthenticated: false, user: null, isLoading: false });
     }
