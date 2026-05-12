@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/auth-store';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
+import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -58,15 +59,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <QueryClientProvider client={queryClient}>
-          <StatusBar style="auto" />
-          <AuthGate>
-            <Stack screenOptions={{ headerShown: false }} />
-          </AuthGate>
-        </QueryClientProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <AppErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <QueryClientProvider client={queryClient}>
+            <StatusBar style="auto" />
+            <AuthGate>
+              <Stack screenOptions={{ headerShown: false }} />
+            </AuthGate>
+          </QueryClientProvider>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </AppErrorBoundary>
   );
 }

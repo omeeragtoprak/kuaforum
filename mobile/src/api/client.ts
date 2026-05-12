@@ -84,7 +84,9 @@ async function refreshTokens(): Promise<boolean> {
       return true;
     }
     return false;
-  } catch {
+  } catch (err) {
+    const { ErrorReporter } = await import('@/lib/error-reporter');
+    ErrorReporter.capture(err, { tag: 'auth.refresh', extra: { failed: true } });
     return false;
   }
 }
