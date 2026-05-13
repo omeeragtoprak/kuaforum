@@ -76,6 +76,7 @@ export default function BarberLayout() {
       />
       <Tabs.Screen name="kyc" options={{ href: null }} />
       <Tabs.Screen name="availability" options={{ href: null }} />
+      <Tabs.Screen name="reviews" options={{ href: null }} />
     </Tabs>
   );
 }

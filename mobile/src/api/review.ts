@@ -30,4 +30,7 @@ export const ReviewApi = {
     const res = await apiClient.post<{ id: string }>('/v1/reviews', { bookingId, rating, body });
     return res.data;
   },
+  async reply(reviewId: string, body: string): Promise<void> {
+    await apiClient.post(`/v1/reviews/${reviewId}/reply`, { body });
+  },
 };

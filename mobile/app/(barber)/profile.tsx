@@ -153,6 +153,8 @@ export default function BarberProfileScreen() {
           <ListRow icon="👥" label="Stilistler" hint="Düzenle" onPress={() => router.push('/(barber)/availability')} />
           <Divider />
           <ListRow icon="✂️" label="Hizmetler" hint="CRUD" onPress={() => router.push('/(barber)/services')} />
+          <Divider />
+          <ListRow icon="💬" label="Yorumlar" hint="Görüntüle & cevapla" onPress={() => router.push('/(barber)/reviews')} />
         </Card>
 
         <Text style={styles.sectionTitle}>Hesap</Text>
