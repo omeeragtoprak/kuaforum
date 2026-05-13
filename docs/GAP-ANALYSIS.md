@@ -1,4 +1,4 @@
-# Kuaforum — Gap Analizi (2026-05-04)
+# Kuaforum — Gap Analizi (2026-05-13)
 
 > Bu doküman, projenin **mevcut durumu** ile **hedeflenen MVP / production** durumu arasındaki farkları sistematik olarak listeler. Her madde için: **status · kapsamı · efor tahmini**.
 
@@ -19,20 +19,22 @@
 | Bileşen | Bitti | Üretim hazır? |
 |---|---|---|
 | Phase 0 dokümantasyon | 51/51 ✅ | ✅ |
-| Phase 1 backbone (M1-M5) | %95 | 🟢 (testler eksik) |
-| Phase 2 marketplace (M6-M11) | %85 | 🟠 (PSP/SMS/Maps/Push gerçek değil) |
-| Phase 3 growth (M12-M16) | %20 | 🔴 (admin minimal, analytics yok) |
-| Mobile customer app | %85 | 🟢 (gerçek push yok, walk-in ekran yok) |
-| Mobile barber paneli | %80 | 🟢 (KYC submit flow eksik) |
-| Web admin paneli | %50 | 🟢 (login + dashboard + KYC + users + reviews + bookings + barber-shops var, shadcn yok) |
-| Backend domain unit testleri | 30 test | 🟠 |
-| Application + Integration testleri | 0 | 🔴 |
-| Üçüncü parti gerçek entegrasyon | Hepsi mock | 🔴 (Day-1 deploy için 🟣 founder hesap açma) |
-| CI/CD | Doc'lar var, pipeline yok | 🔴 |
+| Phase 1 backbone (M1-M5) | %98 | 🟢 |
+| Phase 2 marketplace (M6-M11) | %90 | 🟠 (PSP/SMS/Maps gerçek değil — 🟣 hesap) |
+| Phase 3 growth (M12-M16) | %55 | 🟠 (admin 7 sayfa + audit log, mobile analytics today widget) |
+| Mobile customer app | %92 | 🟢 (profile edit + favoriler + i18n eksik) |
+| Mobile barber paneli | %85 | 🟢 (yorum cevap mobile UI eksik) |
+| Web admin paneli | %85 | 🟢 (8 sayfa: dashboard/users/shops/bookings/kyc/reviews/audit-logs/login; shadcn migration optional) |
+| Backend domain unit testleri | 71 test | 🟢 |
+| Backend application unit testleri | 51 test | 🟢 |
+| Backend integration testleri | 36 test | 🟢 (Testcontainers, çok flow kapsanmış) |
+| Mobile error boundary + Sentry foundation | ✅ (DSN-guard) | 🟢 (founder DSN gelince auto-aktive) |
+| Üçüncü parti gerçek entegrasyon | Mock fallback | 🟠 (PayTR/Iyzico/R2/Sentry DSN — 🟣 hesap) |
+| CI/CD | GitHub Actions ✅ | 🟢 (Hetzner deploy pipeline eksik) |
 
-**Toplam ilerleme:** Master spec'in **~%55-60'ı** kodlanmış durumda. Geriye **~%40-45** kalıyor — büyük çoğunluğu üçüncü-parti gerçek entegrasyon, admin panel genişlemesi, test paketi, CI/CD ve compliance.
+**Toplam ilerleme:** Master spec'in **~%80'i** kodlanmış. Kalan **~%20** — üçüncü-parti hesap entegrasyonu (PayTR/R2/Sentry DSN — 🟣 founder), Hetzner deploy pipeline, mobile UX gap (profile edit + i18n), şehir/kategori admin yönetimi.
 
-**Realistik tahmin (devam):** Solo founder + Claude ile, gerçek hesap açma ve compliance hariç, kalan kod işi **~6-10 hafta**. Bunun yarısı admin panel + test paketi + DevOps.
+**Realistik tahmin (devam):** Founder onayı bekleyen 🟣 işleri saymazsak, kalan kod **~3-5 hafta**.
 
 ---
 
@@ -430,6 +432,53 @@ Mobile zaten i18next yüklü ama tek dil (TR). EN/AR sonra eklenir.
 - ✅ Integration test paketi (Testcontainers + 6 happy-path test, hepsi yeşil)
 - ✅ FCM real delivery adapter (FirebaseAdmin SDK + DeviceToken entity + register/unregister + mobile hook + setup doc)
 - ✅ Web admin genişletme (admin bookings + barber-shops sayfaları + endpoint'leri + JWT inbound claim mapping fix)
+
+## 14B. Cycle 5-7 Yatırımları (2026-05-08 → 2026-05-13)
+
+### Erzurum default-city + demo seed (Cycle 5)
+- Tr81CitySeed Erzurum districts + DemoBarberSeeder 6 Erzurum shop (Çifte Minare/Stil Studio/Palandöken/VIP/Aziziye/Genç Trend)
+- Mobile keşfet refactor: Erzurum otomatik seçili + Zustand store + city picker modal + inline shop cards
+- KVKK gizlilik UI: aktif oturumlar + rıza yönetimi (Marketing/Location/HealthData revoke)
+- Web admin users/bookings/barber-shops modernize (modal + skeleton + empty state pattern)
+- Mobile bookings tab Tümü/Yaklaşan/Tamamlanan/İptal filter chip + status enum bug fix (Completed=3, eski yanlış=4)
+
+### Critical bug fix + Sentry foundation (Cycle 6)
+- **Reply 500 DbUpdateConcurrencyException** — kök neden: EF Core `Include(r => r.Reply)` LEFT JOIN null state ile nav property tracker'a takıldı; sonra `review.Reply = BarberReply.Create(...)` set edildiğinde EF Modified state'e geçirdi (Added değil) → UPDATE WHERE id=<yeni> → 0 row. Fix: handler'da `ctx.Set<BarberReply>().Add(review.Reply!)` explicit Added. Memory'ye gotcha kaydedildi.
+- **AggregateRoot.Touch Version++ override** — concurrency token sistemik bump (Entity.Touch virtual + AggregateRoot override).
+- **Backend Sentry.AspNetCore 5.0.1 + Sentry.Serilog** wired — DSN env-guarded (boş/${SENTRY_DSN} placeholder → SDK init edilmez), KVKK SendDefaultPii=false, Serilog Error→event/Info→breadcrumb.
+- **Mobile ErrorReporter facade + AppErrorBoundary** — RootLayout top-level wrap, componentDidCatch reporter'a; api/client.ts refreshTokens + auth-store signOut/hydrate catch'leri tag'li reporter'a. V1.5 @sentry/react-native swap-out.
+
+### Test coverage genişletme (Cycle 7) — +53 test
+- **ReviewModerationTests** (2) — profanity stopword → Pending → admin approve → public list +1; admin reject → list unchanged.
+- **CancellationFlowTests** (3) — >24h customer 100%, admin override 100%, post-completed reject.
+- **AccountDeletionTests** (3) — soft-delete + tokens revoke + restore, double-delete reject, multi-device session revoke.
+- **ShopSuspensionTests** (1) — suspend → search hide + booking 400; reactivate restore.
+- **PaymentInitiationTests** (2) — checkout session + idempotency 409 + mock complete auto-confirm; ownership 400.
+- **WalkInFlowTests** (1) — toggle on/off + filter + BookingType.WalkIn DB assertion.
+- **AuditLogReadTests** (2) — admin suspend → log entry görünür (actor name + payload JSON); customer 401/403.
+- **ReviewTests** domain (17) — AutoModerate profanity, Approve/Reject/Hide state, AddReply rules.
+- **BookingTests** domain (24) — refund matrix 100/50/0 + reason override (BarberRequested/PaymentFailed/PendingTimeout/AdminOverride hep 100, NoShow=0), state transitions, reschedule, MarkNoShow guards.
+
+**Sonuç:** Backend 105 → **158 test** (36 integration + 51 application + 71 domain).
+
+### Audit log transparency (Cycle 8 başlangıcı)
+- **GET /v1/admin/audit-logs** — actor/action/resource/dateRange filter + paging (max 200), actor display name JOIN, integration test (suspend action surfaced + admin-only).
+- **Web admin /audit-logs sayfası** — expandable JSON payload dark pre, top-5 action chip filter, shimmer skeleton, empty state.
+
+## 14C. Kalan Kritik Gap'ler (öncelik sırasıyla)
+
+1. **Mobile customer profile düzenleme** — `UpdateMyProfile` endpoint var; display name + avatar düzenleme UI'ı eksik.
+2. **Phone change OTP flow mobile UI** — backend `InitiatePhoneChange` + `ConfirmPhoneChange` var, mobile UI yok.
+3. **Owner için yorum cevap mobile UI** — backend `POST /v1/reviews/{id}/reply` çalışıyor, mobile listeleme + cevap ekranı yok.
+4. **Mobile i18n** — i18next şartına rağmen sabit Türkçe string kullanılıyor. M14 Internationalization spec'e ihtiyaç.
+5. **Customer "Hesap bilgilerini indir"** — KVKK m.11 veri alma hakkı, endpoint+UI yok.
+6. **Stylist/Payment/Notification domain unit tests** — coverage genişletme.
+7. **Modül spec'leri (M2-M12)** — sadece M1 Auth spec yazılmış; geri kalan 11 modül tek satır.
+8. **Hetzner deploy pipeline** — GitHub Actions build var, deploy yok.
+9. **PayTR / Iyzico gerçek HTTP** — 🟣 founder hesap.
+10. **R2 production storage** — 🟣 founder bucket/keys.
+11. **Sentry DSN** — 🟣 founder Sentry organization.
+12. **NetGSM gerçek SMS** — 🟣 founder hesap.
 
 ## 15. Bağlantılar
 
