@@ -114,6 +114,23 @@ public static class AdminEndpoints
                 : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("AdminCancelBooking");
 
+        group.MapGet("/audit-logs", async (
+            [FromQuery] Guid? actorUserId,
+            [FromQuery] string? actionType,
+            [FromQuery] string? resourceType,
+            [FromQuery] string? resourceId,
+            [FromQuery] DateTimeOffset? fromUtc,
+            [FromQuery] DateTimeOffset? toUtc,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
+            IMediator m, CancellationToken ct) =>
+        {
+            var r = await m.Send(new GetAuditLogsQuery(
+                actorUserId, actionType, resourceType, resourceId,
+                fromUtc, toUtc, page ?? 1, pageSize ?? 50), ct);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+        }).WithName("AdminAuditLogs");
+
         return app;
     }
 

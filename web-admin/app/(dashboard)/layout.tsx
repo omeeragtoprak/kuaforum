@@ -12,6 +12,7 @@ const NAV: Array<{ href: import('next').Route; label: string }> = [
   { href: '/bookings', label: 'Randevular' },
   { href: '/kyc', label: 'KYC Kuyruğu' },
   { href: '/reviews', label: 'Yorum Moderasyonu' },
+  { href: '/audit-logs' as import('next').Route, label: 'Audit Log' },
 ];
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {

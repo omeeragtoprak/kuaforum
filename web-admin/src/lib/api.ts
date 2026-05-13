@@ -191,6 +191,50 @@ export const adminApi = {
       method: 'POST',
     });
   },
+  async listAuditLogs(params: AuditLogQuery = {}): Promise<AuditLogPage> {
+    const qs = new URLSearchParams();
+    if (params.actorUserId) qs.set('actorUserId', params.actorUserId);
+    if (params.actionType) qs.set('actionType', params.actionType);
+    if (params.resourceType) qs.set('resourceType', params.resourceType);
+    if (params.resourceId) qs.set('resourceId', params.resourceId);
+    if (params.fromUtc) qs.set('fromUtc', params.fromUtc);
+    if (params.toUtc) qs.set('toUtc', params.toUtc);
+    qs.set('page', String(params.page ?? 1));
+    qs.set('pageSize', String(params.pageSize ?? 50));
+    return apiFetch<AuditLogPage>(`/v1/admin/audit-logs?${qs}`);
+  },
+};
+
+export type AuditLogQuery = {
+  actorUserId?: string;
+  actionType?: string;
+  resourceType?: string;
+  resourceId?: string;
+  fromUtc?: string;
+  toUtc?: string;
+  page?: number;
+  pageSize?: number;
+};
+
+export type AuditLogItem = {
+  id: number;
+  actorUserId: string | null;
+  actorDisplayName: string | null;
+  actorType: string;
+  actionType: string;
+  resourceType: string;
+  resourceId: string;
+  payloadJson: string | null;
+  ip: string | null;
+  requestId: string | null;
+  createdAt: string;
+};
+
+export type AuditLogPage = {
+  items: AuditLogItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
 };
 
 export type AdminBookingsQuery = {
