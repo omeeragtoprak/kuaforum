@@ -120,6 +120,8 @@ export default function ProfileScreen() {
         <Card style={styles.section} padded={false}>
           <ListRow icon="✏️" label="Profili düzenle" onPress={() => router.push('/account/edit-profile' as never)} />
           <Divider />
+          <ListRow icon="📱" label="Telefon değiştir" onPress={() => router.push('/account/change-phone' as never)} />
+          <Divider />
           <ListRow icon="🔐" label="Aktif oturumlar" onPress={() => router.push('/account/sessions' as never)} />
           <Divider />
           <ListRow icon="🛡️" label="Gizlilik & Rızalar (KVKK)" onPress={() => router.push('/account/consents' as never)} />

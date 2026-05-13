@@ -75,6 +75,15 @@ export const AuthApi = {
     await apiClient.patch('/v1/users/me', body);
   },
 
+  async initiatePhoneChange(newPhone: string): Promise<{ otpId: string; expiresAt: string }> {
+    const res = await apiClient.post<{ otpId: string; expiresAt: string }>('/v1/users/me/phone-change/initiate', { newPhone });
+    return res.data;
+  },
+
+  async confirmPhoneChange(otpId: string, code: string): Promise<void> {
+    await apiClient.post('/v1/users/me/phone-change/confirm', { otpId, code });
+  },
+
   async deleteMyAccount(): Promise<void> {
     await apiClient.delete('/v1/users/me');
   },
