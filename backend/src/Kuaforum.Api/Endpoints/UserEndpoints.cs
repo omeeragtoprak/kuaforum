@@ -19,6 +19,7 @@ public static class UserEndpoints
         group.MapPatch("", UpdateMyProfile).WithName("UpdateMyProfile");
         group.MapDelete("", DeleteMyAccount).WithName("DeleteMyAccount");
         group.MapPost("/restore", RestoreMyAccount).WithName("RestoreMyAccount");
+        group.MapGet("/export", ExportMyData).WithName("ExportMyData");
 
         group.MapGet("/sessions", GetMySessions).WithName("GetMySessions");
         group.MapDelete("/sessions/{id:guid}", RevokeSession).WithName("RevokeSession");
@@ -96,6 +97,15 @@ public static class UserEndpoints
         return result.IsSuccess
             ? Results.NoContent()
             : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+    }
+
+    private static async Task<IResult> ExportMyData(IMediator m, IRequestContext ctx, CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var result = await m.Send(new ExportMyDataQuery(ctx.UserId.Value), token);
+        return result.IsSuccess
+            ? Results.Ok(result.Value)
+            : Results.Problem(detail: result.Error.Message, statusCode: 404, title: result.Error.Code);
     }
 
     private static async Task<IResult> GetMySessions(IMediator m, IRequestContext ctx, CancellationToken token)

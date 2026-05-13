@@ -84,6 +84,11 @@ export const AuthApi = {
     await apiClient.post('/v1/users/me/phone-change/confirm', { otpId, code });
   },
 
+  async exportMyData(): Promise<unknown> {
+    const res = await apiClient.get('/v1/users/me/export');
+    return res.data;
+  },
+
   async deleteMyAccount(): Promise<void> {
     await apiClient.delete('/v1/users/me');
   },

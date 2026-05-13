@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ScrollView, Alert, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Pressable, Share } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
@@ -88,6 +88,22 @@ export default function ProfileScreen() {
     }
   }
 
+  // KVKK m.11.1.b — kullanıcı kendi kişisel verilerine erişim hakkı
+  async function handleExportData() {
+    try {
+      const data = await AuthApi.exportMyData();
+      const json = JSON.stringify(data, null, 2);
+      Haptics.success();
+      await Share.share({
+        title: 'Kuaforum verilerim',
+        message: json,
+      });
+    } catch (err) {
+      Haptics.error();
+      Alert.alert('Hata', extractApiError(err));
+    }
+  }
+
   const initial = displayName.slice(0, 1).toUpperCase();
   const roleLabel: Record<string, string> = {
     Customer: 'Müşteri',
@@ -125,6 +141,8 @@ export default function ProfileScreen() {
           <ListRow icon="🔐" label="Aktif oturumlar" onPress={() => router.push('/account/sessions' as never)} />
           <Divider />
           <ListRow icon="🛡️" label="Gizlilik & Rızalar (KVKK)" onPress={() => router.push('/account/consents' as never)} />
+          <Divider />
+          <ListRow icon="⬇️" label="Verilerimi indir" hint="KVKK m.11" onPress={handleExportData} />
           <Divider />
           <ListRow icon="🌐" label="Dil" value="Türkçe" disabled />
         </Card>
