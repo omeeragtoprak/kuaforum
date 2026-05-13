@@ -71,6 +71,10 @@ export const AuthApi = {
     return res.data;
   },
 
+  async updateMyProfile(body: { displayName?: string | null; avatarUrl?: string | null }): Promise<void> {
+    await apiClient.patch('/v1/users/me', body);
+  },
+
   async deleteMyAccount(): Promise<void> {
     await apiClient.delete('/v1/users/me');
   },
