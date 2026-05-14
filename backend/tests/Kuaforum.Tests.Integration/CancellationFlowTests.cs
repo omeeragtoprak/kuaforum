@@ -98,6 +98,42 @@ public sealed class CancellationFlowTests(IntegrationTestFactory factory)
     }
 
     /// <summary>
+    /// Owner cancel via /v1/bookings/{id}/cancel reason=1 (BarberRequested) →
+    /// 100% iade — yakın tarihte olsa bile zaman-bağımsız.
+    /// Regression: mobile booking detail eski 5 (NoShow) gönderiyordu, 0% iade
+    /// hatasını yakalamak için.
+    /// </summary>
+    [Fact]
+    public async Task Owner_cancel_with_BarberRequested_reason_returns_full_refund()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        // <12h ahead — eğer reason CustomerRequested olsaydı 0% iade gelirdi.
+        var bookingId = await InitiateBookingAsync(customerClient, ownerClient, 60);
+        await ownerClient.PostAsync($"/v1/bookings/{bookingId}/confirm", null);
+
+        // act: owner cancels with reason=1 (BarberRequested)
+        var cancel = await ownerClient.PostAsJsonAsync($"/v1/bookings/{bookingId}/cancel", new { reason = 1 });
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        var resp = await cancel.Content.ReadFromJsonAsync<CancelResp>(TestHelpers.Json);
+        Assert.Equal(100, resp!.RefundPercentage);
+
+        var detail = await customerClient.GetJson<BookingDto>($"/v1/bookings/{bookingId}");
+        Assert.Equal("Cancelled", detail.Status);
+        Assert.Equal(100, detail.RefundPercentage);
+    }
+
+    /// <summary>
     /// Customer cancel after Completed → domain reject.
     /// </summary>
     [Fact]
