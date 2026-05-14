@@ -113,7 +113,12 @@ export default function BookingDetailScreen() {
 
   function handleCancel() {
     if (!query.data) return;
-    const reasonCode = isBarber ? 5 : 0;
+    // Backend BookingCancellationReason enum:
+    // 0=CustomerRequested, 1=BarberRequested, 2=PaymentFailed, 3=PendingTimeout,
+    // 4=AdminOverride, 5=NoShow. Owner cancel et 5 ile gönderilirse müşteri 0
+    // refund alır (NoShow=0%) — bu YANLIŞ. Owner'ın iptali = BarberRequested,
+    // müşteriye 100% iade.
+    const reasonCode = isBarber ? 1 : 0;
     const previewPct = previewRefundPercent(query.data.scheduledAt, isBarber);
     const previewLine = isBarber
       ? '✅ Kuaför iptali → müşteri %100 iade alır'
