@@ -122,7 +122,15 @@ export default function DiscoverScreen() {
           </View>
         }
         ListEmptyComponent={
-          shopsQuery.isLoading || !cityId ? (
+          citiesQuery.isError ? (
+            <EmptyState
+              emoji="📡"
+              title="Şehirler yüklenemedi"
+              description="Sunucuya ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
+              actionLabel="Tekrar dene"
+              onAction={() => citiesQuery.refetch()}
+            />
+          ) : citiesQuery.isLoading || (!cityId && !citiesQuery.isError) || shopsQuery.isLoading ? (
             <SkeletonList count={4} render={() => <SkeletonShopCard />} />
           ) : shopsQuery.isError ? (
             <EmptyState

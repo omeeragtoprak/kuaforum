@@ -79,8 +79,14 @@ export default function BarberReviewsScreen() {
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
         ListEmptyComponent={
-          reviewsQuery.isLoading || !shopId ? (
+          shopQuery.isLoading || reviewsQuery.isLoading ? (
             <SkeletonList count={3} render={() => <SkeletonBookingRow />} />
+          ) : !shopId ? (
+            <EmptyState
+              emoji="🏪"
+              title="Salon yok"
+              description="Önce Profil sekmesinden salon bilgilerini girmelisin."
+            />
           ) : reviewsQuery.isError ? (
             <EmptyState
               emoji="⚠️"

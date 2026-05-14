@@ -9,6 +9,7 @@ import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
+import { formatPhoneTr, isValidTrMobile, phoneToE164 } from '@/lib/format';
 
 type Step = 'enter-phone' | 'enter-code';
 
@@ -24,13 +25,13 @@ export default function ChangePhoneScreen() {
   const qc = useQueryClient();
 
   const [step, setStep] = useState<Step>('enter-phone');
-  const [newPhone, setNewPhone] = useState('+90');
+  const [newPhone, setNewPhone] = useState('+90 ');
   const [otpId, setOtpId] = useState<string | null>(null);
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [code, setCode] = useState('');
 
   const initiateMut = useMutation({
-    mutationFn: () => AuthApi.initiatePhoneChange(newPhone.trim()),
+    mutationFn: () => AuthApi.initiatePhoneChange(phoneToE164(newPhone)),
     onSuccess: (res) => {
       Haptics.success();
       setOtpId(res.otpId);
@@ -54,7 +55,7 @@ export default function ChangePhoneScreen() {
     onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
-  const phoneValid = /^\+90\s?5\d{9}$/.test(newPhone.replace(/\s/g, ''));
+  const phoneValid = isValidTrMobile(newPhone);
   const codeValid = /^\d{6}$/.test(code);
 
   return (
@@ -89,13 +90,12 @@ export default function ChangePhoneScreen() {
               <Input
                 label="Yeni telefon"
                 value={newPhone}
-                onChangeText={setNewPhone}
-                placeholder="+90 5XX XXX XX XX"
+                onChangeText={(v) => setNewPhone(formatPhoneTr(v))}
+                placeholder="+90 555 123 45 67"
                 keyboardType="phone-pad"
                 autoComplete="tel"
-                hint="E.164 formatında: +90 ile başlayan 13 hane"
-                error={newPhone.length > 4 && !phoneValid ? 'Geçerli bir Türk cep numarası gir' : undefined}
-                maxLength={16}
+                hint="Türk cep numarası — login akışıyla aynı format"
+                error={newPhone.replace(/\s/g, '').length > 4 && !phoneValid ? 'Geçerli bir Türk cep numarası gir' : undefined}
               />
               <Button
                 label="Kod gönder"

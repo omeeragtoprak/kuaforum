@@ -88,12 +88,27 @@ export default function ProfileScreen() {
     }
   }
 
-  // KVKK m.11.1.b — kullanıcı kendi kişisel verilerine erişim hakkı
+  // KVKK m.11.1.b — kullanıcı kendi kişisel verilerine erişim hakkı.
+  // Share API büyük string'lerde iOS'ta sessizce başarısız olur (paste-board limit
+  // ~64KB), bu yüzden >50KB'lik export'ları özet + sayım gösterip Alert.alert
+  // ile yönlendiriyoruz (V1.5: dosya olarak indirme için expo-file-system).
   async function handleExportData() {
     try {
       const data = await AuthApi.exportMyData();
       const json = JSON.stringify(data, null, 2);
+      // RN-safe byte count: UTF-8 ASCII karakterler 1, çok-bayt karakterler ~2.
+      // Blob/Buffer Hermes'te yok; URI-encode tahmini yeterince hassas.
+      const bytes = encodeURIComponent(json).replace(/%[0-9A-F]{2}/g, '_').length;
       Haptics.success();
+      if (bytes > 50_000) {
+        const counts = data as { bookings?: unknown[]; reviews?: unknown[]; consents?: unknown[]; sessions?: unknown[] };
+        Alert.alert(
+          'Verilerin hazır',
+          `Toplam ${Math.round(bytes / 1024)} KB · ${counts.bookings?.length ?? 0} randevu · ${counts.reviews?.length ?? 0} yorum · ${counts.consents?.length ?? 0} rıza · ${counts.sessions?.length ?? 0} oturum.\n\nUygulama içinden tek seferde paylaşmak yerine yardım@kuaforum.com adresine destek talebi açarak tam dosyayı isteyebilirsin.`,
+          [{ text: 'Tamam' }],
+        );
+        return;
+      }
       await Share.share({
         title: 'Kuaforum verilerim',
         message: json,
