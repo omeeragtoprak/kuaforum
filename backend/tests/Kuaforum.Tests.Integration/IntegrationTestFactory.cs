@@ -12,6 +12,17 @@ namespace Kuaforum.Tests.Integration;
 
 public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
+    static IntegrationTestFactory()
+    {
+        // Hangfire AddHangfireServer EAGER Postgres bağlanır (BackgroundJobServer
+        // construct edilirken JobStorage init eder). ConfigureAppConfiguration
+        // override CI'da timing nedeniyle uygulanmadan AddInfrastructure çağrılıp
+        // appsettings.json fallback'ine düşüyor (localhost:5432 connection refused).
+        // Environment variable Program.CreateBuilder içinde *otomatik* yüklenir
+        // (EnvironmentVariablesConfigurationProvider) — garantili önce gelir.
+        Environment.SetEnvironmentVariable("Hangfire__Enabled", "false");
+    }
+
     private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
         .WithImage("nickblah/postgis:16-postgis-3.4") // multi-arch (amd64 + arm64/v8)
         .WithDatabase("kuaforum_test")
