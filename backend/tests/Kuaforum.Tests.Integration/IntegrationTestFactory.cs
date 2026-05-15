@@ -1,6 +1,7 @@
 using Kuaforum.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,9 +58,25 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
             });
         });
 
-        builder.ConfigureServices(services =>
+        // ConfigureAppConfiguration tek başına yeterli değil — AddInfrastructure
+        // pgConnString'i ConfigurationManager build edilirken **eager** okuyor,
+        // testteki InMemory override bazı durumlarda timing nedeniyle
+        // appsettings.json fallback'ine düşüyor (CI'da gözlemlendi).
+        // En kesin yöntem: ConfigureTestServices ile DbContextOptions'ı doğrudan
+        // Testcontainers connection string'i ile yeniden register et.
+        builder.ConfigureTestServices(services =>
         {
-            // Optional: tweak service registrations for test isolation.
+            var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
+            if (dbDescriptor is not null) services.Remove(dbDescriptor);
+
+            services.AddDbContext<ApplicationDbContext>(options =>
+            {
+                options.UseNpgsql(_postgres.GetConnectionString(), npg =>
+                {
+                    npg.UseNetTopologySuite();
+                    npg.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.GetName().Name);
+                });
+            });
         });
     }
 
