@@ -15,11 +15,10 @@ jobs:
     name: Backend (build + test)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    services:
-      docker:
-        # Docker available for Testcontainers (Postgres + Redis spin-up)
-        image: docker:dind
-        options: --privileged
+    # NOT: ubuntu-latest runner'da Docker host-level kuruludur — Testcontainers
+    # default `/var/run/docker.sock` üzerinden container başlatır. Eski
+    # `services.docker: docker:dind` tanımı, Testcontainers'ı DinD namespace'ine
+    # yönlendirip Postgres connection refused (127.0.0.1:5432) yapıyordu.
     steps:
       - uses: actions/checkout@v4
 
