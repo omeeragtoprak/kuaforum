@@ -51,6 +51,9 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
                 ["ConnectionStrings:Redis"] = _redis.GetConnectionString(),
                 ["Seed:Demo"] = "true",
                 ["Seed:ComprehensiveDemo"] = "false",
+                // Hangfire UsePostgreSqlStorage eager bağlanır; testte ayrı bir
+                // Postgres instance açmaktan kaçınmak için devre dışı.
+                ["Hangfire:Enabled"] = "false",
             });
         });
 

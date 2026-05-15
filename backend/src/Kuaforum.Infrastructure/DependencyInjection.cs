@@ -127,17 +127,25 @@ public static class DependencyInjection
             services.AddSingleton<ISmsService, MockSmsService>();
         }
 
-        services.AddHangfire(cfg =>
+        // Hangfire storage Postgres'e EAGER bağlanır (UsePostgreSqlStorage builder
+        // sırasında schema check yapar). Test ortamında Testcontainers ayrı dynamic
+        // port'ta açılırken Hangfire default 5432'ye bağlanıp connection refused.
+        // Flag ile devre dışı bırakılabilir: appsettings/env'de "Hangfire:Enabled=false".
+        var hangfireEnabled = configuration.GetValue<bool?>("Hangfire:Enabled") ?? true;
+        if (hangfireEnabled)
         {
-            cfg.UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(pgConnString));
-            cfg.UseSimpleAssemblyNameTypeSerializer();
-            cfg.UseRecommendedSerializerSettings();
-        });
-        services.AddHangfireServer(opts =>
-        {
-            opts.WorkerCount = Environment.ProcessorCount;
-            opts.Queues = ["default", "critical"];
-        });
+            services.AddHangfire(cfg =>
+            {
+                cfg.UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(pgConnString));
+                cfg.UseSimpleAssemblyNameTypeSerializer();
+                cfg.UseRecommendedSerializerSettings();
+            });
+            services.AddHangfireServer(opts =>
+            {
+                opts.WorkerCount = Environment.ProcessorCount;
+                opts.Queues = ["default", "critical"];
+            });
+        }
         services.AddScoped<HardDeleteUsersJob>();
         services.AddScoped<ExpireWalkInJob>();
         services.AddScoped<AutoNoShowJob>();

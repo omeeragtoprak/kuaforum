@@ -147,14 +147,19 @@ app.MapNotificationEndpoints();
 app.MapDeviceTokenEndpoints();
 app.MapAdminEndpoints();
 
-app.MapHangfireDashboard("/hangfire", new DashboardOptions
+// Hangfire dashboard + recurring jobs ancak Hangfire DI'a register edildiyse
+// (Hangfire:Enabled config flag). Test ortamında Postgres yokken eager bağlanma
+// yapmayı engellemek için DependencyInjection.cs flag'i kontrol ediyor.
+var hangfireEnabled = builder.Configuration.GetValue<bool?>("Hangfire:Enabled") ?? true;
+if (hangfireEnabled)
 {
-    DashboardTitle = "Kuaforum Background Jobs",
-    Authorization = [new HangfireDashboardAdminFilter()]
-});
+    app.MapHangfireDashboard("/hangfire", new DashboardOptions
+    {
+        DashboardTitle = "Kuaforum Background Jobs",
+        Authorization = [new HangfireDashboardAdminFilter()]
+    });
 
-using (var scope = app.Services.CreateScope())
-{
+    using var scope = app.Services.CreateScope();
     Kuaforum.Infrastructure.DependencyInjection.RegisterRecurringJobs(scope.ServiceProvider);
 }
 
