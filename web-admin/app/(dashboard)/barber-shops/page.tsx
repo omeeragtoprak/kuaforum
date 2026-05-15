@@ -8,12 +8,17 @@ type ActionModal =
   | { kind: 'reactivate'; shop: AdminBarberShopDto }
   | null;
 
+// Backend enum: Draft=0, PendingKyc=1, Active=2, Suspended=3, Closed=4.
+// Eski versiyon 0→Hazırlık, 1→Aktif, 2→Askıda, 3→Kapalı yapıyordu — UI 1'i Aktif
+// olarak gösterip gerçekte PendingKyc olan shop'u admin'e Aktif diye sunuyordu.
 const STATUS_LABEL: Record<string, { label: string; color: string }> = {
   '0': { label: 'Hazırlık', color: '#6B7280' },
-  '1': { label: 'Aktif', color: '#10B981' },
-  '2': { label: 'Askıda', color: '#F59E0B' },
-  '3': { label: 'Kapalı', color: '#EF4444' },
+  '1': { label: 'KYC bekliyor', color: '#3B82F6' },
+  '2': { label: 'Aktif', color: '#10B981' },
+  '3': { label: 'Askıda', color: '#F59E0B' },
+  '4': { label: 'Kapalı', color: '#EF4444' },
   Draft: { label: 'Hazırlık', color: '#6B7280' },
+  PendingKyc: { label: 'KYC bekliyor', color: '#3B82F6' },
   Active: { label: 'Aktif', color: '#10B981' },
   Suspended: { label: 'Askıda', color: '#F59E0B' },
   Closed: { label: 'Kapalı', color: '#EF4444' },
@@ -90,9 +95,10 @@ export default function BarberShopsPage() {
         >
           <option value="">Tüm durumlar</option>
           <option value="0">Hazırlık</option>
-          <option value="1">Aktif</option>
-          <option value="2">Askıda</option>
-          <option value="3">Kapalı</option>
+          <option value="1">KYC bekliyor</option>
+          <option value="2">Aktif</option>
+          <option value="3">Askıda</option>
+          <option value="4">Kapalı</option>
         </select>
       </div>
 
