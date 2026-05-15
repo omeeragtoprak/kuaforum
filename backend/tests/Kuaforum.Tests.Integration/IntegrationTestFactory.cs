@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackExchange.Redis;
 using Testcontainers.PostgreSql;
 using Testcontainers.Redis;
 
@@ -77,6 +78,7 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
         // Testcontainers connection string'i ile yeniden register et.
         builder.ConfigureTestServices(services =>
         {
+            // 1) DbContext → Testcontainers Postgres
             var dbDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(DbContextOptions<ApplicationDbContext>));
             if (dbDescriptor is not null) services.Remove(dbDescriptor);
 
@@ -88,6 +90,14 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
                     npg.MigrationsAssembly(typeof(ApplicationDbContext).Assembly.GetName().Name);
                 });
             });
+
+            // 2) IConnectionMultiplexer (Redis) → Testcontainers Redis
+            // ConfigureAppConfiguration override CI'da timing nedeniyle ConnectionMultiplexer.Connect
+            // çağrılmadan önce uygulanmıyor → localhost:6380'a bağlanıp fail oluyor.
+            // ConfigureTestServices ile singleton'ı doğrudan değiştir.
+            var redisDescriptor = services.SingleOrDefault(d => d.ServiceType == typeof(IConnectionMultiplexer));
+            if (redisDescriptor is not null) services.Remove(redisDescriptor);
+            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(_redis.GetConnectionString()));
         });
     }
 
