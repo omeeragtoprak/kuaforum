@@ -230,4 +230,33 @@ public class BookingTests
         var r = b.MarkNoShow();
         Assert.True(r.IsFailure);
     }
+
+    /// <summary>
+    /// Lock-in for the ScheduledEndsAt time-window guard in Booking.MarkNoShow — an owner must
+    /// not be able to mark a future appointment as no-show (which would zero out the refund
+    /// without the customer ever having a chance to show up). Uses a zero-duration service so
+    /// ScheduledEndsAt already elapsed by the time MarkNoShow runs, without needing to wait or
+    /// bypass Initiate's "no past bookings" guard (scheduledAt itself is within its -1min grace).
+    /// </summary>
+    [Fact]
+    public void MarkNoShow_AfterScheduledEnd_Succeeds()
+    {
+        var zeroDurationService = new[] { (Guid.NewGuid(), "Hızlı Kontrol", 0, 0, 5000L) };
+        var b = Kuaforum.Domain.Modules.Booking.Booking.Initiate(
+            customerId: Guid.NewGuid(),
+            barberShopId: Guid.NewGuid(),
+            stylistId: Guid.NewGuid(),
+            scheduledAt: DateTimeOffset.UtcNow.AddSeconds(-30),
+            services: zeroDurationService,
+            bookingType: BookingType.Scheduled,
+            commissionRate: 0.10m).Value;
+        b.Confirm(Guid.NewGuid());
+
+        var r = b.MarkNoShow();
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(BookingStatus.NoShow, b.Status);
+        Assert.Equal(0, b.RefundPercentage);
+        Assert.Contains(b.DomainEvents, e => e is BookingNoShowEvent);
+    }
 }

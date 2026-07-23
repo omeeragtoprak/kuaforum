@@ -46,6 +46,12 @@ public sealed class CompletePaymentCommandHandler(
         if (payment is null)
             return Result.Failure<Guid>(Error.NotFound("Payment"));
 
+        // Defense-in-depth: mock-only completion path. Even though the token format is
+        // Mock-specific (mock-{paymentId:N}), guard against a guessed/collided token being
+        // replayed against a payment that was actually initiated with a real PSP.
+        if (payment.Provider != PaymentProviderName.Mock || request.Provider != PaymentProviderName.Mock)
+            return Result.Failure<Guid>(Error.Validation("Bu ödeme mock sağlayıcıya ait değil."));
+
         if (!verification.Succeeded)
         {
             payment.Fail(verification.FailureReason ?? "Sağlayıcı doğrulaması başarısız oldu.");

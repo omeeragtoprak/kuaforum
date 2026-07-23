@@ -1,6 +1,5 @@
 using FluentValidation.TestHelper;
 using Kuaforum.Application.Modules.Booking;
-using Kuaforum.Domain.Modules.Booking;
 
 namespace Kuaforum.Tests.Application.Validators;
 
@@ -11,28 +10,21 @@ public sealed class CancelBookingCommandValidatorTests
     [Fact]
     public void Empty_actor_user_id_fails()
     {
-        var r = _v.TestValidate(new CancelBookingCommand(Guid.Empty, Guid.NewGuid(), BookingCancellationReason.CustomerRequested));
+        var r = _v.TestValidate(new CancelBookingCommand(Guid.Empty, Guid.NewGuid()));
         r.ShouldHaveValidationErrorFor(x => x.ActorUserId);
     }
 
     [Fact]
     public void Empty_booking_id_fails()
     {
-        var r = _v.TestValidate(new CancelBookingCommand(Guid.NewGuid(), Guid.Empty, BookingCancellationReason.CustomerRequested));
+        var r = _v.TestValidate(new CancelBookingCommand(Guid.NewGuid(), Guid.Empty));
         r.ShouldHaveValidationErrorFor(x => x.BookingId);
-    }
-
-    [Fact]
-    public void Invalid_reason_fails()
-    {
-        var r = _v.TestValidate(new CancelBookingCommand(Guid.NewGuid(), Guid.NewGuid(), (BookingCancellationReason)999));
-        r.ShouldHaveValidationErrorFor(x => x.Reason);
     }
 
     [Fact]
     public void Valid_passes()
     {
-        var r = _v.TestValidate(new CancelBookingCommand(Guid.NewGuid(), Guid.NewGuid(), BookingCancellationReason.CustomerRequested));
+        var r = _v.TestValidate(new CancelBookingCommand(Guid.NewGuid(), Guid.NewGuid()));
         r.ShouldNotHaveAnyValidationErrors();
     }
 }

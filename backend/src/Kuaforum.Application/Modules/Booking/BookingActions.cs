@@ -9,7 +9,16 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kuaforum.Application.Modules.Booking;
 
-public sealed record CancelBookingCommand(Guid ActorUserId, Guid BookingId, BookingCancellationReason Reason) : ICommand<int>;
+/// <summary>
+/// Reason is NOT accepted from the caller — it is derived server-side from the actor's
+/// relationship to the booking (customer vs. shop owner). Previously the client sent an
+/// arbitrary BookingCancellationReason, letting a customer submit e.g. BarberRequested/
+/// AdminOverride to force a 100% refund regardless of timing (see Booking.ComputeRefundPercentage).
+/// System-only reasons (PaymentFailed, PendingTimeout) and AdminOverride remain enum members
+/// for their respective system/admin code paths (AdminCancelBookingCommand), just unreachable
+/// from this customer/owner-facing command.
+/// </summary>
+public sealed record CancelBookingCommand(Guid ActorUserId, Guid BookingId) : ICommand<int>;
 
 public sealed class CancelBookingCommandValidator : AbstractValidator<CancelBookingCommand>
 {
@@ -17,7 +26,6 @@ public sealed class CancelBookingCommandValidator : AbstractValidator<CancelBook
     {
         RuleFor(x => x.ActorUserId).NotEmpty();
         RuleFor(x => x.BookingId).NotEmpty();
-        RuleFor(x => x.Reason).IsInEnum();
     }
 }
 
@@ -31,10 +39,10 @@ public sealed class CancelBookingCommandHandler(
         var booking = await ctx.Set<BookingAggregate>().FirstOrDefaultAsync(b => b.Id == request.BookingId, cancellationToken);
         if (booking is null) return Result.Failure<int>(Error.NotFound("Booking"));
 
-        var allowed = await IsAuthorized(ctx, booking, request.ActorUserId, cancellationToken);
-        if (!allowed) return Result.Failure<int>(Error.Forbidden("Bu randevuyu iptal etme yetkiniz yok."));
+        var reason = await ResolveReasonAsync(ctx, booking, request.ActorUserId, cancellationToken);
+        if (reason is null) return Result.Failure<int>(Error.Forbidden("Bu randevuyu iptal etme yetkiniz yok."));
 
-        var cancelResult = booking.Cancel(request.Reason);
+        var cancelResult = booking.Cancel(reason.Value);
         if (cancelResult.IsFailure) return Result.Failure<int>(cancelResult.Error);
 
         await audit.RecordAsync(
@@ -42,18 +50,19 @@ public sealed class CancelBookingCommandHandler(
             nameof(BookingAggregate),
             booking.Id.ToString(),
             actorUserId: request.ActorUserId,
-            payload: new { request.Reason, booking.RefundPercentage },
+            payload: new { reason = reason.Value, booking.RefundPercentage },
             ct: cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success(booking.RefundPercentage ?? 0);
     }
 
-    private static async Task<bool> IsAuthorized(DbContext ctx, BookingAggregate booking, Guid actorId, CancellationToken ct)
+    private static async Task<BookingCancellationReason?> ResolveReasonAsync(
+        DbContext ctx, BookingAggregate booking, Guid actorId, CancellationToken ct)
     {
-        if (booking.CustomerId == actorId) return true;
+        if (booking.CustomerId == actorId) return BookingCancellationReason.CustomerRequested;
         var shop = await ctx.Set<BarberShop>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, ct);
-        return shop is not null && shop.OwnerId == actorId;
+        return shop is not null && shop.OwnerId == actorId ? BookingCancellationReason.BarberRequested : null;
     }
 }
 

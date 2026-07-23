@@ -73,13 +73,12 @@ public static class BookingEndpoints
 
     private static async Task<IResult> CancelAsync(
         Guid id,
-        [FromBody] CancelBookingRequest body,
         IMediator m,
         IRequestContext ctx,
         CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
-        var r = await m.Send(new CancelBookingCommand(ctx.UserId.Value, id, body.Reason), token);
+        var r = await m.Send(new CancelBookingCommand(ctx.UserId.Value, id), token);
         return r.IsSuccess
             ? Results.Ok(new { refundPercentage = r.Value })
             : Results.Problem(r.Error.Message, statusCode: 400);
@@ -120,6 +119,5 @@ public static class BookingEndpoints
         bool IsWalkIn,
         string? CustomerNote);
 
-    public sealed record CancelBookingRequest(BookingCancellationReason Reason);
     public sealed record RescheduleBookingRequest(DateTimeOffset NewScheduledAt);
 }

@@ -8,7 +8,7 @@ namespace Kuaforum.Api.Endpoints;
 
 public static class PaymentEndpoints
 {
-    public static IEndpointRouteBuilder MapPaymentEndpoints(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapPaymentEndpoints(this IEndpointRouteBuilder app, IWebHostEnvironment env)
     {
         var group = app.MapGroup("/v1/payments").WithTags("Payments");
 
@@ -16,14 +16,21 @@ public static class PaymentEndpoints
             .WithName("InitiatePayment")
             .RequireAuthorization();
 
+        // Refund tutarı client'tan gelmez (booking.RefundPercentage'dan türetilir) ve yalnızca
+        // Admin tetikleyebilir — bkz. RefundPaymentCommand XML doc.
         group.MapPost("/refund", RefundAsync)
             .WithName("RefundPayment")
-            .RequireAuthorization();
+            .RequireAuthorization("Admin");
 
         // Mock-only completion endpoint for dev. Production: PayTR/Iyzico webhooks.
-        group.MapGet("/mock/complete", MockCompleteAsync)
-            .WithName("MockCompletePayment")
-            .AllowAnonymous();
+        // Dev dışında map edilmez — anonim erişimli ve token'ı tahmin edilebilir olduğu için
+        // prod'da mevcut olmamalı (bkz. AuthEndpoints.MapAuthEndpoints dev-login kalıbı).
+        if (env.IsDevelopment())
+        {
+            group.MapGet("/mock/complete", MockCompleteAsync)
+                .WithName("MockCompletePayment")
+                .AllowAnonymous();
+        }
 
         return app;
     }
@@ -50,7 +57,7 @@ public static class PaymentEndpoints
         CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
-        var r = await m.Send(new RefundPaymentCommand(ctx.UserId.Value, body.PaymentId, body.AmountMinor, body.Reason), token);
+        var r = await m.Send(new RefundPaymentCommand(ctx.UserId.Value, body.PaymentId), token);
         return r.IsSuccess
             ? Results.Ok(new { refundId = r.Value })
             : Results.Problem(r.Error.Message, statusCode: 400);
@@ -68,5 +75,5 @@ public static class PaymentEndpoints
     }
 
     public sealed record InitiateRequest(Guid BookingId);
-    public sealed record RefundRequest(Guid PaymentId, long AmountMinor, RefundReason Reason);
+    public sealed record RefundRequest(Guid PaymentId);
 }

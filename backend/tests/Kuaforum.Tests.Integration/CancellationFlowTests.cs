@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Kuaforum.Tests.Integration;
@@ -40,8 +41,10 @@ public sealed class CancellationFlowTests(IntegrationTestFactory factory)
         Assert.Equal(HttpStatusCode.NoContent,
             (await ownerClient.PostAsync($"/v1/bookings/{bookingId}/confirm", null)).StatusCode);
 
-        // act: customer cancels (reason=0 = CustomerRequested)
-        var cancel = await customerClient.PostAsJsonAsync($"/v1/bookings/{bookingId}/cancel", new { reason = 0 });
+        // act: customer cancels. No body — Reason is derived server-side from actor role
+        // (customer → CustomerRequested), the client cannot influence it (see IDOR regression
+        // test below).
+        var cancel = await customerClient.PostAsync($"/v1/bookings/{bookingId}/cancel", null);
         Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
         var resp = await cancel.Content.ReadFromJsonAsync<CancelResp>(TestHelpers.Json);
         Assert.Equal(100, resp!.RefundPercentage);
@@ -98,13 +101,14 @@ public sealed class CancellationFlowTests(IntegrationTestFactory factory)
     }
 
     /// <summary>
-    /// Owner cancel via /v1/bookings/{id}/cancel reason=1 (BarberRequested) →
-    /// 100% iade — yakın tarihte olsa bile zaman-bağımsız.
+    /// Owner cancel via /v1/bookings/{id}/cancel → server derives BarberRequested for the
+    /// shop-owner actor → 100% iade, zaman-bağımsız. No body sent — the client cannot pick
+    /// its own reason (see IDOR fix: CancelBookingCommand no longer carries a Reason param).
     /// Regression: mobile booking detail eski 5 (NoShow) gönderiyordu, 0% iade
-    /// hatasını yakalamak için.
+    /// hatasını yakalamak için (artık backend zaten reason'ı client'tan almıyor).
     /// </summary>
     [Fact]
-    public async Task Owner_cancel_with_BarberRequested_reason_returns_full_refund()
+    public async Task Owner_cancel_returns_full_refund_regardless_of_timing()
     {
         await factory.ResetDatabaseAsync();
         using (var scope = factory.Services.CreateScope())
@@ -122,8 +126,8 @@ public sealed class CancellationFlowTests(IntegrationTestFactory factory)
         var bookingId = await InitiateBookingAsync(customerClient, ownerClient, 60);
         await ownerClient.PostAsync($"/v1/bookings/{bookingId}/confirm", null);
 
-        // act: owner cancels with reason=1 (BarberRequested)
-        var cancel = await ownerClient.PostAsJsonAsync($"/v1/bookings/{bookingId}/cancel", new { reason = 1 });
+        // act: owner cancels — no body, server derives BarberRequested from actor role.
+        var cancel = await ownerClient.PostAsync($"/v1/bookings/{bookingId}/cancel", null);
         Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
         var resp = await cancel.Content.ReadFromJsonAsync<CancelResp>(TestHelpers.Json);
         Assert.Equal(100, resp!.RefundPercentage);
@@ -131,6 +135,55 @@ public sealed class CancellationFlowTests(IntegrationTestFactory factory)
         var detail = await customerClient.GetJson<BookingDto>($"/v1/bookings/{bookingId}");
         Assert.Equal("Cancelled", detail.Status);
         Assert.Equal(100, detail.RefundPercentage);
+    }
+
+    /// <summary>
+    /// IDOR regression: previously the client sent an arbitrary BookingCancellationReason in
+    /// the cancel request body (e.g. AdminOverride=4 or BarberRequested=1), letting a customer
+    /// force a 100% refund regardless of the &lt;12h cutoff. Reason is now derived purely from
+    /// actor role server-side (see CancelBookingCommandHandler.ResolveReasonAsync) — a
+    /// client-supplied "reason" field, even if the endpoint still accepted a body, must have
+    /// zero effect. Booking is moved to &lt;6h out via direct DB write (deterministic, avoids
+    /// wall-clock flakiness) so CustomerRequested would normally yield 0% refund.
+    /// </summary>
+    [Fact]
+    public async Task Customer_cancel_ignores_client_supplied_reason_and_still_applies_less_than_12h_zero_percent()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateBookingAsync(customerClient, ownerClient, 60);
+        await ownerClient.PostAsync($"/v1/bookings/{bookingId}/confirm", null);
+
+        // Force the booking to <12h out at the DB level (deterministic vs. wall-clock timing).
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+            var newScheduledAt = DateTimeOffset.UtcNow.AddHours(6);
+            var newEndsAt = newScheduledAt.AddMinutes(35);
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE bookings SET scheduled_at = {newScheduledAt}, scheduled_ends_at = {newEndsAt} WHERE id = {bookingId}");
+        }
+
+        // attack: customer sends AdminOverride(=4) in the (now-unused) body field, hoping to
+        // force a 100% refund via a reason the endpoint no longer even reads.
+        var cancel = await customerClient.PostAsJsonAsync($"/v1/bookings/{bookingId}/cancel", new { reason = 4 });
+        Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+        var resp = await cancel.Content.ReadFromJsonAsync<CancelResp>(TestHelpers.Json);
+        Assert.Equal(0, resp!.RefundPercentage);
+
+        var detail = await customerClient.GetJson<BookingDto>($"/v1/bookings/{bookingId}");
+        Assert.Equal("Cancelled", detail.Status);
+        Assert.Equal(0, detail.RefundPercentage);
     }
 
     /// <summary>
@@ -156,7 +209,7 @@ public sealed class CancellationFlowTests(IntegrationTestFactory factory)
         await ownerClient.PostAsync($"/v1/bookings/{bookingId}/start", null);
         await ownerClient.PostAsync($"/v1/bookings/{bookingId}/complete", null);
 
-        var cancel = await customerClient.PostAsJsonAsync($"/v1/bookings/{bookingId}/cancel", new { reason = 0 });
+        var cancel = await customerClient.PostAsync($"/v1/bookings/{bookingId}/cancel", null);
         Assert.False(cancel.IsSuccessStatusCode,
             $"Completed durumundaki booking iptal edilemez (got {(int)cancel.StatusCode})");
     }
