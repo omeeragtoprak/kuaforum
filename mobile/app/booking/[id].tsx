@@ -50,7 +50,7 @@ export default function BookingDetailScreen() {
   });
 
   const cancelMutation = useMutation({
-    mutationFn: (reason: number) => BookingApi.cancel(id!, reason),
+    mutationFn: () => BookingApi.cancel(id!),
     onSuccess: (data) => {
       Haptics.warning();
       const refundMsg = data.refundPercentage > 0
@@ -113,12 +113,9 @@ export default function BookingDetailScreen() {
 
   function handleCancel() {
     if (!query.data) return;
-    // Backend BookingCancellationReason enum:
-    // 0=CustomerRequested, 1=BarberRequested, 2=PaymentFailed, 3=PendingTimeout,
-    // 4=AdminOverride, 5=NoShow. Owner cancel et 5 ile gönderilirse müşteri 0
-    // refund alır (NoShow=0%) — bu YANLIŞ. Owner'ın iptali = BarberRequested,
-    // müşteriye 100% iade.
-    const reasonCode = isBarber ? 1 : 0;
+    // Reason artık backend tarafında aktörün rolünden türetiliyor (customer → CustomerRequested,
+    // owner → BarberRequested) — client bir reason kodu göndermiyor/göndermez. Bu önizleme
+    // sadece kullanıcıya beklenen iade oranını göstermek için; asıl hesap backend'de.
     const previewPct = previewRefundPercent(query.data.scheduledAt, isBarber);
     const previewLine = isBarber
       ? '✅ Kuaför iptali → müşteri %100 iade alır'
@@ -133,7 +130,7 @@ export default function BookingDetailScreen() {
       `${previewLine}\n\nİade kademeleri:\n• 24+ saat öncesi: %100\n• 12-24 saat: %50\n• 12 saatten az: iade yok`,
       [
         { text: 'Vazgeç', style: 'cancel' },
-        { text: 'İptal et', style: 'destructive', onPress: () => cancelMutation.mutate(reasonCode) },
+        { text: 'İptal et', style: 'destructive', onPress: () => cancelMutation.mutate() },
       ],
     );
   }

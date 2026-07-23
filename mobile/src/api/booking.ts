@@ -61,8 +61,11 @@ export const BookingApi = {
     const res = await apiClient.get<Booking>(`/v1/bookings/${id}`);
     return res.data;
   },
-  async cancel(id: string, reason: number): Promise<{ refundPercentage: number }> {
-    const res = await apiClient.post(`/v1/bookings/${id}/cancel`, { reason });
+  // Reason is derived server-side from the actor's role (customer vs. shop owner) — see
+  // backend CancelBookingCommandHandler.ResolveReasonAsync. The client can no longer choose it
+  // (previously an arbitrary BookingCancellationReason in the body could force a bigger refund).
+  async cancel(id: string): Promise<{ refundPercentage: number }> {
+    const res = await apiClient.post(`/v1/bookings/${id}/cancel`);
     return res.data;
   },
 

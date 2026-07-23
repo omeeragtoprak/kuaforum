@@ -9,3 +9,7 @@ web-build/
 .env*
 !.env.example
 expo-env.d.ts
+
+# Expo prebuild çıktısı — generated native proje, commit edilmez (eas build --local / npx expo prebuild yeniden üretir)
+android/
+ios/

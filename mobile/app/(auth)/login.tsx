@@ -63,40 +63,44 @@ export default function LoginScreen() {
           <Text style={styles.tagline}>Türkiye'nin kuaför pazaryeri</Text>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hızlı Giriş (Demo)</Text>
-          <Text style={styles.sectionHint}>
-            Geliştirme modunda — tek dokunuşla rol bazında giriş yap.
-          </Text>
-          <View style={styles.quickStack}>
-            <RoleQuickLogin
-              role="Customer"
-              loading={quickRole === 'Customer'}
-              onPress={() => handleQuickLogin('Customer')}
-            />
-            <RoleQuickLogin
-              role="BarberOwner"
-              loading={quickRole === 'BarberOwner'}
-              onPress={() => handleQuickLogin('BarberOwner')}
-            />
-            <RoleQuickLogin
-              role="BarberOwnerDraft"
-              loading={quickRole === 'BarberOwnerDraft'}
-              onPress={() => handleQuickLogin('BarberOwnerDraft')}
-            />
-            <RoleQuickLogin
-              role="Admin"
-              loading={quickRole === 'Admin'}
-              onPress={() => handleQuickLogin('Admin')}
-            />
-          </View>
-        </View>
+        {__DEV__ && (
+          <>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Hızlı Giriş (Demo)</Text>
+              <Text style={styles.sectionHint}>
+                Geliştirme modunda — tek dokunuşla rol bazında giriş yap.
+              </Text>
+              <View style={styles.quickStack}>
+                <RoleQuickLogin
+                  role="Customer"
+                  loading={quickRole === 'Customer'}
+                  onPress={() => handleQuickLogin('Customer')}
+                />
+                <RoleQuickLogin
+                  role="BarberOwner"
+                  loading={quickRole === 'BarberOwner'}
+                  onPress={() => handleQuickLogin('BarberOwner')}
+                />
+                <RoleQuickLogin
+                  role="BarberOwnerDraft"
+                  loading={quickRole === 'BarberOwnerDraft'}
+                  onPress={() => handleQuickLogin('BarberOwnerDraft')}
+                />
+                <RoleQuickLogin
+                  role="Admin"
+                  loading={quickRole === 'Admin'}
+                  onPress={() => handleQuickLogin('Admin')}
+                />
+              </View>
+            </View>
 
-        <View style={styles.dividerWrap}>
-          <View style={styles.dividerLine} />
-          <Text style={styles.dividerText}>veya telefonla giriş</Text>
-          <View style={styles.dividerLine} />
-        </View>
+            <View style={styles.dividerWrap}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>veya telefonla giriş</Text>
+              <View style={styles.dividerLine} />
+            </View>
+          </>
+        )}
 
         <View style={styles.section}>
           <Input
