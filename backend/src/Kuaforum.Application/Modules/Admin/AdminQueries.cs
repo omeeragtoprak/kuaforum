@@ -70,12 +70,18 @@ public sealed record KycQueueItemDto(
     int DocumentCount,
     KycStatus Status);
 
-public sealed record GetKycQueueQuery(KycStatus? StatusFilter, int Page, int PageSize) : IQuery<IReadOnlyList<KycQueueItemDto>>;
+public sealed record KycQueuePage(
+    IReadOnlyList<KycQueueItemDto> Items,
+    int Page,
+    int PageSize,
+    int TotalCount);
+
+public sealed record GetKycQueueQuery(KycStatus? StatusFilter, int Page, int PageSize) : IQuery<KycQueuePage>;
 
 public sealed class GetKycQueueQueryHandler(IApplicationDbContext db)
-    : IRequestHandler<GetKycQueueQuery, Result<IReadOnlyList<KycQueueItemDto>>>
+    : IRequestHandler<GetKycQueueQuery, Result<KycQueuePage>>
 {
-    public async Task<Result<IReadOnlyList<KycQueueItemDto>>> Handle(GetKycQueueQuery request, CancellationToken ct)
+    public async Task<Result<KycQueuePage>> Handle(GetKycQueueQuery request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
         var query = ctx.Set<KycSubmission>().AsNoTracking().AsQueryable();
@@ -84,6 +90,8 @@ public sealed class GetKycQueueQueryHandler(IApplicationDbContext db)
 
         var page = Math.Max(1, request.Page);
         var size = Math.Clamp(request.PageSize, 1, 50);
+
+        var total = await query.CountAsync(ct);
 
         var items = await query
             .OrderBy(k => k.SubmittedAt)
@@ -103,6 +111,6 @@ public sealed class GetKycQueueQueryHandler(IApplicationDbContext db)
             x.Submission.SubmittedByUserId, x.Submitter,
             x.Submission.SubmittedAt, x.DocCount, x.Submission.Status))
             .ToList();
-        return Result.Success<IReadOnlyList<KycQueueItemDto>>(dtos);
+        return Result.Success(new KycQueuePage(dtos, page, size, total));
     }
 }

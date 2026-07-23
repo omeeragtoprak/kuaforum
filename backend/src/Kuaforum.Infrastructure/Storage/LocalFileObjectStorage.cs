@@ -67,6 +67,26 @@ public sealed class LocalFileObjectStorage : IObjectStorage
     public string GetReadableUrl(string storageKey)
         => $"{_publicBaseUrl.TrimEnd('/')}/{storageKey.TrimStart('/')}";
 
+    public Task<Stream> OpenReadAsync(string storageKey, CancellationToken ct = default)
+    {
+        var combined = Path.Combine(_localRoot, storageKey.TrimStart('/').Replace('/', Path.DirectorySeparatorChar));
+        var resolvedFull = Path.GetFullPath(combined);
+        var resolvedRoot = Path.GetFullPath(_localRoot) + Path.DirectorySeparatorChar;
+
+        // Guard against path traversal via a maliciously-crafted storageKey — resolved
+        // path must stay inside _localRoot.
+        if (!resolvedFull.StartsWith(resolvedRoot, StringComparison.Ordinal))
+            throw new FileNotFoundException("Geçersiz depolama anahtarı.", storageKey);
+
+        if (!File.Exists(resolvedFull))
+            throw new FileNotFoundException("Dosya bulunamadı.", resolvedFull);
+
+        Stream stream = new FileStream(
+            resolvedFull, FileMode.Open, FileAccess.Read, FileShare.Read,
+            bufferSize: 64 * 1024, useAsync: true);
+        return Task.FromResult(stream);
+    }
+
     private static string SafeSegment(string segment)
     {
         if (string.IsNullOrWhiteSpace(segment)) return "misc";

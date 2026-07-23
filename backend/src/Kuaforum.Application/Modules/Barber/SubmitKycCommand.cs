@@ -108,6 +108,11 @@ public sealed class ReviewKycCommandHandler(
                 return Result.Failure(Error.Validation("Reddetme gerekçesi belirtilmeli."));
             var reject = submission.Reject(request.AdminUserId, request.RejectionReason);
             if (reject.IsFailure) return reject;
+
+            // Reject shop'u PendingKyc'de kilitli bırakırsa owner asla yeniden başvuramaz
+            // (MarkPendingKyc yalnızca Draft'tan geçişe izin veriyor). Draft'a döndür.
+            var revert = shop.RevertToDraft();
+            if (revert.IsFailure) return revert;
         }
 
         await audit.RecordAsync(

@@ -37,6 +37,7 @@ public sealed record Error(string Code, string Message)
         ["Review"] = "Değerlendirme",
         ["Notification"] = "Bildirim",
         ["KycSubmission"] = "KYC başvurusu",
+        ["KycDocument"] = "KYC belgesi",
         ["Service"] = "Hizmet",
         ["DeviceToken"] = "Cihaz",
         ["Address"] = "Adres",

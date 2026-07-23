@@ -93,6 +93,20 @@ public sealed class BarberShop : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// KYC reddedildiğinde PendingKyc → Draft'a döner. MarkPendingKyc yalnızca
+    /// Draft'tan geçişe izin verdiği için bu adım olmadan reddedilen bir işletme
+    /// sonsuza dek PendingKyc'de kilitli kalır ve owner asla yeniden başvuramaz.
+    /// </summary>
+    public Result RevertToDraft()
+    {
+        if (Status != BarberShopStatus.PendingKyc)
+            return Result.Failure(Error.Validation("Yalnızca KYC incelemesindeki işletmeler taslağa döndürülebilir."));
+        Status = BarberShopStatus.Draft;
+        Touch();
+        return Result.Success();
+    }
+
     public Result Suspend(string reason)
     {
         if (Status == BarberShopStatus.Closed)

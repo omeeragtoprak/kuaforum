@@ -29,6 +29,35 @@ public static class AdminEndpoints
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).WithName("AdminKycQueue");
 
+        group.MapGet("/kyc/{submissionId:guid}/documents", async (
+            Guid submissionId, IMediator m, IRequestContext ctx, CancellationToken ct) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new GetKycDocumentsQuery(ctx.UserId.Value, submissionId), ct);
+            return r.IsSuccess
+                ? Results.Ok(r.Value)
+                : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : 400);
+        }).WithName("AdminKycDocuments");
+
+        group.MapGet("/kyc/documents/{documentId:guid}/content", async (
+            Guid documentId, IMediator m, IObjectStorage storage, IRequestContext ctx, CancellationToken ct) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new GetKycDocumentContentQuery(ctx.UserId.Value, documentId), ct);
+            if (r.IsFailure)
+                return Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : 400);
+
+            try
+            {
+                var stream = await storage.OpenReadAsync(r.Value.StorageKey, ct);
+                return Results.Stream(stream, r.Value.ContentType, fileDownloadName: r.Value.FileName);
+            }
+            catch (FileNotFoundException)
+            {
+                return Results.NotFound();
+            }
+        }).WithName("AdminKycDocumentContent");
+
         group.MapPost("/kyc/{submissionId:guid}/review", async (
             Guid submissionId, [FromBody] ReviewKycRequest body,
             IMediator m, IRequestContext ctx, CancellationToken ct) =>
