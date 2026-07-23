@@ -23,23 +23,29 @@ npm i -g pnpm
 
 ```bash
 # 1) Postgres + Redis + Meilisearch + Seq başlat
+#    Eğer hostta 5432 başka bir postgres tarafından doluysa
+#    `infra/docker-compose.override.yml` ile başka bir host portuna map et
+#    (örn. 5435:5432). Bizim mevcut kurulum 5435 portunu kullanıyor.
 cd kuaforum/infra
-docker compose -f docker-compose.dev.yml up -d
-docker compose -f docker-compose.dev.yml ps   # 4 servis "healthy"
+docker compose -f docker-compose.dev.yml -f docker-compose.override.yml up -d
+docker compose -f docker-compose.dev.yml -f docker-compose.override.yml ps   # 4 servis "healthy"
 
 # 2) Migration'ları uygula
+#    Design-time DbContext factory KUAFORUM_DESIGN_TIME_CONNECTION env var bekler;
+#    default port 5432, override'lı çalışıyorsak (örn. 5435) burada ver.
 cd ../backend
 export PATH="$PATH:$HOME/.dotnet/tools"
-dotnet ef database update \
+KUAFORUM_DESIGN_TIME_CONNECTION="Host=localhost;Port=5435;Database=kuaforum_dev;Username=kuaforum;Password=devpassword" \
+  dotnet ef database update \
   --project src/Kuaforum.Infrastructure \
   --startup-project src/Kuaforum.Api
 
-# 3) API'yi başlat (port 5000)
+# 3) API'yi başlat (port 5100, launchSettings.json'da tanımlı)
 cd src/Kuaforum.Api
 dotnet run
 
 # Yeni terminal — sağlık testi:
-curl http://localhost:5000/health
+curl http://localhost:5100/health
 # {"status":"ok","timestamp":"..."}
 ```
 
@@ -100,8 +106,8 @@ Seq UI: http://localhost:5341 (structured log gözlemi).
 
 | Hata | Çözüm |
 |---|---|
-| `connection refused localhost:5000` | Backend ayakta değil → `dotnet run` çalıştığını doğrula |
-| `connection refused localhost:5432` | Postgres yok → `docker compose up -d` |
+| `connection refused localhost:5100` | Backend ayakta değil → `dotnet run` çalıştığını doğrula |
+| `connection refused localhost:5435` | Postgres yok → `docker compose -f docker-compose.dev.yml -f docker-compose.override.yml up -d`. Override yoksa varsayılan 5432; başka bir Postgres ile çakışıyorsa override yazıp port değiştir. |
 | Telefon "Network response timed out" | Aynı WiFi'da olduğunu kontrol et veya `--tunnel` |
 | OTP gelmiyor | Mock SMS — backend console'dan kodu al |
 | 401 Unauthorized | Token süresi geçmiş → çıkış-giriş yap |

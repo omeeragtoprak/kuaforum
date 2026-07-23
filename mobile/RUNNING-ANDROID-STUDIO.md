@@ -43,14 +43,19 @@ Emulator açıldıktan sonra:
 
 ```bash
 # 1. Postgres + Redis + Meilisearch + Seq başlat
+#    Eğer hostta 5432 başka projede doluysa `docker-compose.override.yml`
+#    ile başka host portuna bind et (örn. 5435:5432). Mevcut kurulum 5435 kullanıyor.
 cd /Users/omer/Desktop/Projelerim/sirket_projeleri/kuaforum/infra
-docker compose -f docker-compose.dev.yml up -d
-docker compose -f docker-compose.dev.yml ps   # 4 servis "Up" olmalı
+docker compose -f docker-compose.dev.yml -f docker-compose.override.yml up -d
+docker compose -f docker-compose.dev.yml -f docker-compose.override.yml ps   # 4 servis "Up" olmalı
 
 # 2. Migration uygula (ilk kez)
+#    Design-time DbContext factory KUAFORUM_DESIGN_TIME_CONNECTION env var okur;
+#    override portu (örn. 5435) burada belirtilmeli.
 cd ../backend
 export PATH="$PATH:$HOME/.dotnet/tools"
-dotnet ef database update \
+KUAFORUM_DESIGN_TIME_CONNECTION="Host=localhost;Port=5435;Database=kuaforum_dev;Username=kuaforum;Password=devpassword" \
+  dotnet ef database update \
   --project src/Kuaforum.Infrastructure \
   --startup-project src/Kuaforum.Api
 
@@ -61,7 +66,7 @@ dotnet run
 
 **Backend log'da şunlar görünmeli:**
 ```
-[xx:xx:xx INF] Now listening on: http://localhost:5000
+[xx:xx:xx INF] Now listening on: http://localhost:5100
 [xx:xx:xx INF] GeographySeeder: seeding 81 cities...
 [xx:xx:xx INF] DemoBarberSeeder: creating 6 demo barber shops...
 ================================================================
@@ -70,7 +75,7 @@ TOTP SECRET (Base32): JBSWY3DPEHPK3PXP   ← Authenticator'a yaz
 ================================================================
 ```
 
-**Test:** Yeni terminalde `curl http://localhost:5000/health` → `{"status":"ok",...}`
+**Test:** Yeni terminalde `curl http://localhost:5100/health` → `{"status":"ok",...}`
 
 ---
 
@@ -145,7 +150,7 @@ Birini aç → hizmet seç → stilist seç → slot seç
 Postman/Bruno'dan: POST /v1/payments/initiate
   Authorization: Bearer <JWT> (verifyOtp response'dan)
   Body: {"bookingId": "..."}
-→ checkoutUrl döner: http://localhost:5000/v1/payments/mock/complete?token=mock-...
+→ checkoutUrl döner: http://localhost:5100/v1/payments/mock/complete?token=mock-...
 ↓
 Tarayıcıda checkoutUrl'i aç → "Mock payment captured"
 ↓
@@ -158,7 +163,7 @@ Mobile'da pull-to-refresh → Confirmed durumda
 
 | Hata | Çözüm |
 |---|---|
-| `Network response timed out` | Emulator localhost'a `10.0.2.2` üzerinden erişir. `mobile/src/api/client.ts`'de `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:5000` env'i ayarla |
+| `Network response timed out` | Emulator localhost'a `10.0.2.2` üzerinden erişir. `mobile/src/api/client.ts`'de `EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:5100   # backend port 5100 (launchSettings.json)` env'i ayarla |
 | Emulator çok yavaş | Android Studio → AVD Manager → emulator config → "Hardware - GLES 2.0" + "Cold Boot Now" |
 | `pnpm install` hata veriyor | `rm -rf node_modules pnpm-lock.yaml && pnpm install` |
 | Backend `connection refused localhost:5432` | Docker compose `up` çalıştırmadın → `docker compose -f infra/docker-compose.dev.yml up -d` |
@@ -175,7 +180,7 @@ Android emulator'da `localhost` **emulator'ın kendi içi**. Mac'teki backend'e 
 
 ```typescript
 // mobile/.env (oluştur)
-EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:5000
+EXPO_PUBLIC_API_BASE_URL=http://10.0.2.2:5100   # backend port 5100 (launchSettings.json)
 ```
 
 Sonra `pnpm start` ile dev server'ı yeniden başlat.

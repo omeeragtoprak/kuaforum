@@ -7,7 +7,7 @@ public sealed class RequestIdMiddleware(RequestDelegate next)
     public async Task Invoke(HttpContext context)
     {
         var requestId = context.Request.Headers[HeaderName].FirstOrDefault()
-            ?? Guid.CreateVersion7().ToString();
+            ?? Guid.NewGuid().ToString();
 
         context.Response.Headers[HeaderName] = requestId;
         context.Items[HeaderName] = requestId;

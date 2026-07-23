@@ -10,6 +10,6 @@ public interface IDomainEvent : INotification
 
 public abstract record DomainEvent : IDomainEvent
 {
-    public Guid EventId { get; init; } = Guid.CreateVersion7();
+    public Guid EventId { get; init; } = Guid.NewGuid();
     public DateTimeOffset OccurredAt { get; init; } = DateTimeOffset.UtcNow;
 }

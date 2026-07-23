@@ -22,7 +22,7 @@ public sealed class JwtTokenService(IOptions<JwtOptions> options) : IJwtTokenSer
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new(JwtRegisteredClaimNames.Jti, Guid.CreateVersion7().ToString()),
+            new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new("role", user.Role.ToString()),
         };
         if (!string.IsNullOrEmpty(user.PhoneE164))

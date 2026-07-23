@@ -25,7 +25,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '8.0.x'
 
       - name: Cache NuGet
         uses: actions/cache@v4
@@ -44,14 +44,42 @@ jobs:
 
       - name: Domain unit tests
         working-directory: backend
-        run: dotnet test tests/Kuaforum.Tests.Domain --no-build --configuration Release --logger "console;verbosity=normal"
+        run: dotnet test tests/Kuaforum.Tests.Domain --no-build --configuration Release --logger "console;verbosity=normal" --collect:"XPlat Code Coverage"
+
+      - name: Application unit tests
+        working-directory: backend
+        # Kuaforum.Tests.Application yalnız FluentValidation validator testleri içerir
+        # (tek ProjectReference: Kuaforum.Application — DB/Redis/Testcontainers/WebApplicationFactory
+        # yok, bkz. Validators/*.cs). Domain testleriyle aynı şekilde servis-siz koşar.
+        run: dotnet test tests/Kuaforum.Tests.Application --no-build --configuration Release --logger "console;verbosity=normal" --collect:"XPlat Code Coverage"
 
       - name: Integration tests (Testcontainers)
         working-directory: backend
-        run: dotnet test tests/Kuaforum.Tests.Integration --no-build --configuration Release --logger "console;verbosity=normal"
+        run: dotnet test tests/Kuaforum.Tests.Integration --no-build --configuration Release --logger "console;verbosity=normal" --collect:"XPlat Code Coverage"
+
+      - name: Coverage summary
+        if: always()
+        working-directory: backend
+        run: |
+          {
+            echo "## Backend Code Coverage (baseline ölçüm — gate yok)"
+            echo ""
+            echo "| Proje | Line Coverage |"
+            echo "|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          for proj in Kuaforum.Tests.Domain Kuaforum.Tests.Application Kuaforum.Tests.Integration; do
+            file=$(find "tests/$proj" -name "coverage.cobertura.xml" 2>/dev/null | head -n1)
+            if [ -n "$file" ]; then
+              rate=$(grep -o 'line-rate="[0-9.]*"' "$file" | head -n1 | grep -o '[0-9.]*')
+              pct=$(awk "BEGIN { printf \"%.1f\", ${rate:-0} * 100 }")
+              echo "| $proj | ${pct}% |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| $proj | _rapor bulunamadı_ |" >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
 
   mobile:
-    name: Mobile (typecheck)
+    name: Mobile (typecheck + test)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -74,6 +102,10 @@ jobs:
       - name: Typecheck
         working-directory: mobile
         run: pnpm typecheck
+
+      - name: Test (Jest)
+        working-directory: mobile
+        run: pnpm test --ci
 
   web-admin:
     name: Web admin (typecheck + build)
