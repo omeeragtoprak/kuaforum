@@ -1,0 +1,147 @@
+# Kuaforum — PRODUCTION compose (single Hetzner Helsinki host, MVP).
+#
+# Every invocation needs --env-file explicitly (the file is `.env.prod`, not
+# `.env`, so Compose won't auto-load it):
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml config
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml pull
+#   docker compose --env-file .env.prod -f docker-compose.prod.yml up -d
+#
+# Network isolation: only `caddy` publishes ports to the host (80/443).
+# postgres/redis/backend/web-admin are reachable ONLY on the internal compose
+# network — Caddy is the sole public entry point.
+#
+# See infra/README.md for the full required-env table and deploy runbook.
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: kuaforum-postgres-prod
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    container_name: kuaforum-redis-prod
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD}"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "--no-auth-warning", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [internal]
+
+  backend:
+    image: ${GHCR_NAMESPACE:-ghcr.io/kuaforum}/api:${IMAGE_TAG:-latest}
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: kuaforum-api-prod
+    restart: unless-stopped
+    env_file:
+      - .env.prod
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/ready"]
+      interval: 30s
+      timeout: 5s
+      start_period: 25s
+      retries: 3
+    networks: [internal]
+    # Uncomment once a real Firebase service-account JSON exists (FCM push):
+    # volumes:
+    #   - ./secrets/firebase-sa.json:/secrets/firebase-sa.json:ro
+
+  web-admin:
+    image: ${GHCR_NAMESPACE:-ghcr.io/kuaforum}/web-admin:${IMAGE_TAG:-latest}
+    build:
+      context: ../web-admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    container_name: kuaforum-web-admin-prod
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/login"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+    networks: [internal]
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: kuaforum-caddy-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      ACME_EMAIL: ${ACME_EMAIL:-admin@kuaforum.com}
+      API_DOMAIN: ${API_DOMAIN:-api.kuaforum.com}
+      ADMIN_DOMAIN: ${ADMIN_DOMAIN:-admin.kuaforum.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - backend
+      - web-admin
+    networks: [internal]
+
+  # Bonus (task ask): simple nightly pg_dump -> local volume, 7-day retention.
+  # NOT a disaster-recovery story on its own (same host as postgres) — replace
+  # with WAL-G -> R2 continuous backup once the founder has an R2 bucket
+  # (docs/12-devops backup strategy already specs this out).
+  backup:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: kuaforum-backup-prod
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-7}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./backup/backup.sh:/backup.sh:ro
+      - postgres-backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+networks:
+  internal:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  postgres-backups:
+  caddy-data:
+  caddy-config:

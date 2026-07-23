@@ -1,0 +1,167 @@
+name: Deploy
+
+# Builds + pushes both images to GHCR on every push to main (and on manual
+# dispatch), then deploys to the Hetzner prod host over SSH.
+#
+# SAFETY: the `deploy` job targets the GitHub Environment "production". Until
+# a human configures "Required reviewers" for that environment (repo Settings
+# → Environments → production → Deployment protection rules), this workflow
+# is NOT actually gated by a manual approval — per project rule ("Production
+# deploy asla kullanıcı onayı olmadan"), that protection rule MUST be turned
+# on before this workflow is trusted to run unattended against prod. This
+# was NOT configured as part of this change (repo-settings change, out of
+# scope for a code PR, and needs an admin to click it — see infra/README.md).
+#
+# GRACEFUL SKIP: Hetzner doesn't exist yet (no account as of this writing).
+# The `check-secrets` job below detects that HETZNER_HOST/HETZNER_SSH_KEY
+# aren't set and skips `deploy` entirely — build-and-push still runs so
+# images land in GHCR even before there's a server to deploy to.
+#
+# Required GitHub Actions secrets (Settings → Secrets and variables → Actions):
+#   HETZNER_SSH_KEY   — private key (ed25519) for a deploy-only user on the host
+#   HETZNER_HOST       — server IP or hostname
+#   HETZNER_USER        — SSH user (defaults to "deploy" if unset)
+# Required GitHub Actions variables (non-secret, Settings → ... → Variables):
+#   NEXT_PUBLIC_API_BASE_URL — baked into the web-admin JS bundle at build time
+#                              (e.g. https://api.kuaforum.com)
+#
+# Server-side precondition (one-time, manual): `/opt/kuaforum` is a git clone
+# of this repo, and `/opt/kuaforum/infra/.env.prod` exists (copied from
+# infra/.env.prod.example and filled in by hand, never via CI — secrets never
+# transit through GitHub Actions onto the server this way).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  meta:
+    name: Compute image metadata
+    runs-on: ubuntu-latest
+    outputs:
+      owner: ${{ steps.vars.outputs.owner }}
+    steps:
+      - id: vars
+        name: Lowercase GHCR namespace (registry requires lowercase)
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+  build-api:
+    name: Build + push API image
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ needs.meta.outputs.owner }}/kuaforum-api:${{ github.sha }}
+            ghcr.io/${{ needs.meta.outputs.owner }}/kuaforum-api:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  build-web-admin:
+    name: Build + push web-admin image
+    needs: meta
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./web-admin
+          file: ./web-admin/Dockerfile
+          push: true
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ vars.NEXT_PUBLIC_API_BASE_URL || 'https://api.kuaforum.com' }}
+          tags: |
+            ghcr.io/${{ needs.meta.outputs.owner }}/kuaforum-web-admin:${{ github.sha }}
+            ghcr.io/${{ needs.meta.outputs.owner }}/kuaforum-web-admin:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  check-secrets:
+    name: Check Hetzner secrets present
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.HETZNER_HOST }}" ] && [ -n "${{ secrets.HETZNER_SSH_KEY }}" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::HETZNER_HOST / HETZNER_SSH_KEY secrets not set — skipping deploy job. Images were still built and pushed to GHCR. Set these secrets once the Hetzner server exists."
+          fi
+
+  deploy:
+    name: Deploy to Hetzner (prod)
+    needs: [build-api, build-web-admin, check-secrets]
+    if: needs.check-secrets.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.HETZNER_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.HETZNER_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Pull + restart on server
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${HETZNER_USER:-deploy}@${HETZNER_HOST}" '
+            set -euo pipefail
+            cd /opt/kuaforum
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+            docker compose --env-file infra/.env.prod -f infra/docker-compose.prod.yml pull
+            docker compose --env-file infra/.env.prod -f infra/docker-compose.prod.yml up -d
+            docker image prune -af --filter "until=168h"
+          '
+
+      - name: Smoke check
+        env:
+          HETZNER_HOST: ${{ secrets.HETZNER_HOST }}
+          HETZNER_USER: ${{ secrets.HETZNER_USER }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "${HETZNER_USER:-deploy}@${HETZNER_HOST}" '
+            curl -fsS http://localhost:8080/health/ready 2>/dev/null ||
+            docker compose --env-file /opt/kuaforum/infra/.env.prod -f /opt/kuaforum/infra/docker-compose.prod.yml exec -T backend curl -fsS http://localhost:8080/health/ready
+          '

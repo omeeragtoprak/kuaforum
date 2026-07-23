@@ -43,7 +43,21 @@ public sealed class AdminSeeder(
         var opts = options.Value;
         if (string.IsNullOrWhiteSpace(opts.Email) || string.IsNullOrWhiteSpace(opts.Password))
         {
-            logger.LogDebug("AdminSeeder: Seed:Admin:Email/Password missing, skipping.");
+            // Production: this is expected on a fresh env until the founder sets
+            // Seed__Admin__Email/Seed__Admin__Password — log loud enough to notice
+            // in Seq/Sentry, but do NOT crash the boot (admin bootstrap is a one-time
+            // out-of-band step, not a hard startup dependency).
+            if (env.IsProduction())
+            {
+                logger.LogWarning(
+                    "AdminSeeder: Seed:Admin:Email/Password not set — no admin user created. " +
+                    "Set Seed__Admin__Email and Seed__Admin__Password env vars once to bootstrap " +
+                    "the first admin, then unset Password (idempotent: skips once an Admin exists).");
+            }
+            else
+            {
+                logger.LogDebug("AdminSeeder: Seed:Admin:Email/Password missing, skipping.");
+            }
             return;
         }
 

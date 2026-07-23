@@ -1,4 +1,5 @@
 using Kuaforum.Application.Common.Interfaces;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
@@ -6,7 +7,10 @@ namespace Kuaforum.Infrastructure.Auth;
 
 /// <summary>
 /// NetGSM HTTP API SMS provider. Pay-as-you-go (~₺0.05/SMS).
-/// Falls back to MockSmsService behavior if NetGSM:UserCode is missing.
+/// Falls back to MockSmsService-style logging behavior if NetGSM:UserCode is
+/// missing — but ONLY outside Production. In Production, a missing config is
+/// treated as a hard failure (Error log, no code in the log, return false)
+/// instead of silently leaking the OTP code to logs (KVKK + credential-leak risk).
 ///
 /// IMPORTANT: This is a SCAFFOLDED stub. Real impl pending NetGSM merchant
 /// account + IP whitelist + originator approval. See
@@ -15,6 +19,7 @@ namespace Kuaforum.Infrastructure.Auth;
 public sealed class NetGsmSmsService(
     IHttpClientFactory httpClientFactory,
     IOptions<NetGsmOptions> options,
+    IHostEnvironment env,
     ILogger<NetGsmSmsService> logger) : ISmsService
 {
     private readonly NetGsmOptions _options = options.Value;
@@ -23,7 +28,20 @@ public sealed class NetGsmSmsService(
     {
         if (string.IsNullOrEmpty(_options.UserCode))
         {
-            // Fallback to mock behavior
+            if (env.IsProduction())
+            {
+                // Do NOT log the phone number or the OTP code here — this branch means
+                // NetGsm__UserCode/Password/Originator env vars are missing in prod,
+                // which is a config bug, not a case to silently degrade into logging secrets.
+                logger.LogError(
+                    "NetGsmSmsService: NetGsm:UserCode is not configured in Production. " +
+                    "OTP SMS send refused (no fallback log-the-code behavior in Production). " +
+                    "Set NetGsm__UserCode / NetGsm__Password / NetGsm__Originator env vars.");
+                return false;
+            }
+
+            // Dev/staging convenience: behave like MockSmsService so local/dev flows
+            // still work without a real NetGSM account.
             var maskedPhone = phoneE164.Length >= 13
                 ? $"{phoneE164[..3]} {phoneE164.Substring(3, 3)} •• •• {phoneE164[^2..]}"
                 : phoneE164;

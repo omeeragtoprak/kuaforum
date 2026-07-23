@@ -1,0 +1,58 @@
+# syntax=docker/dockerfile:1
+#
+# Kuaforum backend (ASP.NET Core 8 API). Multi-stage: SDK image builds/publishes,
+# runtime image is the slim ASP.NET runtime only (no SDK, no source, non-root).
+#
+# Build context MUST be the `backend/` directory:
+#   docker build -f backend/Dockerfile -t kuaforum-api:local backend
+# (infra/docker-compose.prod.yml sets `context: ../backend` accordingly.)
+
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+
+# Copy csproj files first (layer caching: restore only re-runs when a .csproj changes,
+# not on every source edit).
+COPY src/Kuaforum.Api/Kuaforum.Api.csproj src/Kuaforum.Api/
+COPY src/Kuaforum.Application/Kuaforum.Application.csproj src/Kuaforum.Application/
+COPY src/Kuaforum.Domain/Kuaforum.Domain.csproj src/Kuaforum.Domain/
+COPY src/Kuaforum.Infrastructure/Kuaforum.Infrastructure.csproj src/Kuaforum.Infrastructure/
+RUN dotnet restore src/Kuaforum.Api/Kuaforum.Api.csproj
+
+COPY src/ src/
+RUN dotnet publish src/Kuaforum.Api/Kuaforum.Api.csproj \
+    -c Release \
+    -o /app/publish \
+    --no-restore \
+    /p:UseAppHost=false
+
+# --- Runtime -----------------------------------------------------------------
+# IMPORTANT: mcr.microsoft.com/dotnet/aspnet:8.0 (Debian bookworm-slim) ships
+# full ICU by default — tr-TR culture formatting (dates, currency, string
+# comparison) used across the app needs this. Do NOT set
+# DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=true and do NOT switch to an
+# invariant/no-ICU base image.
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime
+WORKDIR /app
+
+# curl is needed for the HEALTHCHECK below; the aspnet base image doesn't ship it.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV ASPNETCORE_URLS=http://+:8080 \
+    ASPNETCORE_ENVIRONMENT=Production \
+    DOTNET_EnableDiagnostics=0
+
+COPY --from=build /app/publish .
+
+# Non-root: .NET 8+ base images ship a built-in "app" user, UID exposed via
+# $APP_UID. See infra/README.md for the source on this ("What's new in
+# containers for .NET 8", Microsoft Learn).
+USER $APP_UID
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
+    CMD curl -fsS http://localhost:8080/health/ready || exit 1
+
+ENTRYPOINT ["dotnet", "Kuaforum.Api.dll"]

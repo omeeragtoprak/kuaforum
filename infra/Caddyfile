@@ -1,0 +1,41 @@
+# Kuaforum production reverse proxy (Caddy 2). Automatic HTTPS (Let's Encrypt) —
+# Caddy handles ACME issuance/renewal on its own, no manual cert management.
+#
+# DOMAIN / API_DOMAIN / ADMIN_DOMAIN / ACME_EMAIL come from infra/.env.prod
+# (see .env.prod.example). Until real domains are chosen, the defaults below
+# fall back to nip.io so `docker compose config` and local smoke tests don't
+# need a real domain — Caddy will just skip ACME for those (no public DNS).
+{
+	email {$ACME_EMAIL:admin@kuaforum.com}
+}
+
+{$API_DOMAIN:api.kuaforum.com} {
+	encode gzip zstd
+
+	# Health checks and Hangfire stay served — auth is enforced app-side
+	# (HangfireDashboardAdminFilter), not at the proxy.
+	reverse_proxy backend:8080 {
+		header_up X-Forwarded-Proto {scheme}
+		health_uri /health
+		health_interval 30s
+		health_timeout 5s
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+{$ADMIN_DOMAIN:admin.kuaforum.com} {
+	encode gzip zstd
+
+	reverse_proxy web-admin:3000 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

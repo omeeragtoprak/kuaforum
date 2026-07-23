@@ -4,16 +4,17 @@ using Kuaforum.Api.Endpoints;
 using Kuaforum.Api.Middleware;
 using Kuaforum.Application;
 using Kuaforum.Infrastructure;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Sentry: DSN ortam değişkeninden gelir. Boş DSN = SDK disabled (overhead yok).
-// Sentry SDK null DSN'de exception fırlatır, "" ile disable et.
+// Sentry: DSN ortam değişkeninden (Sentry__Dsn) gelir. Boş/unset DSN = SDK disabled
+// (overhead yok). Sentry SDK null DSN'de exception fırlatır, "" ile disable et.
 // AttachStacktrace + TracesSampleRate appsettings.Production.json'da config edilmiş.
 var sentryDsnConfig = builder.Configuration["Sentry:Dsn"];
-if (!string.IsNullOrWhiteSpace(sentryDsnConfig) && !sentryDsnConfig.Contains("${SENTRY_DSN"))
+if (!string.IsNullOrWhiteSpace(sentryDsnConfig))
 {
     builder.WebHost.UseSentry(options =>
     {
@@ -36,7 +37,7 @@ builder.Host.UseSerilog((context, services, configuration) =>
 
     // Sentry: Serilog → Sentry breadcrumb/event köprüsü. DSN yoksa skip.
     var sentryDsn = context.Configuration["Sentry:Dsn"];
-    if (!string.IsNullOrWhiteSpace(sentryDsn) && !sentryDsn.Contains("${SENTRY_DSN"))
+    if (!string.IsNullOrWhiteSpace(sentryDsn))
     {
         configuration.WriteTo.Sentry(o =>
         {
@@ -47,7 +48,6 @@ builder.Host.UseSerilog((context, services, configuration) =>
     }
 });
 
-builder.Services.AddOpenApi();
 builder.Services.AddProblemDetails();
 builder.Services.ConfigureHttpJsonOptions(o =>
 {
@@ -68,15 +68,40 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+// Production boot guard: appsettings.Production.json artık ${VAR} placeholder
+// kullanmıyor (.NET bunları expand ETMEZ — önceden prod'a garbage connection
+// string/secret ile sessizce boot alınıyordu). ConnectionStrings:Postgres/Redis
+// (AddInfrastructure), Jwt:SigningKey (AddKuaforumAuth) ve Encryption:Key
+// (AesEncryptionService ctor, AdminSeeder resolve edilirken eager construct
+// edilir) kendi katmanlarında zaten throw ediyor. Otp:Pepper ise lazy
+// kullanıldığı için boş kalırsa boot ÇÖKMEZ, sadece OTP hash'i pepper'sız
+// (zayıflamış) üretilir — bunu burada açıkça fail-fast'e çeviriyoruz.
+if (app.Environment.IsProduction() && string.IsNullOrWhiteSpace(app.Configuration["Otp:Pepper"]))
+{
+    throw new InvalidOperationException(
+        "Otp:Pepper is required in Production (set env var Otp__Pepper). " +
+        "See infra/README.md 'Zorunlu environment değişkenleri' tablosu.");
+}
+
+// Caddy/Cloudflare arkasında çalışırken gerçek şema (https) ve client IP'yi
+// X-Forwarded-Proto / X-Forwarded-For header'larından geri kazanır. Bu, en
+// başta (routing/auth/HTTPS redirect'ten ÖNCE) uygulanmalı. KnownProxies/
+// KnownNetworks kasıtlı olarak boş bırakıldı (= tüm forwarded header'lara
+// güven) çünkü backend container'ı host'a publish EDİLMİYOR — sadece infra/
+// docker-compose.prod.yml'deki internal network üzerinden Caddy erişebiliyor,
+// dolayısıyla X-Forwarded-* spoof edecek dışarıdan bir aktör yok. Backend
+// ileride host'a doğrudan publish edilirse burada KnownNetworks Caddy'nin
+// compose subnet'ine daraltılmalı.
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
+
 app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-}
-else
+if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
     app.UseHsts();
@@ -131,7 +156,9 @@ app.MapGet("/health/ready", async (
     return allOk ? Results.Ok(payload) : Results.Json(payload, statusCode: 503);
 }).WithName("ReadinessProbe").WithTags("System");
 
-app.MapGet("/", () => Results.Redirect("/openapi/v1.json"))
+// NOT: OpenAPI paketi net10.0 → net8.0 geçişinde söküldü, /openapi/v1.json yok.
+// Kök route sadece "servis ayakta mı" kontrolü için /health'e yönlendiriyor.
+app.MapGet("/", () => Results.Redirect("/health"))
     .ExcludeFromDescription();
 
 app.MapAuthEndpoints(app.Environment);
@@ -141,7 +168,7 @@ app.MapBarberEndpoints();
 app.MapAvailabilityEndpoints();
 app.MapBookingEndpoints();
 app.MapUploadsEndpoints();
-app.MapPaymentEndpoints();
+app.MapPaymentEndpoints(app.Environment);
 app.MapReviewEndpoints();
 app.MapNotificationEndpoints();
 app.MapDeviceTokenEndpoints();
@@ -182,8 +209,19 @@ internal sealed class HangfireDashboardAdminFilter : Hangfire.Dashboard.IDashboa
     {
         if (context is not Hangfire.Dashboard.AspNetCoreDashboardContext aspCtx) return false;
         var http = aspCtx.HttpContext;
-        // Allow localhost (dev) without auth so Docker compose health checks work.
-        if (http.Request.Host.Host is "localhost" or "127.0.0.1") return true;
+        // Allow loopback connections (dev / Docker compose health checks) without auth.
+        // IMPORTANT: check the actual socket RemoteIpAddress, NOT Request.Host — the Host
+        // header is client-controlled (e.g. "Host: localhost") and trivially spoofable,
+        // which previously let any remote caller bypass auth entirely.
+        //
+        // Behind Caddy (prod): app.UseForwardedHeaders() runs earlier in the pipeline
+        // and rewrites RemoteIpAddress from X-Forwarded-For, so a real visitor hitting
+        // /hangfire through Caddy sees their OWN public IP here (not loopback) — the
+        // bypass correctly does NOT trigger and Admin auth is enforced. Only requests
+        // that never went through Caddy's forwarding (e.g. a docker-compose healthcheck
+        // hitting the backend container directly, or `dotnet run` locally) stay loopback.
+        var remoteIp = http.Connection.RemoteIpAddress;
+        if (remoteIp is not null && System.Net.IPAddress.IsLoopback(remoteIp)) return true;
         var user = http.User;
         return user.Identity?.IsAuthenticated == true && user.IsInRole("Admin");
     }

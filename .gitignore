@@ -8,11 +8,14 @@ Thumbs.db
 *.swp
 *.swo
 
-# Environment
-.env
-.env.local
-.env.*.local
+# Environment — ignore every .env* file EXCEPT the checked-in *.example templates.
+# Broadened from the previous .env / .env.local / .env.*.local-only pattern,
+# which did NOT match infra/.env.prod (added alongside this) — that filename
+# would have been committable by accident under the old rule.
+.env*
 !.env.example
+!.env.*.example
+!*.env.example
 
 # Secrets
 secrets/
@@ -64,9 +67,6 @@ target/
 logs/
 *.log
 
-# Docker
-.dockerignore
-
 # Terraform
 .terraform/
 *.tfstate
@@ -76,3 +76,6 @@ logs/
 *.tmp
 *.bak
 .history/
+
+# Lokal compose override'ları (port remap vb. makineye özel)
+infra/docker-compose.override.yml
