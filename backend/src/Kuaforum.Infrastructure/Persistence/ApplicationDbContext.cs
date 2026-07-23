@@ -56,6 +56,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     {
         modelBuilder.HasPostgresExtension("postgis");
         modelBuilder.HasPostgresExtension("pgcrypto");
+        // btree_gist required for the bookings EXCLUDE constraint (M15) — GiST needs a btree
+        // opclass for the equality (stylist_id) column combined with the range overlap check.
+        modelBuilder.HasPostgresExtension("btree_gist");
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(ApplicationDbContext).Assembly);
         base.OnModelCreating(modelBuilder);
     }

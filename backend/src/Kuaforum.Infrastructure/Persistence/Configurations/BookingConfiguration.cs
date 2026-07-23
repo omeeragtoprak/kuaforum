@@ -8,6 +8,12 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
 {
     public void Configure(EntityTypeBuilder<Booking> builder)
     {
+        // NOTE: the table also carries a GiST EXCLUDE constraint (ex_bookings_stylist_slot,
+        // btree_gist extension) that guarantees no two active-status (Pending/Confirmed/Started)
+        // bookings can overlap for the same stylist. EF Core has no fluent API for EXCLUDE
+        // constraints, so it lives as raw SQL in migration M15_BookingSlotExclusion and is NOT
+        // visible here or in the model snapshot — check that migration before assuming the
+        // schema is fully described by this file.
         builder.ToTable("bookings");
         builder.HasKey(x => x.Id);
         builder.Property(x => x.Id).HasColumnName("id");

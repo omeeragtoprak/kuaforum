@@ -1,4 +1,5 @@
 using FluentValidation;
+using Kuaforum.Application.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
@@ -73,8 +74,10 @@ public sealed class RescheduleBookingCommandHandler(
             booking.StylistId, request.NewScheduledAt, newEndsAt, ct);
         if (scheduleResult.IsFailure) return Result.Failure<RescheduleBookingResponse>(scheduleResult.Error);
 
-        // Slot lock + busy-range check on the new time (skip current booking's own range)
-        var lockKey = $"slot-lock:{booking.StylistId}:{request.NewScheduledAt:yyyyMMddHHmm}";
+        // Slot lock + busy-range check on the new time (skip current booking's own range).
+        // Locked per-stylist, NOT per-slot-minute — see InitiateBookingCommand for why. The
+        // EXCLUDE constraint on bookings (M15_BookingSlotExclusion) is the actual guarantee.
+        var lockKey = $"slot-lock:{booking.StylistId}";
         await using var lockHandle = await distributedLock.TryAcquireAsync(lockKey, SlotLockDuration, ct);
         if (lockHandle is null)
             return Result.Failure<RescheduleBookingResponse>(Error.Conflict("Bu zaman dilimi başka bir müşteri tarafından rezerve ediliyor."));
@@ -97,7 +100,15 @@ public sealed class RescheduleBookingCommandHandler(
             payload: new { newScheduledAt = request.NewScheduledAt },
             ct: ct);
 
-        await db.SaveChangesAsync(ct);
+        try
+        {
+            await db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (PostgresErrorClassifier.IsExclusionViolation(ex, out _))
+        {
+            // Last-line-of-defense — see InitiateBookingCommand's identical catch for rationale.
+            return Result.Failure<RescheduleBookingResponse>(Error.Conflict("Bu saat az önce doldu, başka bir saat seçin."));
+        }
 
         return Result.Success(new RescheduleBookingResponse(
             booking.Id, booking.ScheduledAt, booking.ScheduledEndsAt));

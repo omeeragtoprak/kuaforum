@@ -2,6 +2,7 @@ using Hangfire;
 using Hangfire.PostgreSql;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Availability;
+using Kuaforum.Application.Modules.Payment;
 using Kuaforum.Infrastructure.Auth;
 using Kuaforum.Infrastructure.Storage;
 using Kuaforum.Infrastructure.BackgroundJobs;
@@ -72,6 +73,7 @@ public static class DependencyInjection
         services.AddSingleton<IPaymentProvider, PayTrPaymentProvider>();
         services.AddSingleton<IPaymentProvider, IyzicoPaymentProvider>();
         services.AddSingleton<IPaymentProviderRegistry, PaymentProviderRegistry>();
+        services.AddScoped<IBookingRefundService, BookingRefundService>();
 
         // Push channel: Firebase Cloud Messaging if credentials configured, else log-only mock.
         services.Configure<FcmOptions>(configuration.GetSection(FcmOptions.SectionName));
@@ -145,11 +147,20 @@ public static class DependencyInjection
                 opts.WorkerCount = Environment.ProcessorCount;
                 opts.Queues = ["default", "critical"];
             });
+            services.AddScoped<IBookingRefundJobEnqueuer, HangfireBookingRefundJobEnqueuer>();
+        }
+        else
+        {
+            // Hangfire disabled (tests) → IBackgroundJobClient isn't registered. Fall back to
+            // a no-op logger so DI still resolves — see NullBookingRefundJobEnqueuer.
+            services.AddScoped<IBookingRefundJobEnqueuer, NullBookingRefundJobEnqueuer>();
         }
         services.AddScoped<HardDeleteUsersJob>();
         services.AddScoped<ExpireWalkInJob>();
         services.AddScoped<AutoNoShowJob>();
         services.AddScoped<BookingReminderJob>();
+        services.AddScoped<ExpirePendingBookingsJob>();
+        services.AddScoped<ProcessBookingRefundJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<IStylistScheduleChecker, StylistScheduleChecker>();
         services.AddSingleton<IObjectStorage, LocalFileObjectStorage>();
@@ -219,6 +230,12 @@ public static class DependencyInjection
             recurringJobId: BookingReminderJob.JobId,
             methodCall: job => job.RunAsync(CancellationToken.None),
             cronExpression: BookingReminderJob.CronExpression,
+            options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        manager.AddOrUpdate<ExpirePendingBookingsJob>(
+            recurringJobId: ExpirePendingBookingsJob.JobId,
+            methodCall: job => job.RunAsync(CancellationToken.None),
+            cronExpression: ExpirePendingBookingsJob.CronExpression,
             options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 }
