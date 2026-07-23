@@ -59,15 +59,18 @@
   - Bu zamanda var olan randevular
   - Hizmet süresi (örn. 30dk kesim, 60dk boya, 90dk iki birden) → slot toplam süre
   - **Çıktı:** mevcut slot listesi (dakika hassasiyetli).
+- **Spec (as-built):** [`docs/04-modules/05-availability.md`](05-availability.md).
 
 ### M6 — Booking Lifecycle
 - **Kapsam:** State machine (pending/confirmed/started/completed/cancelled/no-show), multi-service booking, kademeli iptal politikası.
 - **Critical:** Booking + Payment + Availability transaction atomicity (Outbox pattern).
+- **Spec (as-built):** [`docs/04-modules/06-booking.md`](06-booking.md).
 
 ### M7 — Payment & Commission
 - **Kapsam:** PayTR Pazaryeri primary (T+1), Iyzico fallback, kademeli iade, e-Arşiv çift fatura (Nilvera).
 - **Critical:** `IPaymentProvider` abstraction, webhook idempotency, refund idempotency.
 - **Detay:** [`docs/09-payment/01-payment-architecture.md`](../09-payment/01-payment-architecture.md).
+- **Spec (as-built):** [`docs/04-modules/07-payment.md`](07-payment.md).
 
 ### M8 — Review & Moderation
 - **Kapsam:** 5 yıldız + metin yorum, moderasyon (otomatik küfür filtresi + manuel review queue), kuaför reply (her yoruma 1).

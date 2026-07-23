@@ -1,488 +1,506 @@
-# Kuaforum — Gap Analizi (2026-05-13)
+# Kuaforum — Gap Analizi (2026-07-23)
 
-> Bu doküman, projenin **mevcut durumu** ile **hedeflenen MVP / production** durumu arasındaki farkları sistematik olarak listeler. Her madde için: **status · kapsamı · efor tahmini**.
+> Bu doküman, 10 agent'lık paralel fullstack kod taramasının (backend domain/application, API + infrastructure, mobile müşteri, owner paneli, web admin, infra/devops, spec-izlenebilirlik, test envanteri) ve bunu takip eden senkron sentez + critic (çapraz doğrulama) turunun sonucudur; her madde dosya:satır kanıtına dayanır. 2026-05-13 tarihli önceki analiz iki yönde bayattı: kapanmış işleri (mobile profile edit, phone-change OTP UI, owner review reply, KVKK veri export) hâlâ eksik gösteriyordu ve var olmayan özellikleri ("3DS callback endpoint mevcut", gerçek Meilisearch/PayTR entegrasyonu gibi) tamamlanmış varsayıyordu — bu doküman o hatalı temeli tamamen değiştirir.
 
-**Sembol:**
-- ✅ tamam (production-ready)
-- 🟢 fonksiyonel (minor cleanup gerekli)
-- 🟡 stub / iskelet (çalışır ama eksik)
-- 🟠 kısmi (bazı parçaları var)
-- 🔴 yok (yazılmadı)
-- 🟣 dış-koşul (kullanıcı eylemi gerekli — domain, lawyer, hesap başvurusu)
+**Sembol (M1-M16 modül tablosu ve alan özetlerinde):**
+- ✅ tamam (production-ready) · 🟢 fonksiyonel (minor cleanup gerekli) · 🟡 stub/iskelet (çalışır ama eksik) · 🟠 kısmi (bazı parçaları var) · 🔴 yok (yazılmadı) · 🟣 dış-koşul (founder eylemi gerekli — hesap başvurusu, sözleşme, hukukçu)
 
-**Efor:** S = saatler (1-8h) · M = günler (1-5g) · L = haftalar (1-3h) · XL = aylar (1-3ay)
+**Öncelik (P0/P1/P2 matrisinde):**
+- **P0** — launch blocker: üretime çıkmadan mutlaka kapanmalı (güvenlik açığı, yasal risk, deploy imkânsızlığı)
+- **P1** — yüksek risk: launch öncesi veya hemen sonrasında kapanmalı (operasyonel/finansal itibar riski)
+- **P2** — backlog / kalite borcu: bilinçli scope kararıyla ertelenebilir, ama karar kayıt altına alınmalı
 
 ---
 
 ## 0. Genel Durum Özeti
 
-| Bileşen | Bitti | Üretim hazır? |
+### 0.1 Yönetici Özeti
+
+Proje MVP'ye doğru **~%55-60** seviyesinde: backend çekirdeği (Auth/OTP, Booking state machine + refund matrisi, Availability, Review, Admin/Audit) **201 testle** sağlam, üç UI yüzeyi de gerçek endpoint'lere bağlı, lokal dev ortamı + CI olgun. Ancak platform bu haliyle **ne deploy edilebilir ne gerçek para alabilir**. Üç risk kümesi:
+
+**(1) Para akışı hem yok hem delik**
+- Gerçek ödeme zinciri yok: PayTR/Iyzico stub, webhook/3DS callback endpoint'i hiç yazılmamış, mobile ödeme UI'ı bağlanmamış (→ P0-5)
+- Refund endpoint'inde tam IDOR — herhangi bir login kullanıcı herhangi bir payment'ı keyfi tutarla iade ettirebilir (→ P0-1)
+- `AllowAnonymous` mock/complete endpoint'i env-gate'siz — production'da ödemesiz booking confirm mümkün (→ P0-2)
+- Cancel `Reason` client-controlled — müşteri refund matrisini bypass edip %100 iade yazdırabilir (→ P0-3)
+- İptal sonrası gerçek para iadesi otomasyonu yok; "iade işleme alındı" bildirimi gidiyor ama iade yapılmıyor (→ P0-4)
+- e-Arşiv (Nilvera) katmanında sıfır kod — gerçek tahsilat başladığı an vergi denetiminde doğrudan ceza kalemi (→ P0-13)
+
+**(2) Deploy edilebilirlik fiilen sıfır**
+- Repo'da tek Dockerfile yok, deploy workflow yok; `appsettings.Production.json` içindeki `${VAR}` placeholder'ları .NET tarafından expand edilmiyor — prod boot'ta crash/tam kesinti (→ P0-7)
+- Base `appsettings.json`'daki commit'li admin şifresi (`ChangeMe!Admin2026`) prod'da ilk boot'ta seed edilir (→ P0-8)
+- NetGSM config key mismatch — prod'da OTP asla SMS'le gitmez, OTP-only auth'ta hiçbir kullanıcı kayıt olamaz (→ P0-6)
+- Mobile production build store'a gönderilemez: EAS projectId yok, icon/splash asset'i hiç yok, API URL localhost'a düşer (→ P0-12)
+
+**(3) Yasal/onboarding zinciri kopuk**
+- KVKK aydınlatma metni + ToS uygulamada hiçbir yerde görüntülenemiyor — bundled consent riski (→ P0-10)
+- Admin, KYC belgelerini hiç görmeden onaylıyor (→ P0-11)
+- KYC reddedilen kuaför backend'de sonsuza dek kilitleniyor; owner mobile'dan salon oluşturamıyor + gerçek belge yükleyemiyor (→ P0-9)
+
+İyi haber: P0'ların yaklaşık yarısı 1 günün altında efor isteyen guard/config işleridir. Büyük kalemler (PayTR, Nilvera, NetGSM gerçek entegrasyon) founder hesap açılışlarına bloklu (🟣) olduğundan başvurular **bugün** başlamalı (bkz. §10).
+
+### 0.2 Alan Skorları
+
+| Alan | % | Not |
 |---|---|---|
-| Phase 0 dokümantasyon | 51/51 ✅ | ✅ |
-| Phase 1 backbone (M1-M5) | %98 | 🟢 |
-| Phase 2 marketplace (M6-M11) | %90 | 🟠 (PSP/SMS/Maps gerçek değil — 🟣 hesap) |
-| Phase 3 growth (M12-M16) | %55 | 🟠 (admin 7 sayfa + audit log, mobile analytics today widget) |
-| Mobile customer app | %92 | 🟢 (profile edit + favoriler + i18n eksik) |
-| Mobile barber paneli | %85 | 🟢 (yorum cevap mobile UI eksik) |
-| Web admin paneli | %85 | 🟢 (8 sayfa: dashboard/users/shops/bookings/kyc/reviews/audit-logs/login; shadcn migration optional) |
-| Backend domain unit testleri | 71 test | 🟢 |
-| Backend application unit testleri | 51 test | 🟢 |
-| Backend integration testleri | 36 test | 🟢 (Testcontainers, çok flow kapsanmış) |
-| Mobile error boundary + Sentry foundation | ✅ (DSN-guard) | 🟢 (founder DSN gelince auto-aktive) |
-| Üçüncü parti gerçek entegrasyon | Mock fallback | 🟠 (PayTR/Iyzico/R2/Sentry DSN — 🟣 hesap) |
-| CI/CD | GitHub Actions ✅ | 🟢 (Hetzner deploy pipeline eksik) |
+| Backend Domain + Application | **%65** | Çekirdek modüller + 201 test yeşil (113 domain + 51 application + 37 integration). Para akışı bütünlüğü kırık: refund authz yok, iptal→iade otomasyonu yok, Outbox yok, StylistService enforce edilmiyor, PendingTimeout job yok, KYC reject kilidi. |
+| API Yüzeyi + Infrastructure | **%55** | ~78 endpoint tutarlı, JWT rotation + reuse-detection gerçek; FCM/Resend/Sentry/Redis/Hangfire GERÇEK ama PayTR/Iyzico/NetGSM açıkça stub, Nilvera/Meilisearch/R2 kodda hiç yok, rol policy'leri tanımlı ama kullanılmıyor. |
+| Mobile Müşteri Uygulaması | **%60** | Keşfet→randevu→yorum uçtan uca çalışıyor, loading/empty/error disiplini örnek seviyede. Ödeme UI yok, KVKK/ToS metinleri görüntülenemiyor, walk-in CTA'sız, konum kullanılmıyor, icon/splash asset'leri hiç yok. |
+| Kuaför (Owner) Paneli | **%58** | Günlük operasyon (bugün/takvim/hizmet/müsaitlik/walk-in/yorum cevabı/KYC takip) çalışıyor. Onboarding uçtan uca yürümüyor: salon oluşturma disabled, KYC upload placeholder; kazanç/komisyon ekranı yok, "Ciro" gerçekleşmemiş randevuları sayıyor. |
+| Web Admin Paneli | **%55** | 8 sayfa gerçek endpoint'lere bağlı, admin login (parola+TOTP+lockout) tam — GAP-ANALYSIS'in önceki iddiasından çok ileride. KYC kör onay, admin iptal iade tetiklemiyor, token refresh yok (15dk'da oturum ölüyor), finansal rapor sıfır, shadcn migration yapılmadı. |
+| Infra + DevOps + Deploy | **%30** | Dev compose + CI olgun; production hikayesi fiilen sıfır: Dockerfile yok, deploy workflow yok, `${VAR}` placeholder'lar prod boot'u kırar, commit'li admin şifresi, backup yok, EAS projectId bağlanmamış. |
+| Spec / İzlenebilirlik | **%40** | Kod amaçla uyumlu, MVP MUST ~%70 çalışıyor; ama 16 modülden 15'i spec'siz, `docs/rfc` hiç açılmamış, .NET10→8 / RS256→HS256 / Meilisearch→ILIKE sapmaları RFC'siz, eski GAP-ANALYSIS iki yönde bayat ve güvenilmezdi. |
+| Test Envanteri + Kalite Kapıları | **%40** | Backend 201 test ama Application suite CI'da hiç koşmuyor, gerçek domain coverage %54.5 (hedef %70), refund akışını hiçbir test çağırmıyor, concurrent double-booking testi yok, mobile/web-admin/contract test sıfır. |
 
-**Toplam ilerleme:** Master spec'in **~%80'i** kodlanmış. Kalan **~%20** — üçüncü-parti hesap entegrasyonu (PayTR/R2/Sentry DSN — 🟣 founder), Hetzner deploy pipeline, mobile UX gap (profile edit + i18n), şehir/kategori admin yönetimi.
+### 0.3 Toplam Değerlendirme
 
-**Realistik tahmin (devam):** Founder onayı bekleyen 🟣 işleri saymazsak, kalan kod **~3-5 hafta**.
+Önceki analiz "master spec'in ~%80'i kodlanmış" diyordu — bu iddia **bayattı ve yanıltıcıydı**: hem tamamlanmış işi eksik gösteriyor hem eksik/tehlikeli olan para akışını "hazır" gibi sunuyordu. Gerçekçi durum: **kod hacmi büyük ve UI yüzeyleri gerçek endpoint'lere bağlı**, ama üç kritik eksen (para akışı güvenliği, deploy edilebilirlik, yasal onboarding) MVP launch'ını fiilen bloklamaktadır. Founder onayı bekleyen 🟣 işleri saymazsak (PayTR/Nilvera/NetGSM/R2/Sentry/Hetzner/Apple-Google hesapları), **P0 kümesinin kod tarafı ~2-3 hafta**, P0+P1 birlikte **~5-6 hafta**.
 
 ---
 
-## 1. Phase 0 — Foundation
+## 1. Modül İzleri (M1-M16) — Niteliksel Durum
 
-| Madde | Status | Not |
+> Bu cycle'ın kaynak verisi **alan bazlı** toplandı (bkz. §0.2), modül bazlı kesin yüzdeler bu veriden güvenilir türetilemez — fabrike edilmiş bir M1-M16 % kırılımı yanıltıcı olur. Bunun yerine her modülün niteliksel durumu + kritik kanıt aşağıda; kesin efor/skor için ilgili P0/P1/P2 madde numarasına bakın.
+
+| Modül | Durum | Not |
 |---|---|---|
-| Vizyon + scope + persona doc'ları | ✅ | |
-| Rakip analizi (TR + global) | ✅ | |
-| Ödeme + lisans araştırması | ✅ | |
-| KVKK + e-arşiv + tüketici hakları araştırması | ✅ | |
-| Mimari spec'leri | ✅ | |
-| Modül listesi | ✅ | |
-| Risk register · roadmap · budget · şirket roadmap | ✅ | |
-| Customer discovery sprint planı | ✅ (sprint **yapılmadı** 🟣) | |
-| Claude setup (CLAUDE.md, agent'lar, MCP, kalıcı kurallar) | ✅ | |
-| Güvenlik + KVKK overview | ✅ | |
-| **Domain + trademark check** | 🟣 | Founder eylemi |
-| **SMMM + avukat seçimi** | 🟣 | Founder eylemi |
-| **Şirket kuruluşu** | 🟣 | Founder eylemi |
-| **PayTR + Iyzico hesap başvurusu** | 🟣 | Founder eylemi (şirket sonra) |
-| **NetGSM hesap başvurusu** | 🟣 | Founder eylemi |
-| **Firebase project + service account** | 🟣 | Founder eylemi (FCM gerçek delivery için) |
+| **M1 — Auth & Authorization** | 🟠 Kod tamam, üretime kilitli | OTP/JWT rotation+reuse-detection/OAuth JWKS/Admin login+TOTP gerçek implement. NetGSM config mismatch → prod'da OTP hiç gitmiyor (P0-6). Mobile'da OAuth butonu yok (P2-4). |
+| **M2 — User & Role Management** | 🟠 Kısmi | KVKK self-servis (silme/export/rıza/session) tam. Rol policy'leri tanımlı ama hiçbir endpoint grubunda kullanılmıyor — Customer rolü owner endpoint'lerine erişebiliyor (P1-4). |
+| **M3 — Geographic Data** | 🟠 Kısmi | 81 il + 16 il örnek ilçe seed'li, PostGIS Coordinate VO çalışıyor. Neighborhood 0 satır (mahalle differentiator yarım, P1-14). Geocoding gerçek HTTP çağrısı yok. |
+| **M4 — Barber Profile & Verification** | 🟠 Kısmi / kritik nokta blok | BarberShop/Stylist/ServiceCatalog/WorkingHours/TimeOff domain tam. KYC: reddedilen kuaför sonsuza dek kilitli (P0-9), admin belgeleri görmeden onaylıyor (P0-11), mobile upload placeholder (P0-9), R2 yok — yalnız local disk (P1-6). |
+| **M5 — Availability Engine** | 🟢 Kod tamam, concurrency güvenliği eksik | Slot generation + working hours/time-off enforcement 13 integration testle kanıtlı. Redis lock granülaritesi hatalı + DB exclusion constraint yok (P1-1). |
+| **M6 — Booking Lifecycle** | 🟠 State machine tamam, güvenlik delikli | Pending→Confirmed→Started→Completed/Cancelled/NoShow + refund matrisi + reschedule test kapsamlı. Cancel Reason client-controlled (P0-3), PendingTimeout job yok (P1-3), no-show zaman guard'ı yok (P1-5). |
+| **M7 — Payment & Commission** | 🔴 Kritik blok — projenin en riskli modülü | Payment aggregate + refund matematiği domain'de sağlam ama: refund endpoint IDOR (P0-1), mock/complete anonim (P0-2), PayTR/Iyzico stub + webhook yok (P0-5), e-Arşiv sıfır kod (P0-13), komisyon oranı hardcoded (P2-1). |
+| **M8 — Review & Moderation** | ✅ Kod tamam | Submit/moderasyon/reply/TR profanity heuristiği çalışıyor, domain testli. Helpful vote + foto upload küçük eksikler (P2 seviyesi). |
+| **M9 — Search & Discovery** | 🟠 Kısmi | Şehir/ilçe/cinsiyet/walk-in/rating/fiyat filtreleri SQL ile çalışıyor. PostGIS mesafe sıralaması + Meilisearch hiç entegre değil, rating her sorguda korelasyonlu subquery (ölçek riski, P2-2). |
+| **M10 — Maps & Navigation** | 🟡 Minimal | Yalnızca Apple/Google Maps deep-link handoff var. Geocoding/reverse-geocoding yok, mobile'da harita view (liste↔harita toggle) yok. |
+| **M11 — Notification** | 🟠 Kısmi/blok | Dispatcher + InApp feed + FCM adapter (gerçek, hesap bekliyor) + Resend gerçek çalışıyor. SMS koşulsuz mock (NetGSM ile aynı kök neden, P0-6); Outbox yok (P1-2); tercih merkezi (opt-out) yok. |
+| **M12 — Admin Panel** | 🟠 GAP-ANALYSIS'in eski iddiasından çok ileride, finansal olarak tehlikeli | 8 sayfa + login+TOTP tam çalışıyor. KYC kör onay (P0-11), admin iptal PSP refund tetiklemiyor (P0-4), tek "Admin" rolü (süper admin/operatör ayrımı yok), token 15dk'da ölüyor (P1-9). |
+| **M13 — Analytics & Reporting** | 🟡 Minimal | Sadece dashboard temel stat kartları. GMV time-series/funnel/cohort/stylist utilization yok. |
+| **M14 — Promo & Referral** | 🔴 Yok | Domain'de promo/coupon/campaign/referral kavramı hiç yok (grep 0 sonuç). |
+| **M15 — Loyalty & Rewards** | — V2 | Kapsam dışı, MVP'de planlanmıyor. |
+| **M16 — i18n** | 🟡 Askıda | i18next kurulu, 0 kullanım (P2-3) — TR-only mı yoksa retrofit mi kararı verilmemiş. |
 
 ---
 
-## 2. Phase 1 — Backbone Modüller
+## 2. Alan Bazlı Detay
 
-### M1 — Auth & Authorization (%85)
+### 2.1 Backend Domain + Application (%65)
 
-| Item | Status | Efor kalan |
+Çekirdek modüller (Auth/OTP, User+KVKK, Geography, BarberShop/Stylist/KYC, Availability, Booking state machine, Payment+Refund, Review+moderasyon, Notification, Admin/Audit) domain entity + CQRS handler + FluentValidation validator seviyesinde büyük oranda yazılmış ve 201 test yeşil.
+
+**Çalışıyor:**
+- Identity/Auth: User aggregate (suspend/soft-delete/30g restore/anonymize), OtpCode (hash'li kod, device fingerprint, 5 cihaz limiti), RefreshToken rotation+reuse-detection, OAuth, AdminLogin, PhoneChange, DevLogin
+- KVKK/Consent: Consent entity (ToS/Marketing/Location/HealthData), DeleteMyAccount/RestoreMyAccount, ExportMyDataQuery, session yönetimi, HardDeleteUsersJob
+- Geography: City/District/Neighborhood/Address/Coordinate + Tr81 + Erzurum seed
+- BarberShop: Create/UpdateBasics/SetAddress + status makinesi Draft→PendingKyc→Active→Suspended, ServiceCatalog CRUD, Stylist CRUD + walk-in toggle + ExpireWalkInJob, WorkingHours/TimeOff, KYC submit + admin ReviewKyc
+- Availability: `ComputeAvailabilityQuery` (15dk slot grid, Europe/Istanbul TZ) + `StylistScheduleChecker` Initiate ve Reschedule'da enforce
+- Booking: tam state machine, refund yüzde matrisi (>24h %100, 12-24h %50, <12h %0, BarberRequested/PaymentFailed/PendingTimeout/AdminOverride %100, NoShow %0), Redis distributed lock, Reschedule (2h cutoff), AutoNoShowJob, BookingReminderJob
+- Payment: Payment aggregate Initiated→Authorized→Captured→Settled/Failed/Refunded + kısmi iade birikimi ve aşım koruması, idempotency key
+- Review: Submit (yalnız Completed booking, tek review/booking, AutoModerate profanity→Pending), Approve/Reject/Hide, tek seferlik BarberReply
+- Notification: NotificationLog + 6 booking event handler, DeviceToken kayıt, notification feed
+- Admin/Audit: `IAuditLogger` tüm kritik komutlarda, `GET /v1/admin/audit-logs`, SuspendBarberShop, AdminCancelBooking
+
+**Kritik gap'ler:** refund IDOR (→P0-1), cancel reason bypass (→P0-3), iptal→iade otomasyonu yok (→P0-4), Outbox yok (→P1-2), StylistService enforce edilmiyor (→P1-16), PendingTimeout job yok (→P1-3), KYC reject sonsuz kilit (→P0-9), PayTR/Iyzico/webhook stub (→P0-5), Nilvera sıfır kod (→P0-13), komisyon hardcoded (→P2-1), arama ölçek riski (→P2-2).
+
+### 2.2 API Yüzeyi + Infrastructure Entegrasyon Gerçekliği (%55)
+
+API yüzeyi geniş ve tutarlı: 15 grup altında ~78 endpoint, `Result`→`ProblemDetails` eşlemesi, FluentValidation pipeline, JWT refresh rotation + device-binding + reuse detection gerçekten implement edilmiş. Entegrasyon gerçekliği ikiye ayrılıyor:
+
+**Gerçek entegrasyonlar:** FCM push (FirebaseAdmin 3.4.0, multicast, UNREGISTERED token deaktivasyonu), Resend email (gerçek HTTP), Sentry (DSN env-guarded, `SendDefaultPii=false`), Redis rate limiter (OTP send), Hangfire (Postgres storage, 4 recurring job), JWT/refresh (HS256, SHA256 hash saklama, rotation+reuse-detection, device fingerprint).
+
+**Üçüncü Parti Entegrasyon Durumu:**
+
+| Servis | Durum | Not |
 |---|---|---|
-| Domain (User, RefreshToken, OtpCode, Consent, AuditLog, AdminCredential) | ✅ | — |
-| Value objects (PhoneE164, EmailAddress) | ✅ | — |
-| Domain events | ✅ | — |
-| EF + migration (M01_Identity_Initial) | ✅ | — |
-| Telefon + OTP register/login | ✅ | — |
-| JWT (15dk) + Refresh (30g) + rotation + reuse detection | ✅ | — |
-| Profile GET/PATCH/DELETE/restore | ✅ | — |
-| Sessions GET/REVOKE | ✅ | — |
-| Consents GET/PATCH | ✅ | — |
-| Hangfire HardDeleteUsersJob | ✅ | — |
-| Audit logging cross-cutting | ✅ | — |
-| **Dev-login endpoint (development only)** | ✅ | — |
-| **OAuth (Apple, Google) endpoints + provider verify** | 🔴 | M (1-2g) |
-| **Admin login + parola + TOTP** | 🟠 (AdminCredential entity + endpoint var, TOTP yok) | S (4h) |
-| **Phone change endpoint** | 🔴 | S (4h) |
-| **NetGSM gerçek SMS provider** | 🟡 (mock log) | S (3h) + 🟣 hesap |
-| **Application + Integration testleri (Testcontainers)** | 🔴 | M (2-3g) — Task #28 |
-| Domain unit testleri | 30 test ✅ | — |
+| PayTR (PSP primary) | 🟡 stub | `PayTrPaymentProvider.cs:12` "SCAFFOLDED stub"; 🟣 merchant hesabı |
+| Iyzico (PSP fallback) | 🟡 stub | Aynı durumda; 🟣 hesap |
+| NetGSM (SMS) | 🟡 stub + config mismatch | `UserCode` hiç bind olmuyor → prod'da her zaman mock fallback (→P0-6); 🟣 hesap + originator onayı |
+| Resend (Email) | ✅ gerçek | ApiKey yoksa log-fallback; config key mismatch küçük tutarsızlık (→P2-9) |
+| Firebase FCM (Push) | ✅ gerçek (adapter hazır) | 🟣 service account JSON gelince aktif |
+| Cloudflare R2 (file storage) | 🔴 yok | Yalnızca `LocalFileObjectStorage`; 🟣 hesap (→P1-6) |
+| Google Maps (geocoding) | 🔴 yok | Interface var, HTTP çağrısı yok; 🟣 API key |
+| Nilvera (e-Arşiv) | 🔴 yok | Sıfır kod (→P0-13); 🟣 hesap + mali müşavir |
+| Sentry | ✅ kod hazır | Yalnızca DSN bekliyor; 🟣 organizasyon |
+| Apple/Google OAuth | 🟢 backend gerçek, mobile ölü kod | JWKS doğrulamalı ama mobile'da buton yok (→P2-4) |
+| Meilisearch | 🔴 kodda yok | Compose'da container çalışıyor ama backend'de 0 referans (→P2-2) |
 
-### M2 — User & Role Management (%70)
+**Kritik gap'ler:** refund IDOR (→P0-1), anonim mock/complete (→P0-2), PayTR/Iyzico/webhook (→P0-5), `${VAR}` placeholder substitution yok (→P0-7), NetGSM (→P0-6), rol policy'leri kullanılmıyor (→P1-4), R2/local storage (→P1-6), Hangfire Host-header bypass (→P1-16), küçük tutarsızlıklar — Resend config key, kök route 404, rate limiter atomik değil (→P2-9).
 
-> M1 user ile çakışıyor; M2 = role-spesifik profil enrichment'ı + admin yönetimi.
+### 2.3 Mobile Müşteri Uygulaması (%60)
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| BarberOwner role enum + claims | ✅ | — |
-| Stylist alt-entity (Barber modülünde) | ✅ | — |
-| Admin role + dev-login destek | ✅ | — |
-| **BarberOwner davet akışı (e-posta link)** | 🔴 | M |
-| **Stylist davet akışı (BarberOwner tarafından)** | 🔴 | M |
-| **Admin user listesi + filtre + arama** | ✅ (web-admin/users page) | — |
-| **User suspend/unsuspend (admin)** | 🟠 (endpoint mevcut, UI link yok) | S |
-| Role permission matrisi (policy-based authorization) | 🟠 (RequireAuthorization + RequestContext role check) | S — formal policy'ler |
-| KYC queue (M4 ile bağlantılı) | ✅ (web-admin/kyc page) | — |
+Keşfet→randevu→yorum döngüsü uçtan uca çalışır durumda; loading/empty/error state disiplini örnek seviyede (EmptyState + Skeleton + RefreshControl neredeyse her liste ekranında). TanStack Query v5 app genelinde gerçek kullanılıyor, axios interceptor'da single-flight token refresh + SecureStore + device fingerprint var.
 
-### M3 — Geographic Data (%95)
+**Çalışıyor:** OTP login + axios interceptor refresh; Keşfet (Erzurum default city + city picker); Arama (server-side filtreler); Kuaför detay (native harita handoff, yorum+cevap gösterimi); Randevu akışı (initiate, filter chips, cancel/reschedule, owner aksiyonları, CountdownBadge); Yorum yazma; Hesap (edit-profile, change-phone, sessions, consents, veri indirme, 2 kademeli hesap silme); Bildirim feed + FCM token register; AppErrorBoundary + ErrorReporter; Design system (Button 44pt+ tap target, accessibility props, haptics).
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| City entity (81 il) | ✅ | — |
-| District entity (~970 ilçe) | ✅ (TR plate + slug) | — |
-| Neighborhood entity (~30K mahalle) | 🟠 (entity var, NVI bootstrap eksik — şu an placeholder veri) | M |
-| Tr81CitySeed + GeographySeeder | ✅ | — |
-| PostGIS Coordinate VO | ✅ | — |
-| Cities/districts/neighborhoods read endpoints | ✅ | — |
-| **Geocoding service (Google Maps API)** | 🟡 (interface var, gerçek HTTP yok) | S + 🟣 API key |
-| **Reverse geocoding (lat/lng → mahalle)** | 🔴 | S |
-| Manuel düzeltme admin paneli | 🔴 | M (low priority) |
+**Kritik gap'ler:** ödeme UI hiç bağlanmamış (→P0-5), KVKK/ToS görüntülenemiyor (→P0-10), demo login `__DEV__` guard'sız (→P0-12), walk-in akışı tıklanamıyor (→P1-12), konum izinleri declare'li ama kullanılmıyor (→P1-14), push production config eksik (→P0-12), i18n askıda (→P2-3), accessibility kapsamı düşük / reschedule elle metin girişi / error state eksikleri / favoriler yok / mobile test sıfır (→P2-6, P2-8).
 
-### M4 — Barber Profile & Verification (%85)
+**Alan-özel ek notlar (matriste ayrı madde olmayan):**
+- Kuaför detayında `stylistsQuery`/`servicesQuery` hata verirse bölüm sessizce boş render olur — kullanıcı "hizmet yok" sanır (`barber/[id].tsx:126-145`).
+- Deep-link kapsamı dar: universal/app link yok, cold-start push tıklaması kaybolur (`usePushNotifications.ts:84-106`).
+- Yorum onay metni backend davranışıyla çelişiyor: "Onaylanınca görünür" diyor ama backend default-Approved (`review/submit.tsx:27-28`).
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| BarberShop aggregate (PostGIS Location, ratings, status, gender, capacity) | ✅ | — |
-| Stylist sub-entity (linked user + display name + services) | ✅ | — |
-| ServiceCatalog (kategoriler + flat seed) | ✅ | — |
-| StylistService (stylist-bazlı override) | ✅ | — |
-| Working hours (haftalık + per-stylist) | ✅ (Availability modülünde) | — |
-| TimeOff (izin/tatil) | ✅ | — |
-| **KYC submission entity** | ✅ (BarberKycSubmission) | — |
-| **Belge upload (Cloudflare R2)** | 🟡 (URL string field, gerçek upload yok) | M + 🟣 R2 hesap |
-| **Admin KYC review akışı** | ✅ (web-admin/kyc page) | — |
-| ESBİS web doğrulama (manuel link) | 🟣 | — |
-| **Salon photos + portfolio** | 🟠 (URL field, upload UI yok) | M |
-| Public barber profile endpoints | ✅ | — |
-| Barber panel CRUD endpoints (services, hours, profile) | ✅ | — |
+### 2.4 Kuaför (Owner) Mobile Paneli (%58)
 
-### M5 — Availability Engine (%80)
+Günlük operasyon çekirdeği (bugün ekranı, 14 günlük takvim, hizmet listesi, stylist + çalışma saati + izin yönetimi, walk-in toggle, yorum cevaplama, bildirimler, KYC durum takibi) gerçek backend endpoint'lerine bağlı ve çalışır durumda.
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Slot generation algoritması | ✅ | — |
-| Working hours + TimeOff + Booking ile slot exclusion | ✅ | — |
-| Hizmet süresine göre composite slot | ✅ | — |
-| **Concurrency-safe rezervasyon (Redis distributed lock)** | ✅ (IDistributedLock interface + Redis impl) | — |
-| Walk-in (anlık) booking desteği | ✅ (booking initiate `isWalkIn=true`) | — |
-| Slot endpoint perf budget < 200ms | 🟡 (test edilmedi, IQueryable safe) | S — load test |
+**Çalışıyor:** `today.tsx` (bugünün randevuları + start/complete/no-show + haftalık ciro widget); `calendar.tsx`; owner confirm/reschedule/cancel; `services.tsx` (hizmet CRUD tam); `availability.tsx` (stylist ekleme, çalışma saati, izin — ÇALIŞIYOR); `profile.tsx` (salon özeti, walk-in toggle); `kyc.tsx` (durum takibi tam); `reviews.tsx` (yorum listesi + cevap); notifications tab.
+
+**Kritik gap'ler:** owner onboarding uçtan uca kopuk — salon oluşturma disabled + KYC upload placeholder + KYC reject sonsuz kilit (→P0-9); kazanç/komisyon görünürlüğü sıfır + "Ciro" yanıltıcı (→P1-11); no-show server-side zaman guard'ı yok (→P1-5); KYC onay/red bildirimi gönderilmiyor (→P1-10); walk-in owner-side kasada kayıt yok, salon profili düzenleme mobile'da yok, shop galerisi yok, takvim geçmişe bakamıyor (→P2-8).
+
+**Alan-özel ek not:** Pending randevu onay/red akışına Bugün ekranından erişilemiyor — `today.tsx` BookingRow Pressable değil, owner en sık baktığı ekrandan bekleyen talebi onaylayamıyor (`today.tsx:262-272`, sadece calendar→booking/[id] rotasından ulaşılabiliyor).
+
+### 2.5 Web Admin Paneli (%55)
+
+7 sayfa (Dashboard, Kullanıcılar, Kuaförler, Randevular, KYC, Yorum Moderasyonu, Audit Log) + login tamamı gerçek backend endpoint'lerine bağlı ve uçtan uca çalışıyor; admin login (parola + TOTP + lockout + audit + AdminSeeder) tamamen implement — eski GAP-ANALYSIS'in ima ettiğinden çok daha ileride.
+
+**Çalışıyor:** Admin login (e-posta+parola+TOTP, lockout, audit); Dashboard (8 stat kartı); KYC onay/red akışı (sub-merchant key zorunlu, sebep chip'leri); Yorum moderasyon kuyruğu; Kullanıcı yönetimi (arama+filtre+suspend); Salon yönetimi (5 durum filtresi + suspend/reactivate); Randevu müdahale (admin iptal); Audit log görüntüleme (filtre + payload JSON expand); tüm endpoint'ler `RequireAuthorization("Admin")` policy arkasında; TR locale para/tarih formatlama, TypeScript strict.
+
+**Kritik gap'ler:** `/v1/payments/refund` IDOR (→P0-1), admin iptal PSP refund tetiklemiyor ama UI "%100 iade" vaat ediyor (→P0-4), KYC kör onay (→P0-11), token yönetimi — refresh token atılıyor, localStorage, 401'de redirect yok (→P1-9), finansal rapor/komisyon takibi/Nilvera izleme sıfır (→P0-13 ile aynı kök), shadcn migration yapılmadı + TanStack ölü bağımlılık + pagination eksik + bayat login uyarısı (→P2-7).
+
+**Alan-özel ek notlar:**
+- Rol bazlı admin yetkilendirme yok: tek `Admin=99` rolü — süper admin vs operatör ayrımı yapılamıyor (`UserRole.cs:8`, `AuthSetup.cs:51`).
+- Promo/kampanya yönetimi backend'de domain dahi yok (grep 0 sonuç).
+
+### 2.6 Infra + DevOps + Deploy Hazırlığı (%30)
+
+CI pipeline (build + 3 platform typecheck + Testcontainers integration test) çalışır durumda; lokal dev compose ortamı (Postgres/PostGIS, Redis AOF, Meilisearch, Seq — healthcheck'li) düzgün kurulmuş. Production deploy hikayesi fiilen sıfır.
+
+**Çalışıyor:** CI pipeline (backend build+test, mobile/web-admin typecheck); dev compose (Postgres+PostGIS, Redis AOF, Meilisearch, Seq, healthcheck'li); health endpoint'leri (`/health`, `/health/ready` — Postgres+Redis ping); Serilog→Console+Seq+Sentry; startup idempotent migration + seed; Hangfire dashboard admin-role filtreli; `eas.json` iskeleti; web-admin `next.config.mjs output: 'standalone'`.
+
+**Kritik gap'ler:** production deploy pipeline + Dockerfile tamamen yok (→P0-7), `${VAR}` placeholder'lar prod boot'u kırar (→P0-7), commit'li admin şifresi (→P0-8), mobile production build localhost API'ye işaret eder + EAS bağlanmamış (→P0-12), backup stratejisi hiç yok (→P1-7), CI Application test suite'ini koşturmuyor + net8 retarget uncommitted (→P1-8), ForwardedHeaders middleware yok, Hangfire Host-header bypass (→P1-16), R2 yok — KYC dosyaları lokal diskte (→P1-6), monitoring/metrics/uptime sıfır (→P2-10), Meilisearch compose'da çalışıyor ama backend'de sıfır entegrasyon (→P2-2).
+
+### 2.7 Spec / İzlenebilirlik (Master Spec ↔ Modül Spec ↔ Kod) (%40)
+
+Kod, projenin amacıyla (TR kuaför B2C marketplace, %10 komisyon, walk-in) büyük ölçüde uyumlu; MVP MUST listesinin ~%70'i çalışır durumda. Ama 3 differentiator'dan ikisi yarım: mahalle verisi/filtresi hiç yok, Türkçe NLP arama (Meilisearch) backend'de sıfır referans. İzlenebilirlik disiplini çökmüş: 16 modülden yalnızca M1'in spec'i var, `docs/rfc` dizini hiç açılmamış, master spec v0.1.0'da donmuş/imzasız iken .NET10→8, RS256→HS256, Meilisearch→ILIKE gibi kilitli kararlardan RFC'siz sapılmış.
+
+**Çalışıyor:** M1 Auth tam; Apple/Google OAuth backend gerçek (GAP-ANALYSIS'in eski 🔴 iddiası yanlıştı); Admin login TOTP; KVKK self-servis tam; M4 Barber (BarberShop+Stylist+ServiceCatalog+KYC+lokal upload); M5 Availability (slot+concurrency-safe lock); M6 Booking (state machine+multi-service+kademeli iade+reschedule); Walk-in differentiator TAM; M8 Review; M9 Search kısmi; M10 kısmi (deep-link); M11 kısmi; M12 Admin (8 sayfa); Test altyapısı (201 test); Sentry KVKK-safe wiring.
+
+**Kritik gap'ler:** gelir zinciri tamamen mock — PSP stub + webhook yok + e-Arşiv sıfır (→P0-5, P0-13), RFC disiplini sıfır + 15/16 modül spec'siz + eski GAP-ANALYSIS bayat (→P1-13), mahalle differentiator yarım (→P1-14), Meilisearch differentiator yarım (→P2-2), R2 yok (→P1-6), bildirim tercih merkezi yok (→P1 kapsamında dolaylı, KVKK marketing riski), komisyon hardcoded + Erzurum pilot RFC'siz (→P2-1), audit log 5 yıl retention politikasız (→P2-5).
+
+**Alan-özel ek notlar:**
+- MVP MUST #1'in yarısı yok: e-posta ile kayıt/doğrulama akışı hiç implement edilmemiş (telefon-first karar RFC'siz).
+- Harita üzerinde keşif (liste↔harita toggle) MVP MUST listesinde ama implement edilmemiş.
+
+### 2.8 Test Envanteri + Kalite Kapıları (%40)
+
+Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve domain testleri lokalde 113/113 yeşil. Kalite kapıları ciddi delik: Application testleri CI'da hiç çalışmıyor, coverage hiçbir yerde ölçülmüyor ve gerçek domain coverage **%54.5** (hedef %70+), mobile'da sıfır test dosyası, web-admin ve API contract testi tamamen yok. En riskli boşluklar para ve çakışma tarafında (bkz. §7 detay).
+
+**Kritik gap'ler:** production payment webhook yok + refund akışı hiç test edilmemiş (→P0-5 kapsamında), concurrent double-booking: lock granülaritesi hatalı + DB constraint yok + test yok (→P1-1), Application testleri CI dışı + coverage gate yok (→P1-8), mobile sıfır test (→P1-8 ile ilişkili, ayrıca bkz. §7), HardDeleteUsersJob test edilmemiş (→P1-16), Outbox pattern hiç implement edilmemiş (→P1-2), web-admin test altyapısı + API contract testi yok (→P2-10).
 
 ---
 
-## 3. Phase 2 — Marketplace Flow
+## 3. P0 — Launch Blocker Gap'ler (13 madde)
 
-### M6 — Booking Lifecycle (%95)
+**P0-1. Refund endpoint'inde tam IDOR: herhangi bir login kullanıcı herhangi bir payment'ı keyfi tutarla iade ettirebilir**
+- Kanıt: `backend/src/Kuaforum.Api/Endpoints/PaymentEndpoints.cs:19-21` (sadece `RequireAuthorization`) + `:71` (`RefundRequest` `AmountMinor`+`Reason` client'tan); `backend/src/Kuaforum.Application/Modules/Payment/RefundPaymentCommand.cs:32-58` — handler payment'ı Id ile çekip doğrudan `provider.RefundAsync` çağırıyor, `ActorUserId` yalnız audit'e yazılıyor, sahiplik/rol kontrolü sıfır.
+- Öneri: Endpoint'e "Admin" policy koy; handler'da actor==Admin veya (payment.CustomerId==actor + iptal edilmiş booking bağlamı) kontrolü; `AmountMinor`'ı client'tan alma, `booking.RefundPercentage`'dan türet. Integration test: müşteri-A → müşteri-B payment refund → 403.
+- Efor: 2-4 saat
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Booking aggregate (Pending → Confirmed → Started → Completed/Cancelled/NoShow) | ✅ | — |
-| BookingItem (multi-service per booking) | ✅ | — |
-| Domain events: Initiated/Confirmed/Started/Completed/Cancelled/NoShow | ✅ | — |
-| Outbox pattern (integration events) | 🔴 | M (async dispatch için) |
-| Initiate + cancel + owner-confirm + start + complete + no-show endpoint'leri | ✅ | — |
-| Customer/owner authorization check (GetById) | ✅ | — |
-| Cancellation tier'lı iade (24h/12h/0h) | ✅ | — |
-| BookingHold (Pending state'de slot lock) | ✅ | — |
-| **Booking reschedule** | 🔴 | M (cancel + new initiate workaround mevcut) |
-| **Stylist tarafından owner adına booking** | 🔴 | S |
+**P0-2. `AllowAnonymous` mock/complete endpoint'i production'da ödemesiz booking confirm'e izin veriyor**
+- Kanıt: `PaymentEndpoints.cs:24-26` `GET /v1/payments/mock/complete` `AllowAnonymous`, dev-login'in aksine env-gate YOK (`Program.cs`'te koşulsuz `MapPaymentEndpoints`); token formatı tahmin edilebilir `mock-{paymentId:N}` (`CompletePaymentCommand.cs:78-83`) ve handler `payment.Provider==Mock` doğrulaması yapmıyor.
+- Öneri: Endpoint'i `env.IsDevelopment()` bloğuna al (dev-login kalıbı) VE handler'a `payment.Provider == PaymentProviderName.Mock` guard'ı ekle (defense-in-depth).
+- Efor: 2-3 saat
 
-### M7 — Payment & Commission (%70)
+**P0-3. Cancel `Reason` client-controlled — müşteri `Reason=BarberRequested` göndererek %100 iade yüzdesi yazdırabilir**
+- Kanıt: `BookingEndpoints.cs:123` `CancelBookingRequest(BookingCancellationReason Reason)` body'den; `BookingActions.cs:38-39` `booking.Cancel(request.Reason)` doğrudan, validator sadece `IsInEnum`; `Booking.cs:194-197` BarberRequested/PaymentFailed/PendingTimeout/AdminOverride → koşulsuz %100.
+- Öneri: `Reason`'ı server-side türet: aktör customer→CustomerRequested, owner→BarberRequested; PaymentFailed/PendingTimeout/AdminOverride yalnız sistem/admin path'lerinden. Domain'e reason-aktör invariant'ı + test.
+- Efor: 2-3 saat
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Payment aggregate + state machine | ✅ | — |
-| Commission calculation (%10 platform) | ✅ | — |
-| **PayTR provider gerçek entegrasyon** | 🟡 (interface + skeleton, gerçek HTTP yok) | M (2-3g) + 🟣 hesap |
-| **Iyzico fallback provider** | 🔴 | M + 🟣 hesap |
-| **3DS callback endpoint** | 🟠 (endpoint mevcut, gerçek imza doğrulama eksik) | S + provider docs |
-| Refund (full/partial) | ✅ (cancellation tier'lı) | — |
-| **Payout (kuaföre T+1)** | 🔴 | M + 🟣 banka |
-| **e-Arşiv (Nilvera) çift fatura** | 🔴 | M + 🟣 hesap |
+**P0-4. İptal → gerçek para iadesi otomasyonu yok; müşteriye "iade işleme alındı" bildirimi gidiyor ama iade yapılmıyor (admin iptal dahil)**
+- Kanıt: `BookingCancelledEvent`'in tek consumer'ı bildirim handler'ı (`BookingNotificationHandlers.cs:118-171`, satır 135-137 "%X iade işleme alındı" metni); `CancelBookingCommandHandler` yalnız `RefundPercentage` set ediyor, Payment aggregate'e hiç dokunmuyor; `AdminCancelBookingCommand.cs:36-46` de refund tetiklemiyor — web admin UI "%100 iade" vaat ediyor (`bookings/page.tsx:240-243`).
+- Öneri: Cancel handler'larında (veya event consumer'da) `booking.PaymentId` doluysa `RefundPercentage`'dan `AddRefund` + PSP `RefundAsync`; başarısızlıkta Hangfire retry kuyruğu + "iade beklemede" durumu. `CancellationFlowTests`'e refund kaydı assertion'ı. Prod'da müşteri parasının platformda kalması 6502 sayılı Tüketicinin Korunması Hakkında Kanun riski.
+- Efor: 1-2 gün
 
-### M8 — Review & Moderation (%85)
+**P0-5. Gerçek ödeme zinciri yok: PayTR/Iyzico stub + webhook/3DS callback endpoint'i hiç yazılmamış + mobile ödeme UI bağlanmamış**
+- Kanıt: `PayTrPaymentProvider.cs:12` "This is a SCAFFOLDED stub" (placeholder URL, `VerifyAsync` daima false); `IyzicoPaymentProvider.cs` aynı; Endpoints altında hiçbir `/webhooks` route'u yok; `mobile/app/booking/confirm.tsx:131-135` "Ödeme adımı geliştirme aşamasında" hardcoded — mobile'da tek payment API çağrısı yok. Not: eski GAP-ANALYSIS'in "3DS callback mevcut" iddiası **yanlıştı**.
+- Öneri: Hesap beklemeden yapılabilir kısım: `POST /v1/webhooks/paytr` iskeleti (HMAC doğrulama + idempotent completion + duplicate/out-of-order tolerans + integration testleri) ve mobile WebView checkout ekranı mock provider ile uçtan uca. PayTR gerçek entegrasyonu founder merchant hesabı sonrası; Iyzico fallback V1.5.
+- Efor: webhook iskeleti + mobile UI: 4-6 gün; PayTR gerçek: 1-2 hafta (🟣 founder hesap bloklu)
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Review aggregate (rating + comment + photos) | ✅ | — |
-| BarberReply | ✅ | — |
-| Moderation queue + admin approve/reject | ✅ (web-admin/reviews page) | — |
-| Review only-after-completed | ✅ | — |
-| Helpful vote (peer signal) | 🔴 | S |
-| **Review fotoğrafı upload (R2)** | 🟠 (URL field var, upload UI yok) | S + 🟣 R2 |
-| **Otomatik küfür filtresi** | 🔴 | S — TR profanity list |
+**P0-6. NetGSM stub + config key mismatch: prod'da OTP asla SMS'le gitmez, düz metin loga düşer → hiçbir kullanıcı kayıt olamaz**
+- Kanıt: `backend/src/Kuaforum.Infrastructure/Auth/NetGsmSmsService.cs:24,49-51` — options `UserCode`/`Originator` bekliyor, `UserCode` boşsa "MOCK SMS ... code is {Code}" Warning loglar, doluysa bile HTTP çağrısı yok (TODO); `appsettings.Production.json` ise `NetGsm:Username/Password/Header` veriyor → `UserCode` asla bind olmaz, prod HER ZAMAN mock fallback. OTP-only auth'ta bu tam launch blocker + OTP'nin loga düşmesi KVKK/hesap ele geçirme riski.
+- Öneri: Gerçek NetGSM HTTP client'ını yaz, config key'lerini eşitle, fallback'te kodu ASLA loglama (hata dön); SMS pumping için IP-bazlı rate limit ekle. Founder tarafı: NetGSM hesabı + originator onayı paralel başlamalı.
+- Efor: 2-3 gün kod (🟣 hesap onayı hariç)
 
-### M9 — Search & Discovery (%50)
+**P0-7. Production deploy edilemez: Dockerfile yok, deploy workflow yok, `${VAR}` placeholder'lar prod boot'u kırar**
+- Kanıt: Repo genelinde `find -iname 'Dockerfile*'` → 0 sonuç; `.github/workflows`'ta sadece `ci.yml`; `appsettings.Production.json` satır 3-35 tamamen `${POSTGRES_CONNECTION_STRING}` tarzı placeholder — .NET config bunları expand ETMEZ: Serilog Seq sink startup'ta crash eder, `AllowedHosts` literal kalınca tüm istekler 400. `Program.cs:16`'daki `Contains("${SENTRY_DSN")` guard'ı sorunun bilindiğini kanıtlıyor.
+- Öneri: Placeholder pattern'ini tamamen bırak → .NET native env override (`ConnectionStrings__Postgres` vb.); backend multi-stage Dockerfile (non-root + HEALTHCHECK) + web-admin standalone Dockerfile + `infra/docker-compose.prod.yml` (Caddy TLS) + GitHub Actions: build → GHCR → Hetzner SSH deploy. ForwardedHeaders middleware'i de bu pakete dahil et. Staging'de `ASPNETCORE_ENVIRONMENT=Production` ile bir kez boot smoke testi.
+- Efor: 3-5 gün
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| City + district + ad search (Postgres ILIKE + slug + normalize) | ✅ | — |
-| Multi-filter (gender, rating, distance, open-now) | 🟠 (gender + rating var, distance/open-now eksik) | S |
-| **PostGIS distance ranking** | 🟠 (veri var, sıralamada kullanılmıyor) | S |
-| **Meilisearch entegrasyonu (TR tokenizer)** | 🔴 | M (Postgres ILIKE şimdilik yetiyor, scale'de gerek olur) |
-| Category/service-based search | ✅ | — |
-| Featured / boost (sponsorlu) | 🔴 | S (mvp+) |
+**P0-8. Repo'ya commit'li admin şifresi production'da ilk boot'ta seed edilir**
+- Kanıt: `backend/src/Kuaforum.Api/appsettings.json:25-31` (base — tüm ortamlara uygulanır): `Seed:Admin` `Email=admin@kuaforum.local`, `Password="ChangeMe!Admin2026"`; `appsettings.Production.json` bu bloğu override etmiyor; `AdminSeeder` her boot'ta koşuyor. Ayrıca Development'ta `FixedTotpSecret=JBSWY3DPEHPK3PXP` commit'li.
+- Öneri: `Seed:Admin` bloğunu base'den `appsettings.Development.json`'a taşı; prod admin bootstrap yalnız env variable (`Seed__Admin__Password`) ile + ilk login'de şifre değişimi zorunlu; commit'li şifreyi rotate et (git history'de kaldı sayılır).
+- Efor: 2-3 saat
 
-### M10 — Maps & Navigation (%30)
+**P0-9. Owner onboarding mobile'da uçtan uca kopuk: salon oluşturma disabled + KYC upload placeholder + KYC reject sonsuz kilit**
+- Kanıt: (1) `mobile/app/(barber)/profile.tsx:113-114` "Salon oluştur" disabled ("şu an web admin'den") — backend `POST /v1/owner/barber-shop` hazırken; (2) `kyc.tsx:145-171` manuel storage-key text input ("Test için herhangi bir string girebilirsin"), `uploadKycDocument` (`barber.ts:137-148`) hiçbir ekranda çağrılmıyor, picker paketi yüklü değil; (3) `ReviewKyc` reject dalı shop status'a dokunmuyor (`SubmitKycCommand.cs:105-111`) + `BarberShop.cs:77-84` yalnız Draft→PendingKyc'ye izin veriyor → reddedilen kuaför backend'de **sonsuza dek** başvuramaz — mobile'daki re-submit formu her zaman 400 alır (critic çelişki çözümü). Gerçek bir kuaför tek başına Active olamıyor.
+- Öneri: (a) Reject dalına `RevertToDraft()` + "reject→re-submit" integration testi (1-2 saat, önce bu); (b) `expo-document-picker` + `expo-image-picker` ile gerçek upload → mevcut `/v1/uploads/kyc`'a bağla; (c) salon oluşturma formu (ad/cinsiyet/il-ilçe/adres) mobile'a bağla + owner registration akışı kararı (Customer→BarberOwner rol geçişi).
+- Efor: 3-4 gün toplam
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Coordinate value object + DB column | ✅ | — |
-| **Google Maps geocoding HTTP client** | 🔴 | S + 🟣 API key |
-| **Mobile Apple/Google Maps deep-link handoff** | 🔴 | S |
-| Static map preview (görsel) | 🔴 | S (mvp+) |
+**P0-10. KVKK aydınlatma metni + ToS uygulamada hiçbir yerde görüntülenemiyor; kayıtta parçalı açık rıza yok**
+- Kanıt: `mobile/app/(auth)/login.tsx:123-126` legalLink Text'lerinin onPress'i yok (salt görsel); `(tabs)/profile.tsx:169` "Kullanım Koşulları" disabled+"Yakında"; kayıt akışında parçalı rıza ekranı yok — consents ekranı yalnız sonradan yönetim. Master spec "KVKK aydınlatma + parçalı açık rıza her kayıt akışında" der; mevcut "devam ederek kabul" bundled consent'in geçersiz rıza sayılma riski `[unverified 2026-07-23 — hukukçu teyidi gerek]`.
+- Öneri: Statik aydınlatma + ToS ekranları (markdown/WebView) + ilk kayıtta ToS zorunlu / Marketing-Location opsiyonel checkbox akışı; metinlerin kendisi founder/hukukçu deliverable'ı — teknik iskeleti metin beklemeden kur.
+- Efor: 1-2 gün (metinler hariç)
 
-### M11 — Notification (%85)
+**P0-11. KYC onayı kör: admin yüklenen belgeleri hiç göremeden onaylıyor**
+- Kanıt: Kuyruk DTO'su sadece `DocumentCount` taşıyor (`AdminQueries.cs:63-71`); belge listeleme/görüntüleme endpoint'i yok (`UploadsEndpoints`'te sadece POST, `AdminEndpoints`'te KYC belge GET'i yok); web-admin `kyc/page.tsx:79` sadece "{documentCount} belge" yazıyor. PayTR pazaryeri sub-merchant onboarding'inde belge doğrulaması yapılmadığı ortaya çıkarsa platform sorumluluğu.
+- Öneri: `GET /v1/admin/kyc/{submissionId}/documents` (Admin policy + audit) + kısa ömürlü imzalı URL veya auth'lu proxy ile belge servis; KYC modalına önizleme. KYC belgeleri hassas — `UseStaticFiles` ile public açma.
+- Efor: 1 gün
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| NotificationLog entity | ✅ | — |
-| NotificationDispatcher + ChannelHandler abstraction | ✅ | — |
-| Channels: Push/SMS/Email/InApp | ✅ (hepsi mock log) | — |
-| Booking event handlers (Confirmed/Cancelled/Started/Completed/NoShow) | ✅ | — |
-| InApp feed: GET / unread-count / read / read-all | ✅ | — |
-| Mobile notifications screen + tab badge | ✅ | — |
-| **FCM gerçek delivery (FirebaseAdmin SDK)** | 🟢 (adapter + DeviceToken + register endpoint hazır; gerçek delivery 🟣 Firebase project) | — |
-| **NetGSM gerçek SMS** | 🟡 (mock) | S + 🟣 hesap |
-| **Resend gerçek email** | 🟡 (skeleton var) | S + 🟣 hesap |
-| Outbox pattern (idempotent + retry) | 🔴 | M |
-| Notification preferences (per-user, per-template) | 🔴 | M |
+**P0-12. Mobile production build store'a gönderilemez: EAS projectId yok, API URL localhost, icon/splash asset'leri hiç yok, FCM config yok**
+- Kanıt: `mobile/src/api/client.ts:10-16` `EXPO_PUBLIC_API_BASE_URL` fallback'i localhost/10.0.2.2; `eas.json` profillerinde env bloğu yok; `app.json`'da `eas.projectId` yok, icon/splash/adaptiveIcon key'leri yok, `mobile/assets` dizini mevcut değil; `expo-notifications` plugin + `googleServicesFile` yok → standalone build'de push çalışmaz. Ayrıca `login.tsx:66-93` "Hızlı Giriş (Demo)" bölümü `__DEV__` guard'sız — store review'da reject riski.
+- Öneri: `eas init` + production profile env (`EXPO_PUBLIC_API_BASE_URL=https://api.kuaforum.com`, `SENTRY_DSN`); icon/splash asset'leri `app.json`'a; `expo-notifications` plugin + `googleServicesFile`; demo login'i `{__DEV__ && ...}` ile sar (15 dk). Founder tarafı: Apple/Google/Expo hesapları + ikon tasarımı.
+- Efor: 1-2 gün (🟣 hesaplar + tasarım hariç)
+
+**P0-13. e-Arşiv/fatura (Nilvera) katmanı sıfır kod — gerçek tahsilat başladığı an vergi denetimi riski**
+- Kanıt: `grep 'Nilvera|Invoice|Fatura|EArsiv' backend/src` → 0 sonuç; CLAUDE.md stack tablosu çift fatura akışını (kuaför→müşteri %20 KDV + platform→kuaför komisyon %20 KDV) Day-1 kararı olarak tanımlıyor; `PaymentSettledEvent` var ama fatura tetikleyen consumer yok. Faturasız komisyon tahsilatı denetimde doğrudan ceza kalemi.
+- Öneri: PayTR ile aynı milestone'a bağla (mock ödemeyle canlıya çıkılmadığı sürece launch'ı bloklamaz ama gerçek para = fatura şart): Invoice modülü + `PaymentSettledEvent`→Nilvera draft + Hangfire retry; ilk adım olarak settle edilen ödemeleri faturalanabilir kayıt tablosunda biriktir. Founder: Nilvera hesabı + mali müşavir teyidi.
+- Efor: ~1 hafta (🟣 hesap sonrası); kayıt tablosu şimdi 0.5 gün
 
 ---
 
-## 4. Phase 3 — Growth & Operations
+## 4. P1 — Yüksek Risk Gap'ler (16 madde)
 
-### M12 — Admin Panel (%35)
+**P1-1. Concurrent double-booking koruması eksik: lock granülaritesi hatalı, DB exclusion constraint yok, test yok**
+- Kanıt: `InitiateBookingCommand.cs:74` lock key `slot-lock:{StylistId}:{ScheduledAt:yyyyMMddHHmm}` sadece başlangıç dakikasına bağlı — 10:00-11:00 ve 10:30-11:30 farklı lock alıp busy-range check'i aynı anda geçebilir; `BookingConfiguration.cs:44`'te yalnız normal index, EXCLUDE constraint yok; testlerde paralel istek senaryosu sıfır.
+- Öneri: (1) `btree_gist` ile `EXCLUDE USING gist (stylist_id WITH =, tstzrange WITH &&)` aktif statüler için — migration; (2) lock'u stilist bazına indirge veya constraint violation'ı 409'a map'le; (3) `Task.WhenAll`'lu integration test: 2 overlapping initiate → tam 1 başarılı.
+- Efor: 2-3 gün
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Login + JWT persist | ✅ | — |
-| Dashboard (8 stat tile) | ✅ | — |
-| Users list + filter | ✅ | — |
-| KYC queue + approve/reject | ✅ | — |
-| Reviews moderation queue | ✅ | — |
-| **Bookings list + filter (system-wide)** | ✅ | — |
-| **Bookings cancel admin override** | 🔴 | S |
-| **Barber shops list + filter (system-wide)** | ✅ | — |
-| **Barber shops suspend/unsuspend** | 🔴 | S |
-| **Payment refund manual override** | 🔴 | S |
-| **Audit log viewer** | 🔴 | S |
-| **shadcn/ui migration** (şu an plain inline style) | 🔴 | M (CLAUDE.md hedefiyle alignment) |
-| **TanStack Table** entegrasyonu | 🔴 | S |
-| **i18n (TR/EN)** | 🔴 | S |
-| **Analytics dashboard (charts)** | 🔴 | M |
+**P1-2. Outbox pattern yok — commit ile publish arası crash'te event (bildirim/refund side-effect) kaybolur**
+- Kanıt: `ApplicationDbContext.cs:63-87` `SaveChangesAsync`: event'ler commit SONRASI in-process publish, handler exception'ı isteği patlatır; `grep 'OutboxMessage'` src'de yalnız yorum satırı. CLAUDE.md §6 kuralı uygulanmamış.
+- Öneri: `OutboxMessages` tablosu + aynı transaction'da serialize + Hangfire dispatcher + idempotent consumer. Webhook işiyle birleşik getir; MVP'de bilinçli erteleniyorsa RFC'ye yaz.
+- Efor: 2-3 gün (webhook ile birleşik)
 
-### M13 — Analytics & Reporting (%5)
+**P1-3. PendingTimeout job yok — ödenmeyen Pending booking'ler slotu süresiz kilitliyor (bedava DoS)**
+- Kanıt: `BookingCancellationReason.PendingTimeout` tanımlı (`BookingStatus.cs:18`) ama `BackgroundJobs` altında sadece 4 job var, Pending süpüren yok; `BookingBusyRangeQuery.cs:14-19` Pending'i busy sayıyor → login müşteri ödeme başlatmadan art arda Pending açıp stilistin tüm takvimini bloklayabilir.
+- Öneri: `ExpirePendingBookingsJob` (15dk'da bir, 30dk+ Pending → `Cancel(PendingTimeout)`) + kullanıcı başına eşzamanlı Pending limiti (ör. 3).
+- Efor: 3-5 saat
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Dashboard temel stats | ✅ | — |
-| **GMV time-series + cohort** | 🔴 | M |
-| **Funnel: search → detail → book → pay** | 🔴 | M |
-| **Booking conversion + cancellation rate** | 🔴 | S |
-| **Stylist utilization + revenue** | 🔴 | M |
+**P1-4. Rol policy'leri tanımlı ama hiçbir endpoint'te kullanılmıyor — Customer rolü owner/stylist endpoint'lerine erişebiliyor**
+- Kanıt: `AuthSetup.cs:46-52`'de Customer/BarberOwner/Stylist policy'leri tanımlı; grep sonucu yalnız "Admin" 2 yerde kullanılıyor; `/v1/owner/barber-shop` (`BarberEndpoints.cs:61`), `/v1/stylists` (`:155`) düz `RequireAuthorization`; `CreateBarberShopCommand`'da rol kontrolü yok — Customer dükkan açabilir.
+- Öneri: Grup bazında policy uygula (`ownerGroup.RequireAuthorization("BarberOwner")`); Customer→BarberOwner rol geçiş akışını owner onboarding işiyle birlikte bilinçli tasarla.
+- Efor: 0.5 gün
 
-### M14 — Promo & Referral (%0)
+**P1-5. No-show server-side zaman guard'ı yok — owner sabah 09:00'da akşam randevusunu iadesiz no-show işaretleyebilir**
+- Kanıt: `MarkNoShowCommandHandler` (`BookingActions.cs:171-191`) yalnız sahiplik + status kontrolü; `Booking.MarkNoShow` (`Booking.cs:178`) randevu saatine hiç bakmıyor; koruma sadece client-side (`booking/[id].tsx:209`). No-show iadesiz → müşteri parasını kaybeder, itirazda platform aleyhine.
+- Öneri: Handler'a guard: `ScheduledAt` + grace (15dk) geçmeden no-show reddet (start/complete'teki mevcut time-window pattern'ini uygula); `today.tsx` butonunu aynı koşula bağla.
+- Efor: 2-4 saat
 
-| Item | Status | Efor kalan |
-|---|---|---|
-| Promo code entity + redemption | 🔴 | M |
-| Referral code (paylaş + ödül) | 🔴 | M |
-| Welcome bonus (ilk randevu indirimi) | 🔴 | S |
+**P1-6. KYC belgeleri lokal diskte + upload'lar hiç servis edilmiyor — R2 yok, restart'ta compliance evrakı kaybolur**
+- Kanıt: `DependencyInjection.cs:155` `IObjectStorage` koşulsuz `LocalFileObjectStorage`; `GetReadableUrl` localhost URL üretiyor ama `Program.cs`'te `UseStaticFiles` yok → URL'ler lokalde bile 404; R2/S3 sınıfı repo'da yok. Container re-deploy'da vergi levhası/ruhsat kaybolur.
+- Öneri: `AWSSDK.S3` endpoint-override ile R2 adapter (MinIO ile hesapsız test edilebilir) + config flag'li Local/R2 seçimi; belgeler public URL yerine auth'lu endpoint'ten (P0-11 KYC görüntüleme işiyle birleşik). Geçici: uploads'ı persistent volume'a mount.
+- Efor: 1-2 gün
 
-### M15 — Loyalty & Rewards (V2)
+**P1-7. Backup stratejisi hiç yok — booking/payment/KYC verisi tek kopyada**
+- Kanıt: Repo genelinde pg_dump/backup/snapshot içeren script veya compose servisi yok; postgres-data tek named volume, offsite kopya ve restore runbook yok. Vergi/e-Arşiv kayıtları için saklama denetim gereksinimi.
+- Öneri: Günlük pg_dump → R2 upload cron container (veya Hetzner snapshot + wal-g), 7+ gün retention; restore'u staging'de bir kez test edip `infra/README`'ye yaz. Deploy paketiyle birlikte.
+- Efor: 1-2 gün
 
-Punto / yıldız sistemi. **MVP'de yok.**
+**P1-8. CI kalite kapıları delik: Application testleri (51) hiç koşmuyor, mobile jest/lint CI dışı, net8 retarget commit'lenmemiş, coverage gate yok**
+- Kanıt: `ci.yml:47-51` yalnız Domain + Integration; `tests/Kuaforum.Tests.Application` adımı YOK; mobile job sadece typecheck; git status: 7 csproj net8.0 retarget'i uncommitted, `ci.yml` dotnet-version "10.0.x"; ölçülen domain coverage %54.5 (hedef %70), hiçbir `--collect` yok.
+- Öneri: `ci.yml`'e Application test adımı + mobile "pnpm lint && pnpm test" (jest-expo preset ekleyerek); net8 retarget'i commit'le + dotnet-version 8.0.x + global.json; coverage'ı %55 threshold'la kilitle, sprint başına +5 hedefle.
+- Efor: 1 gün
 
-### M16 — i18n (V2)
+**P1-9. Web admin oturum/token yönetimi: refresh token çöpe atılıyor (15dk'da oturum ölüyor), localStorage, route guard yok**
+- Kanıt: `login/page.tsx:21` sadece `accessToken` saklanıyor; `src/lib/api.ts:4-19` localStorage (XSS'e açık); `apiFetch` 401'de sadece hata fırlatıyor, login redirect yok; `middleware.ts` mevcut değil — dashboard shell'i token'sız da render olur.
+- Öneri: Kısa vade: refreshToken sakla + 401'de tek seferlik refresh-retry + başarısızsa login redirect + layout'ta token check (0.5 gün). Orta vade: httpOnly cookie + Next middleware guard.
+- Efor: 0.5 gün kısa vade
 
-Mobile zaten i18next yüklü ama tek dil (TR). EN/AR sonra eklenir.
+**P1-10. KYC onay/red bildirimi backend'de hiç gönderilmiyor — UI "bildirim gelir" vaat ediyor, onboarding funnel'ı sessizce ölüyor**
+- Kanıt: `KycApprovedEvent`/`KycRejectedEvent` raise ediliyor (`KycSubmission.cs:52,68`) ama Application genelinde bu event'lere abone tek handler yok; `kyc.tsx:121` "Onaylandığında bildirim gelir" diyor.
+- Öneri: Mevcut booking notification pattern'iyle (NotificationLog + push + feed) iki handler ekle; red bildirimine rejection reason'ı taşı.
+- Efor: 3-5 saat
 
----
+**P1-11. Owner kazanç/komisyon görünürlüğü sıfır + "Ciro" yanıltıcı (gerçekleşmemiş randevuları sayıyor)**
+- Kanıt: %10 komisyon (`InitiateBookingCommand.cs:44`) hiçbir owner ekranında gösterilmiyor; net kazanç/settlement/rapor yok; `today.tsx:63-65` "Ciro" `isBookingRevenueCounted` ile Confirmed+Started'ı da sayıyor (`format.ts:177-183`).
+- Öneri: (1) Ciro'yu Completed-only yap veya "beklenen ciro" etiketle (1 saat); (2) brüt/komisyon/net kırılımlı basit aylık kazanç ekranı (mevcut tablolardan SELECT, yeni tablo gerekmez). PayTR settlement raporu PSP sonrası.
+- Efor: 2-3 gün
 
-## 5. Mobile App (Customer) — %85
+**P1-12. Walk-in müşteri akışı mobilde erişilemez — MVP farklılaştırıcısı rozeti aksiyon vaat edip vermiyor**
+- Kanıt: `(tabs)/index.tsx:218` + `search.tsx:176` "Şu an müsait — sıraya gir" rozeti tıklanamıyor; `barber/[id].tsx`'te walk-in CTA yok; `confirm.tsx:40` `isWalkIn` her zaman false. Backend hazır (WalkInFlowTests + ExpireWalkInJob).
+- Öneri: Kuaför detayında `hasWalkInAvailable` ise "Sıraya gir" → `isWalkIn:true` initiate onay ekranı. Pending randevuların Bugün ekranından onaylanamaması da aynı pakette çözülsün.
+- Efor: 1-2 gün
 
-| Bölüm | Status | Not |
-|---|---|---|
-| Login (telefon + OTP) | ✅ | hızlı giriş Demo butonları dev'de |
-| OAuth (Apple + Google butonları) | 🔴 | endpoint yok |
-| Tabs: Keşfet, Ara, Randevular, Bildirim, Profil | ✅ | — |
-| Şehir → mahalle → salon listesi search akışı | ✅ | TR aksent normalize |
-| Salon detayı (foto, hizmet, stylist, rating, reviews + barber reply) | ✅ | — |
-| Booking flow (servis → stylist → slot → onay → success) | ✅ | walk-in toggle UI yok (booking initiate'de var) |
-| Booking detayı + iptal | ✅ | — |
-| Yorum yazma | ✅ | foto upload UI yok |
-| InApp notification feed + tab badge | ✅ | — |
-| Profil + sessions + consents | ✅ | — |
-| **Push notification handler (foreground / background)** | 🔴 | M (FCM bağımlı) |
-| **Deep link** (booking-id, barber-id) | 🟠 (Expo Router native destek var, kullanılmıyor) | S |
-| **Theme/dark mode** | 🟠 (theme.ts mevcut, dark variant yok) | S |
-| **Accessibility audit** (a11y label, font scale, tap target) | 🟠 (kısmi) | S |
-| Detox E2E | 🔴 | M |
+**P1-13. SPEC BORCU: RFC disiplini sıfır + 15/16 modül spec'siz + GAP-ANALYSIS iki yönde bayat**
+- Kanıt: `docs/rfc` mevcut değil, `docs/04-modules`'te sadece 00+01; master spec v0.1.0 donmuş/imzasız; kilitli kararlardan RFC'siz sapılmış: .NET10→8 (csproj net8.0), RS256→HS256 (`JwtTokenService.cs:34`), Meilisearch→SQL ILIKE, Erzurum fiili pilot.
+- Öneri: Retrospektif RFC paketi (RFC-001 .NET8, RFC-002 SQL-search MVP, RFC-003 HS256, RFC-004 Erzurum pilot, RFC-005 e-posta kayıt + OAuth mobile V1.5 ertelemesi) + kritik 3 modülün (Payment/Booking/Availability) mevcut davranışını belgeleyen spec + master spec 0.2.0 founder onayı.
+- Efor: 3-4 gün toplam
 
-## 6. Mobile/Web Barber Paneli — %80
+**P1-14. Konum kullanılmadan declare edilen izinler store reject riski + mahalle differentiator'ı yarım**
+- Kanıt: `app.json`'da iOS `NSLocationWhenInUse` + Android `ACCESS_FINE/COARSE_LOCATION` declare'lı ama `expo-location`/`react-native-maps` yüklü değil; Neighborhood entity var ama seed'de 0 mahalle insert'i, `SearchBarbersQuery`'de neighborhoodId/mesafe/open-now parametresi yok. Discovery store persist de yok (her açılışta Erzurum'a döner).
+- Öneri: Launch için minimum: kullanılmayan izin declare'larını kaldır (30 dk) + discovery store'a AsyncStorage persist; mahalle bootstrap (NVI açık veri) + PostGIS mesafe sıralamasını ayrı milestone yap veya vaadi RFC ile daralt.
+- Efor: izin+persist 2 saat; mahalle 2-5 gün
 
-| Bölüm | Status | Not |
-|---|---|---|
-| Bugün dashboard (3 stat + bookings) | ✅ | — |
-| 14 günlük takvim + booking detail Pressable | ✅ | — |
-| Hizmet listesi | ✅ | — |
-| Profil | ✅ | — |
-| Bildirimler tab + badge | ✅ | — |
-| Booking aksiyonları (Confirm / Start / Complete / NoShow / Cancel) | ✅ | NoShow runtime test'i seed'de past-confirmed booking eksikliğinden yapılmadı |
-| **KYC submit form** | 🔴 | M |
-| **Working hours editor UI** | 🔴 | M |
-| **Salon photos upload UI** | 🔴 | S |
-| **Earnings / Payout dashboard** | 🔴 | M |
-| **Stylist invite UI (BarberOwner)** | 🔴 | M |
+**P1-15. İYS (6563 ETK) ticari elektronik ileti uyumu hiç ele alınmamış**
+- Kanıt: `grep 'iys|ileti yönetim' backend+docs` → 0 sonuç; Marketing consent domain'de var ama İYS kaydı ve rızaların İYS bildirimi hiçbir spec/kodda geçmiyor `[unverified 2026-07-23 — hukukçu teyidi gerek]`. Transactional bildirimler muaf olsa da sınır tanımsız.
+- Öneri: Marketing kanalı (kampanya push/SMS) açılmadan ÖNCE İYS gereksinim araştırması + in-app consent↔İYS senkron stratejisi; transactional/marketing sınırını spec'e yaz. Launch'ta marketing gönderimi yoksa bloklamaz ama ilk kampanyadan önce şart.
+- Efor: araştırma 1 gün; entegrasyon 3-5 gün (kampanya öncesi)
 
-## 7. Web Admin Paneli — %35
-
-| Bölüm | Status | Not |
-|---|---|---|
-| Login + token persist | ✅ | — |
-| Dashboard (8 stat) | ✅ | — |
-| Users list | ✅ | — |
-| KYC queue | ✅ | — |
-| Reviews moderation | ✅ | — |
-| Bookings management | 🔴 | M — Task #30 |
-| Barber shops management | 🔴 | M — Task #30 |
-| **shadcn/ui migration** | 🔴 | M |
-| **TanStack Query/Table** | 🔴 | S |
-| **Audit log viewer** | 🔴 | S |
-| **i18n** | 🔴 | S |
+**P1-16. Küçük güvenlik yaması paketi: Hangfire Host-header bypass + HardDeleteUsersJob testi + StylistService kararı**
+- Kanıt: (1) `Program.cs:180-181` Hangfire dashboard "Host: localhost" ile auth atlanır (Host header client kontrolünde); (2) `HardDeleteUsersJob` 4 job'dan tek test edilmeyeni — KVKK kalıcı silme kanıtsız; (3) `StylistService` entity'si var ama hiçbir handler sorgulamıyor — stilist vermediği hizmete rezerve edilebilir (`InitiateBookingCommand.cs:58-65` yalnız shop-service kontrolü).
+- Öneri: (1) Bypass'ı `RemoteIpAddress` loopback veya `env.IsDevelopment()`'a çevir (1 saat); (2) hard-delete integration testi (1 gün); (3) StylistService için karar: MVP'de "her stilist tüm hizmetleri verir" kararını RFC'ye yaz ve entity'yi askıya al (1 saat) — enforce etmek istiyorsan 1 gün.
+- Efor: toplam 1.5-2 gün
 
 ---
 
-## 8. Infrastructure & DevOps
+## 5. P2 — Backlog / Kalite Borcu (10 madde)
 
-| Madde | Status | Efor |
-|---|---|---|
-| Docker Compose dev (Postgres + Redis + Backend) | ✅ | — |
-| Production Docker image | 🔴 | M |
-| Hetzner provisioning script | 🔴 | M + 🟣 sunucu kiralama |
-| Cloudflare CDN + WAF setup | 🔴 | S + 🟣 zone |
-| GitHub Actions CI: build + test + lint | 🔴 | M |
-| GitHub Actions CD: docker push + Hetzner deploy | 🔴 | M |
-| EAS mobile build (development + production profile) | 🔴 | S + 🟣 Apple/Google account |
-| Log aggregation (Seq) | 🟠 (Serilog yapı var, Seq sink eksik) | S |
-| Metrics (Prometheus + Grafana) | 🔴 | M |
-| Sentry frontend + backend | 🔴 | S + 🟣 hesap |
-| Better Stack uptime | 🔴 | S + 🟣 hesap |
-| Backup strategy (Postgres) | 🔴 | S |
+**P2-1. Komisyon oranı hard-coded 0.10m — `CommissionTier` alanı ölü**
+- Kanıt: `InitiateBookingCommand.cs:44` `private const DefaultCommissionRate=0.10m`; `BarberShop.CommissionTier` "standard" set ediliyor ama hiçbir yerde okunmuyor.
+- Öneri: `ICommissionPolicy` servisi (config-driven) + shop'tan tier okuma; şimdilik tek tier olsa bile magic number'ı configuration'a taşı.
+- Efor: 2-3 saat
 
-## 9. Üçüncü Parti Entegrasyonlar
+**P2-2. Arama ölçek borcu: rating her sorguda korelasyonlu Average subquery + Meilisearch kararı askıda**
+- Kanıt: `SearchBarbersQuery.cs:85,108` her shop için inline Reviews.Average; denormalize `AverageRating`/`ReviewCount` alanı yok; Meilisearch compose'da çalışıyor ama backend'de 0 referans.
+- Öneri: `ReviewApproved`/`Rejected` consumer'ı ile shop üzerinde `AverageRating`+`ReviewCount` denormalize et; Meilisearch'ü RFC-002 ile V1.5'a yazıp container'ı compose'dan kaldır.
+- Efor: 1 gün
 
-| Servis | Status | Engel |
-|---|---|---|
-| PayTR (PSP primary) | 🟡 mock | 🟣 hesap |
-| Iyzico (PSP fallback) | 🔴 | 🟣 hesap |
-| NetGSM (SMS) | 🟡 mock | 🟣 hesap |
-| Resend (Email) | 🟡 skeleton | 🟣 hesap |
-| Firebase FCM (Push) | 🟡 mock | 🟣 service account JSON |
-| Cloudflare R2 (file upload) | 🔴 | 🟣 hesap |
-| Google Maps (geocoding) | 🔴 | 🟣 API key |
-| Nilvera (e-arşiv) | 🔴 | 🟣 hesap + sertifika |
-| Sentry | 🔴 | 🟣 hesap |
-| Apple/Google OAuth | 🔴 | 🟣 dev hesap |
+**P2-3. i18n kararı askıda: i18next yüklü, 0 kullanım — CLAUDE.md kuralı fiilen ihlal**
+- Kanıt: mobile `package.json`'da i18next 23 + react-i18next 15; `grep useTranslation/initReactI18next` → 0; ~7.200 satır ekran kodu hardcoded Türkçe.
+- Öneri: Dürüst yol: dependency'leri kaldır + CLAUDE.md kuralını "V2'de i18n" olarak revize et (RFC'ye bağla). Retrofit maliyeti ekran sayısıyla lineer büyüyor — karar şimdi verilmeli.
+- Efor: kaldırma 30 dk; retrofit 3-4 gün
 
-## 10. Compliance & Legal
+**P2-4. Backend OAuth ölü kod: mobile'da Apple/Google giriş butonu hiç yok**
+- Kanıt: Backend `/v1/auth/oauth/{provider}` JWKS doğrulamalı implement (`AuthEndpoints.cs:41`) ama mobile'da OAuth metodu/butonu sıfır — master spec auth kararının müşteri yüzeyi yapılmamış. Apple guideline 4.8: üçüncü taraf login sunulursa Sign in with Apple zorunlu `[unverified 2026-07-23]`.
+- Öneri: OTP-only launch RFC'siyle V1.5'a ertele (backend kodu zararsız, kalsın) veya `expo-apple-authentication` + `google-signin` ile bağla.
+- Efor: RFC 1 saat; impl 2-3 gün
 
-| Madde | Status | Eylem |
-|---|---|---|
-| KVKK aydınlatma metni | 🔴 | 🟣 avukat |
-| Açık rıza UI (parçalı) | 🟠 (Consent entity + endpoint var, UI'da gösterilmiyor) | S kod + 🟣 metin |
-| Kullanıcı sözleşmesi | 🔴 | 🟣 avukat |
-| Kuaför hizmet sözleşmesi | 🔴 | 🟣 avukat |
-| KVKK VERBİS kayıt | 🔴 | 🟣 founder |
-| Çerez politikası (web) | 🔴 | 🟣 avukat |
+**P2-5. Veri saklama/purge job'ları yok: RefreshToken/OtpCode/NotificationLog sınırsız büyür + AuditLog 5 yıl retention politikasız**
+- Kanıt: `BackgroundJobs`'ta yalnız 4 job; `grep 'ExpiredToken|PurgeToken'` → 0; revoke edilmiş token'lar, tüketilmiş OTP'ler, eski bildirimler hiç silinmiyor; AuditLog için retention/arşiv kodu 0. `HealthData` consent tipi de karşılıksız — işlenmeyen özel nitelikli veri için rıza toplamak KVKK m.6 soru işareti.
+- Öneri: Haftalık purge job (90g+ token, tüketilmiş OTP, 6ay+ okunmuş bildirim) + KVKK saklama-imha politikası dokümanı; HealthData consent'i kaldır veya kullanım planını yaz.
+- Efor: 1 gün
 
-## 11. Tests
+**P2-6. Mobile UX/erişilebilirlik borçları: reschedule elle metin girişi, barber detay bölüm error state'leri, accessibility kapsamı, review onay metni çelişkisi**
+- Kanıt: `booking/[id].tsx:225-247` reschedule regex'le serbest metin (slot picker yeniden kullanılmamış); `barber/[id].tsx:126-145` yalnız shopQuery guard'lı — stylists/services hata verirse sessizce boş; accessibilityLabel ~20 kullanım; `review/submit.tsx:27-28` "onaylanınca görünür" diyor ama backend default-Approved.
+- Öneri: Slot grid'i paylaşımlı komponente çıkar + reschedule'da kullan; bölümlere inline "tekrar dene" fallback; Card/Chip'e accessibility prop'ları; review metnini API status'una göre koşullu yap.
+- Efor: toplam 2-3 gün (parça parça alınabilir)
 
-| Tür | Sayı | Status |
-|---|---|---|
-| Backend Domain unit | 30 | ✅ |
-| Backend Application | 51 | ✅ (validator coverage) |
-| Backend Integration (Testcontainers) | 6 | 🟢 (auth + booking flow + notifications + geography happy-path) |
-| **Toplam test** | **87** | **✅ all green** |
-| FluentValidation kapsama | 45/45 command | ✅ |
-| Mobile typecheck | clean | ✅ |
-| Web-admin typecheck | clean | ✅ |
-| CI/CD pipeline | GitHub Actions (backend test + mobile/web typecheck + CodeQL) | ✅ |
-| appsettings.Production.json | env-driven, secrets externalized | ✅ |
-| Health endpoint /health/ready | DB + Redis ping | ✅ |
-| Logging enrichment | RequestId + UserId + UserRole | ✅ |
-| Domain event coverage | Booking, Payment (5), Review (5), Kyc (4), Notification | ✅ |
-| Mobile Jest | 0 | 🔴 |
-| Mobile Detox E2E | 0 | 🔴 |
-| API contract (Bruno/Schemathesis) | 0 | 🔴 |
-| k6 load test | 0 | 🔴 |
+**P2-7. Web admin kalite borçları: shadcn migration yapılmadı + TanStack ölü bağımlılık + KYC/Users pagination yok + bayat login uyarısı**
+- Kanıt: tailwind.config yok, tüm stiller inline; `@tanstack/react-query+table` dependency ama 0 kullanım; `kyc/page.tsx:39` + `users/page.tsx` page parametresi geçmiyor (21. kayıt sessizce görünmez); `login/page.tsx:83-87` "backend wired değil" notu bayat; Next 15.0.4 eski.
+- Öneri: Pagination'ı iki sayfaya kopyala (2-3 saat) + bayat notu kaldır (10 dk) hemen; shadcn migration'ı tek seferde (1-2 gün); Next'i 15.x son patch'e yükselt.
+- Efor: hızlı kısım 0.5 gün; migration 1-2 gün
 
-## 12. Dokümantasyon Eksiklikleri
+**P2-8. Favoriler + owner kasada walk-in kayıt + salon profil düzenleme mobile + shop galeri + geçmiş takvim — bilinçli scope kararı bekleyen ürün boşlukları**
+- Kanıt: `grep favorite` → 0 (backend+mobile); owner panelinde kapıdan gelen müşteri kaydı yok (komisyon bypass + eksik ciro); PATCH shop + PUT address backend'de var, mobile'da salt-okunur; ShopPhoto entity yok; `calendar.tsx:15-18` yalnız +14 gün. Hiçbiri spec'te "ertelendi" olarak işaretli değil.
+- Öneri: Hepsini V1.5 backlog'una RFC/GAP-ANALYSIS ile kayıt altına al; ucuz kazanımlar: salon profil düzenleme 0.5-1 gün, geçmiş takvim 0.5 gün, favoriler 1-2 gün.
+- Efor: kayıt 1 saat; opsiyonel işler 2-4 gün
 
-| Madde | Status |
-|---|---|
-| Master spec (PHASE-0-MASTER-SPEC.md) | ✅ |
-| M1 Auth design spec | ✅ |
-| M2-M11 design specs | 🔴 (kod yazıldı, retrospektif spec yok) |
-| API reference (auto-generated OpenAPI) | 🟢 (Scalar UI mevcut) |
-| Bruno API collection | 🔴 |
-| ADR (Architecture Decision Record) klasörü | 🔴 |
-| Runbook (incident, oncall) | 🔴 |
-| Onboarding doc (yeni dev için) | 🔴 |
+**P2-9. Küçük backend tutarsızlıkları: Resend config key mismatch, kök route 404, rate limiter atomik değil, Suspend reason kayboluyor, domain'de `DateTimeOffset.UtcNow` gömülü**
+- Kanıt: `appsettings.Production.json` "Resend:FromAddress" vs `ResendOptions.From`; `Program.cs:129` "/" → `/openapi/v1.json` ama OpenAPI paketi yok → 404; `RedisRateLimiter.cs:19-23` INCR ile EXPIRE arası crash'te key TTL'siz kalır; `BarberShop.Suspend(reason)` parametreyi hiçbir alana yazmıyor; `Booking.cs:45,86,200` `UtcNow` direkt.
+- Öneri: Config key'leri eşitle, kök route'u `/health`'e çevir, INCR'ı Lua/transaction ile atomikleştir, `SuspendedReason`/`At` alanı ekle, `Cancel`'da `reason==NoShow`'u reddet, zaman kararlarını parametreye çıkar.
+- Efor: toplam 1 gün
+
+**P2-10. Monitoring/ölçüm borcu: uptime izleme yok, metrics yok, P95<300ms budget hiç ölçülmüyor, contract/E2E testleri yok**
+- Kanıt: Prometheus/OpenTelemetry grep → 0; Better Stack config yok; repo'da hiçbir load-test script'i (k6/NBomber) yok; Bruno/Schemathesis → 0; Detox yok; web-admin test altyapısı sıfır.
+- Öneri: Deploy sonrası ilk hafta: Better Stack ile `/health/ready` izleme (1 saat) + basit k6 smoke; OpenTelemetry + Schemathesis nightly + Playwright admin smoke'u ölçek sinyali gelince. Şimdi yatırım yapma (premature).
+- Efor: uptime 1 saat; kalanı deploy sonrası 2-3 gün
 
 ---
 
-## 13. Kritik Yol — Sıradaki Hedefler (öncelik sırasıyla)
+## 6. Compliance & Legal
 
-1. **Integration test paketi (Task #28)** — happy-path coverage. Foundation. Olmazsa her commit risk taşır.
-2. **FCM real delivery adapter (Task #29)** — push'a doğru attığımız ilk adım. Adapter + config + fallback. Gerçek delivery 🟣 founder hesap.
-3. **Web admin genişletme (Task #30)** — booking management + barber shops management + shadcn migration. 1/3 surface'i prod-leaning yapma.
-4. **Booking reschedule** — UX'te en sık şikayet edilen feature.
-5. **PayTR gerçek HTTP entegrasyonu** — 🟣 hesap geldikten sonra. MVP launch için critical.
-6. **CI/CD pipeline** — GitHub Actions + Hetzner deploy. Manuel deploy süreyi yiyor.
-7. **NetGSM + Resend gerçek delivery** — kritik notification path'leri için.
-8. **KYC + photo upload (R2)** — gerçek dosya yükleme. Day-1 launch öncesi.
-9. **Booking owner reschedule + stylist proxy booking** — operasyonel ihtiyaç.
-10. **Application + Domain test coverage hedefi: %70+**.
+Master spec KVKK aydınlatma + parçalı açık rıza + audit log + veri minimizasyonu şartlarını Day-1 kararı sayıyor. Kod tarafında altyapı (Consent entity, audit log, KVKK self-servis) var ama üç alan hukukçu teyidine muhtaç ve şu an **doğrulanamamış**:
 
-## 14. Bu Konuşmadaki Hedef
+| Konu | Durum | Etiket |
+|---|---|---|
+| Bundled consent geçerliliği ("devam ederek kabul" tek metin, parçalı rıza yok) | P0-10 | `[unverified 2026-07-23 — hukukçu teyidi gerek]` |
+| İYS (6563 sayılı Elektronik Ticaretin Düzenlenmesi Hakkında Kanun) ticari elektronik ileti uyumu — marketing consent var ama İYS kaydı/bildirimi hiç ele alınmamış | P1-15 | `[unverified 2026-07-23 — hukukçu teyidi gerek]` |
+| Apple App Store Guideline 4.8 (üçüncü taraf login sunulursa Sign in with Apple zorunluluğu) — OAuth backend'de var, mobile'da yok, karar bekliyor | P2-4 | `[unverified 2026-07-23]` |
 
-- ✅ Comprehensive seed (15 şehir + 21 kuaför + N booking/payment/review/notification)
-- ✅ Owner booking actions (Confirm/Start/Complete/NoShow + UI)
-- ✅ InApp notification feed (handler + endpoint + screen + tab badge)
-- ✅ GAP-ANALYSIS + CLAUDE.md refresh (bu doc)
-- ✅ Integration test paketi (Testcontainers + 6 happy-path test, hepsi yeşil)
-- ✅ FCM real delivery adapter (FirebaseAdmin SDK + DeviceToken entity + register/unregister + mobile hook + setup doc)
-- ✅ Web admin genişletme (admin bookings + barber-shops sayfaları + endpoint'leri + JWT inbound claim mapping fix)
+Diğer compliance kalemleri (KVKK aydınlatma metni, kullanıcı/kuaför sözleşmesi, VERBİS kaydı, çerez politikası) metin/hukuki onay tarafında hâlâ 🟣 founder+avukat işi; teknik iskelet (ekranlar, consent flag'leri) P0-10 kapsamında metinsiz kurulabilir. e-Arşiv çift fatura akışının KDV oranları (%20/%20) CLAUDE.md'de sabit kabul edilmiş ama mali müşavir teyidi P0-13'ün önkoşulu.
 
-## 14B. Cycle 5-7 Yatırımları (2026-05-08 → 2026-05-13)
+---
 
-### Erzurum default-city + demo seed (Cycle 5)
-- Tr81CitySeed Erzurum districts + DemoBarberSeeder 6 Erzurum shop (Çifte Minare/Stil Studio/Palandöken/VIP/Aziziye/Genç Trend)
-- Mobile keşfet refactor: Erzurum otomatik seçili + Zustand store + city picker modal + inline shop cards
-- KVKK gizlilik UI: aktif oturumlar + rıza yönetimi (Marketing/Location/HealthData revoke)
-- Web admin users/bookings/barber-shops modernize (modal + skeleton + empty state pattern)
-- Mobile bookings tab Tümü/Yaklaşan/Tamamlanan/İptal filter chip + status enum bug fix (Completed=3, eski yanlış=4)
+## 7. Test Envanteri Gerçeği
 
-### Critical bug fix + Sentry foundation (Cycle 6)
-- **Reply 500 DbUpdateConcurrencyException** — kök neden: EF Core `Include(r => r.Reply)` LEFT JOIN null state ile nav property tracker'a takıldı; sonra `review.Reply = BarberReply.Create(...)` set edildiğinde EF Modified state'e geçirdi (Added değil) → UPDATE WHERE id=<yeni> → 0 row. Fix: handler'da `ctx.Set<BarberReply>().Add(review.Reply!)` explicit Added. Memory'ye gotcha kaydedildi.
-- **AggregateRoot.Touch Version++ override** — concurrency token sistemik bump (Entity.Touch virtual + AggregateRoot override).
-- **Backend Sentry.AspNetCore 5.0.1 + Sentry.Serilog** wired — DSN env-guarded (boş/${SENTRY_DSN} placeholder → SDK init edilmez), KVKK SendDefaultPii=false, Serilog Error→event/Info→breadcrumb.
-- **Mobile ErrorReporter facade + AppErrorBoundary** — RootLayout top-level wrap, componentDidCatch reporter'a; api/client.ts refreshTokens + auth-store signOut/hydrate catch'leri tag'li reporter'a. V1.5 @sentry/react-native swap-out.
+**Gerçek sayı: 201 backend test** (113 domain + 51 application + 37 integration). CLAUDE.md'nin en son güncellemesindeki **193** rakamı bayat — Domain suite'e sonradan eklenen Fact/Theory'ler sayıyı 201'e çıkardı.
 
-### Test coverage genişletme (Cycle 7) — +53 test
-- **ReviewModerationTests** (2) — profanity stopword → Pending → admin approve → public list +1; admin reject → list unchanged.
-- **CancellationFlowTests** (3) — >24h customer 100%, admin override 100%, post-completed reject.
-- **AccountDeletionTests** (3) — soft-delete + tokens revoke + restore, double-delete reject, multi-device session revoke.
-- **ShopSuspensionTests** (1) — suspend → search hide + booking 400; reactivate restore.
-- **PaymentInitiationTests** (2) — checkout session + idempotency 409 + mock complete auto-confirm; ownership 400.
-- **WalkInFlowTests** (1) — toggle on/off + filter + BookingType.WalkIn DB assertion.
-- **AuditLogReadTests** (2) — admin suspend → log entry görünür (actor name + payload JSON); customer 401/403.
-- **ReviewTests** domain (17) — AutoModerate profanity, Approve/Reject/Hide state, AddReply rules.
-- **BookingTests** domain (24) — refund matrix 100/50/0 + reason override (BarberRequested/PaymentFailed/PendingTimeout/AdminOverride hep 100, NoShow=0), state transitions, reschedule, MarkNoShow guards.
+Kritik nüans: **Application test suite (51 test) CI'da hiç koşmuyor.** `.github/workflows/ci.yml:45-51` yalnızca `Kuaforum.Tests.Domain` ve `Kuaforum.Tests.Integration` adımlarını çalıştırıyor; `tests/Kuaforum.Tests.Application` pipeline'da adım olarak yok. Bu, "CI'da test gerekli, kırık test merge yasak" kuralının (CLAUDE.md §9) Application katmanı için fiilen delik olduğu anlamına gelir — 51 validator testi sessizce kırılabilir ve kimse fark etmez.
 
-**Sonuç:** Backend 105 → **158 test** (36 integration + 51 application + 71 domain).
+| Tür | Sayı | CI'da koşuyor mu | Not |
+|---|---|---|---|
+| Backend Domain unit | 113 | ✅ | Lokalde 113/113 yeşil; ölçülen line coverage %54.5, branch %48.3 (hedef %70+ — tutmuyor) |
+| Backend Application (validator) | 51 | 🔴 hayır | `ci.yml`'de adım yok — P1-8 |
+| Backend Integration (Testcontainers) | 37 | ✅ | booking lifecycle, cancellation refund matrisi, availability enforcement (13 test), payment initiation, review moderation, account deletion, shop suspension, walk-in, audit log |
+| **Toplam backend** | **201** | kısmen | — |
+| Concurrent double-booking testi | 0 | — | P1-1 |
+| Refund endpoint integration testi | 0 | — | P0-1/P0-5 kapsamında test edilmemiş |
+| HardDeleteUsersJob testi | 0 | — | 4 job'dan tek test edilmeyeni, P1-16 |
+| Mobile Jest/RNTL | 0 | — | jest kurulu, config/test dosyası yok, P1-8 |
+| Mobile Detox E2E | 0 | — | — |
+| Web-admin test | 0 | — | test script'i/framework'ü yok |
+| API contract (Bruno/Schemathesis) | 0 | — | P2-10 |
+| k6/load test | 0 | — | P95<300ms budget hiç ölçülmüyor, P2-10 |
 
-### Audit log transparency (Cycle 8 başlangıcı)
-- **GET /v1/admin/audit-logs** — actor/action/resource/dateRange filter + paging (max 200), actor display name JOIN, integration test (suspend action surfaced + admin-only).
-- **Web admin /audit-logs sayfası** — expandable JSON payload dark pre, top-5 action chip filter, shimmer skeleton, empty state.
+---
 
-## 14C. Kalan Kritik Gap'ler (öncelik sırasıyla)
+## 8. 14C Kapanış Durumu — Önceki Cycle'dan Bu Yana Ne Değişti
 
-1. **Mobile customer profile düzenleme** — `UpdateMyProfile` endpoint var; display name + avatar düzenleme UI'ı eksik.
-2. **Phone change OTP flow mobile UI** — backend `InitiatePhoneChange` + `ConfirmPhoneChange` var, mobile UI yok.
-3. **Owner için yorum cevap mobile UI** — backend `POST /v1/reviews/{id}/reply` çalışıyor, mobile listeleme + cevap ekranı yok.
-4. **Mobile i18n** — i18next şartına rağmen sabit Türkçe string kullanılıyor. M14 Internationalization spec'e ihtiyaç.
-5. **Customer "Hesap bilgilerini indir"** — KVKK m.11 veri alma hakkı, endpoint+UI yok.
-6. **Stylist/Payment/Notification domain unit tests** — coverage genişletme.
-7. **Modül spec'leri (M2-M12)** — sadece M1 Auth spec yazılmış; geri kalan 11 modül tek satır.
-8. **Hetzner deploy pipeline** — GitHub Actions build var, deploy yok.
-9. **PayTR / Iyzico gerçek HTTP** — 🟣 founder hesap.
-10. **R2 production storage** — 🟣 founder bucket/keys.
-11. **Sentry DSN** — 🟣 founder Sentry organization.
-12. **NetGSM gerçek SMS** — 🟣 founder hesap.
+Eski GAP-ANALYSIS'in §14C listesindeki 12 maddenin güncel durumu (kod taramasıyla doğrulandı):
 
-## 15. Bağlantılar
+| # | Eski madde | Yeni durum | Kanıt |
+|---|---|---|---|
+| 1 | Mobile customer profile düzenleme eksik | ✅ **KAPANDI** | `mobile/app/account/edit-profile.tsx` mevcut ve işlevsel — `AuthApi.updateMyProfile` ile `PATCH /v1/users/me`, displayName+avatarUrl formu, query invalidation |
+| 2 | Phone change OTP flow mobile UI yok | ✅ **KAPANDI** | `mobile/app/account/change-phone.tsx` iki adımlı akış (`initiateMut`→`confirmMut`) `/v1/users/me/phone-change/initiate`+`/confirm`'e bağlı |
+| 3 | Owner için yorum cevap mobile UI yok | ✅ **KAPANDI** | `mobile/app/(barber)/reviews.tsx` — liste + reply mutation (3-500 char) + işletme cevabı render |
+| 4 | Mobile i18n | 🔴 **AÇIK** (doğrulandı) | i18next kurulu, 0 kullanım — P2-3 |
+| 5 | Customer "Hesap bilgilerini indir" eksik | ✅ **KAPANDI** | `GET /v1/users/me/export` (`UserEndpoints.cs:22`) + mobile `(tabs)/profile.tsx:93-112` `Share.share` ile bağlı |
+| 6 | Stylist/Payment/Notification domain unit tests eksik | ✅ **KAPANDI** | `Kuaforum.Tests.Domain` altında `Barber/StylistTests.cs` + `Payment/PaymentTests.cs` + `Notification/NotificationLogTests.cs` — domain projesinde 113 test |
+| 7 | Modül spec'leri (M2-M12) | 🔴 **AÇIK** | `docs/04-modules`'te hâlâ sadece 00+01 — P1-13 |
+| 8 | Hetzner deploy pipeline | 🔴 **AÇIK** | Workflows'ta sadece `ci.yml`, deploy yok — P0-7 |
+| 9 | PayTR/Iyzico gerçek HTTP | 🔴 **AÇIK** | Stub olarak kaldı — P0-5 |
+| 10 | R2 production storage | 🔴 **AÇIK** | Sadece `LocalFileObjectStorage` — P1-6 |
+| 11 | Sentry DSN | 🟡 **KISMEN BAYAT** | Kod tarafı tamamen hazır (Sentry.AspNetCore 5.0.1 + Serilog bridge, env-guarded, `SendDefaultPii=false`); tek eksik founder'ın DSN'i — "entegrasyon eksik" gibi okunmamalı, salt hesap-bloklu |
+| 12 | NetGSM gerçek SMS | 🔴 **AÇIK, daha kötü** | Stub + prod config key mismatch ile OTP hiç gitmiyor — P0-6 |
+
+**Çözülen çelişki (tarama-arası):** Kuaför paneli taraması `kyc.tsx` için "red sonrası yeniden gönderim çalışıyor" diyordu; Domain taraması "KYC reddi sonrası işletme kilitleniyor" diyordu. Kod ikinciyi doğruluyor: `ReviewKyc` reject dalı shop status'a dokunmuyor (`SubmitKycCommand.cs:105-111`), shop `PendingKyc`'de kalıyor, yeni submit `shop.MarkPendingKyc()` çağırıyor ve `BarberShop.cs:77-80` yalnız Draft'tan geçişe izin veriyor → **reddedilen kuaför backend'de sonsuza dek kilitli**; mobile UI yeniden gönderim FORMU sunuyor ama istek her zaman 400 döner (bkz. P0-9).
+
+---
+
+## 9. Sonraki Cycle Planı (Cycle 9)
+
+| # | Adım | Gerekçe | Efor |
+|---|---|---|---|
+| 1 | Güvenlik yaması sprint'i: refund authz (Admin policy + tutarı `RefundPercentage`'dan türet) + mock/complete env-gate + provider==Mock guard + cancel Reason server-side türetme + no-show zaman guard'ı + demo login `__DEV__` + Hangfire bypass fix — her birine integration test | Para akışının istismar yüzeyini kapatan 6 iş; hepsi küçük, bağımsız ve mevcut test altyapısıyla doğrulanabilir. PayTR gelmeden önce bu yüzey temiz olmalı — sonra dokunmak riskli. | 1.5 gün |
+| 2 | İptal → refund otomasyonu: müşteri + admin cancel'da `PaymentId` doluysa `RefundPercentage`'dan `AddRefund` + provider `RefundAsync`, başarısızlıkta Hangfire retry; `CancellationFlowTests`'e refund assertion | P0-4'ü kapatır; "iade işleme alındı" bildirimi ile gerçeklik arasındaki farkı — en büyük güven/hukuk riskini — ortadan kaldırır. Adım 1'deki refund guard'larının üzerine oturur. | 1.5 gün |
+| 3 | KYC akış onarımı: reject→`RevertToDraft` fix + "reject→re-submit" testi + `GET /v1/admin/kyc/{id}/documents` + web admin belge önizleme + KYC onay/red notification handler'ları | Onboarding funnel'ının üç kırığını tek pakette kapatır: reddedilen kuaför tekrar başvurabilir, admin kör onaylamaz, sonuç kuaföre bildirilir. Kuaför arzı olmadan marketplace yok. | 1.5 gün |
+| 4 | CI onarımı: Application test adımı + net8 retarget commit + global.json + dotnet-version 8.0.x + mobile jest-expo preset + ilk 5-6 pure-logic test + coverage baseline %55 | Yarım günlük iş, sonraki tüm adımların güvenlik ağı. 51 Application testinin CI dışında olması "kırık test merge yasak" kuralını fiilen deliyor; retarget uncommitted kaldıkça her makinede farklı gerçek var. | 0.5 gün |
+| 5 | Deploy temeli: `${VAR}` placeholder'ları .NET env override'a çevir + `Seed:Admin`'i Development'a taşı + şifre rotate + backend/web-admin Dockerfile + `docker-compose.prod.yml` (Caddy TLS) + ForwardedHeaders + GitHub Actions build→GHCR→Hetzner deploy + staging'de Production-env boot smoke | Deploy edilebilirlik P0 kümesinin tamamı (config crash, commit'li şifre, Dockerfile, pipeline) tek bağımlı zincir — bölmek anlamsız. Hetzner hesabı founder'dan geldiği an canlıya alınabilir hale getirir. | 4 gün |
+| 6 | Mobile ödeme akışı: `booking/payment.tsx` WebView checkout + initiate/status polling + mock provider ile uçtan uca müşteri akışı; webhook endpoint iskeleti (`POST /v1/webhooks/paytr` — HMAC doğrulama + idempotent completion + testler) | PayTR merchant hesabı gelmeden yapılabilecek en değerli iş: provider geldiğinde sadece config değişir, tüm akış hazır olur. Outbox'ı da webhook consumer'ıyla birlikte getirmek için doğru an. | 4 gün |
+| 7 | Owner onboarding mobile: salon oluşturma formu (`BarberApi.createShop`/`setAddress`) + `expo-document-picker`'lı gerçek KYC upload → `/v1/uploads/kyc` + rol policy'lerinin endpoint gruplarına uygulanması | Gerçek bir kuaförün mobile'dan tek başına Active olabilmesi launch'ın önkoşulu; rol policy işi (Customer→BarberOwner geçişi) doğal olarak aynı tasarım kararına bağlı, birlikte alınmalı. | 2.5 gün |
+| 8 | KVKK ekranları: aydınlatma + ToS statik ekranları + kayıtta parçalı rıza akışı (ToS zorunlu, Marketing/Location opsiyonel) + kullanılmayan konum izinlerinin `app.json`'dan temizliği | Yasal P0; teknik iskelet hukukçu metnini beklemeden kurulur, metin placeholder ile girer. İzin temizliği store review riskini sıfırlar (30 dk). | 1.5 gün |
+| 9 | Spec borcu kapanışı: RFC-001..005 (retrospektif: .NET8, SQL-search, HS256, Erzurum pilot, OTP-only/OAuth erteleme) + GAP-ANALYSIS'i bu sentezden yeniden üret (bu doküman) + master spec 0.2.0 + founder yazılı onayı | Kod borcu değil ama önceliklendirme hatalarının kaynağı: bayat GAP-ANALYSIS yapılmış işi tekrar planlatıyor, RFC'siz sapmalar "master spec bağlayıcı" iddiasını fiktif kılıyor. 1 günlük yatırım sonraki her cycle'ın planlama kalitesini düzeltir. | 1 gün |
+| 10 | (Kapasite kalırsa) `ExpirePendingBookingsJob` + double-booking EXCLUDE constraint + concurrent test + PendingTimeout kullanıcı limiti | Slot DoS ve double-booking, trafik gelmeden görünmez ama launch günü itibar riski; DB constraint ucuz sigorta. Cycle taşarsa bir sonrakinin ilk maddesi. | 2.5 gün |
+
+---
+
+## 10. Founder Aksiyonları
+
+Kod tarafı bu cycle'da ilerlerken paralel başlaması gereken 🟣 işler — lead-time'ı en uzun olanlar en üstte:
+
+| # | Aksiyon | Neden kritik / lead-time notu |
+|---|---|---|
+| 1 | **PayTR Pazaryeri merchant başvurusu** — sözleşme + sub-merchant (split payment) modeli onayı | **EN UZUN LEAD TIME, bugün başlat.** Sandbox credentials gelmeden gerçek PSP entegrasyonu yazılamaz (P0-5). |
+| 2 | **NetGSM hesabı** aç + originator (SMS başlığı) tahsis/onayı + API credentials | OTP-only auth'ta SMS olmadan hiçbir kullanıcı kayıt olamaz (P0-6); başlık onayı günler sürebilir. |
+| 3 | **Nilvera e-Arşiv hesabı** + mali müşavir ile çift fatura akışının (kuaför→müşteri %20 KDV + platform→kuaför komisyon faturası) teyidi | Gerçek tahsilat öncesi yasal önkoşul (P0-13). |
+| 4 | **Hetzner Cloud hesabı** + Helsinki sunucu + SSH key; **Cloudflare hesabı** (kuaforum.com DNS + R2 bucket + API token) | Deploy pipeline (Cycle 9 adım 5) bunlar gelince canlıya bağlanır. |
+| 5 | **Firebase projesi** oluştur: `google-services.json` (Android) + FCM service account JSON | Standalone build'de push bunsuz çalışmaz (P0-12). |
+| 6 | **Sentry organizasyonu** + backend ve mobile DSN'leri | Kod tarafı tamamen hazır, sadece DSN bekliyor (14C-11). |
+| 7 | **Apple Developer** (99$/yıl) + **Google Play Console** (25$ tek seferlik) + Expo/EAS hesabı | Sonra `eas init` ile projectId bağlanacak (P0-12). |
+| 8 | **App icon** (1024x1024) + splash tasarımı | `mobile/assets` hiç yok, bunsuz store'a binary gönderilemez; tasarımcıya bugün brief verilebilir (P0-12). |
+| 9 | **Prod secret'larını üret ve güvenli sakla**: JWT signing key, OTP pepper, encryption key, Postgres şifresi; commit'lenmiş admin şifresini (`ChangeMe!Admin2026` — git history'de) rotate et | P0-8'in önkoşulu. |
+| 10 | **Hukukçu görüşmesi**: KVKK aydınlatma metni + ToS metinleri + bundled consent geçerliliği + İYS/6563 ETK yükümlülük teyidi | Şu an tüm bu iddialar `[unverified]` (P0-10, P1-15). |
+| 11 | **Resend hesabı** + kuaforum.com domain doğrulama | API key kod tarafında hazır bekliyor. |
+| 12 | **Google Maps API key** (geocoding — adres girişinde kullanılacak) | M3/M10 geocoding şu an tamamen boş. |
+| 13 | **Better Stack veya UptimeRobot hesabı** | Deploy sonrası `/health/ready` izleme — 15 dakikalık iş, ücretsiz tier yeter (P2-10). |
+
+---
+
+## 11. Bağlantılar
 
 - Master spec: `docs/PHASE-0-MASTER-SPEC.md`
 - Module list: `docs/04-modules/00-module-list.md`
 - M1 Auth spec: `docs/04-modules/01-auth.md`
-- CLAUDE.md: project root
+- CLAUDE.md: proje kökü
+
+**Son güncelleme:** 2026-07-23
