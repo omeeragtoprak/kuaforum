@@ -1,16 +1,47 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { adminApi, formatDateTime, type KycQueueItem, ApiClientError } from '@/lib/api';
+import {
+  adminApi, formatDateTime, type KycQueueItem, type KycDocumentItem, ApiClientError,
+} from '@/lib/api';
 
 type StatusFilter = 'all' | 0 | 1 | 2 | 3;
 
-const STATUS_LABEL: Record<number, { text: string; color: string }> = {
-  0: { text: 'Bekliyor', color: '#F59E0B' },
-  1: { text: 'İncelemede', color: '#3B82F6' },
-  2: { text: 'Onaylı', color: '#22C55E' },
-  3: { text: 'Reddedildi', color: '#EF4444' },
+// Backend enum serialization is JsonStringEnumConverter — status arrives as
+// "Pending"/"UnderReview"/"Approved"/"Rejected", not 0/1/2/3. Keyed by both
+// forms (same defensive pattern as bookings/barber-shops pages) so this
+// doesn't silently break again if the wire format changes either way.
+const STATUS_LABEL: Record<string, { text: string; color: string }> = {
+  '0': { text: 'Bekliyor', color: '#F59E0B' },
+  '1': { text: 'İncelemede', color: '#3B82F6' },
+  '2': { text: 'Onaylı', color: '#22C55E' },
+  '3': { text: 'Reddedildi', color: '#EF4444' },
+  Pending: { text: 'Bekliyor', color: '#F59E0B' },
+  UnderReview: { text: 'İncelemede', color: '#3B82F6' },
+  Approved: { text: 'Onaylı', color: '#22C55E' },
+  Rejected: { text: 'Reddedildi', color: '#EF4444' },
 };
+
+const STATUS_FILTER_LABEL: Record<string, string> = {
+  '0': 'Bekliyor', Pending: 'Bekliyor',
+  '1': 'İncelemede', UnderReview: 'İncelemede',
+  '2': 'Onaylı', Approved: 'Onaylı',
+  '3': 'Reddedildi', Rejected: 'Reddedildi',
+  all: 'Tümü',
+};
+
+const DOCUMENT_TYPE_LABEL: Record<string, string> = {
+  '0': 'Vergi levhası', TaxLicense: 'Vergi levhası',
+  '1': 'İşyeri açma ruhsatı', SanitaryPermit: 'İşyeri açma ruhsatı',
+  '2': 'MYK sertifikası', MykCertificate: 'MYK sertifikası',
+  '3': 'Kimlik', IdentityCard: 'Kimlik',
+  '99': 'Diğer', Other: 'Diğer',
+};
+
+function isActionable(status: number | string): boolean {
+  const s = String(status);
+  return s === '0' || s === '1' || s === 'Pending' || s === 'UnderReview';
+}
 
 const REJECTION_REASONS = [
   'Belgeler okunamıyor',
@@ -23,12 +54,17 @@ const REJECTION_REASONS = [
 
 type ApproveModal = { kind: 'approve'; submission: KycQueueItem };
 type RejectModal = { kind: 'reject'; submission: KycQueueItem };
-type ModalState = ApproveModal | RejectModal | null;
+type DocsModal = { kind: 'docs'; submission: KycQueueItem };
+type ModalState = ApproveModal | RejectModal | DocsModal | null;
+
+const PAGE_SIZE = 20;
 
 export default function KycPage() {
   const [items, setItems] = useState<KycQueueItem[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>(0);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState<ModalState>(null);
 
@@ -36,8 +72,13 @@ export default function KycPage() {
     setLoading(true);
     setError(null);
     try {
-      const list = await adminApi.kycQueue(statusFilter === 'all' ? undefined : statusFilter);
-      setItems(list);
+      const result = await adminApi.kycQueue({
+        status: statusFilter === 'all' ? undefined : statusFilter,
+        page,
+        pageSize: PAGE_SIZE,
+      });
+      setItems(result.items);
+      setTotalCount(result.totalCount);
     } catch (err) {
       if (err instanceof ApiClientError) setError(err.message);
       else setError('Sunucuya ulaşılamadı.');
@@ -46,19 +87,28 @@ export default function KycPage() {
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [statusFilter]);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [statusFilter, page]);
+
+  function selectStatus(next: StatusFilter) {
+    setStatusFilter(next);
+    setPage(1);
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
 
   return (
     <div>
       <h1 style={styles.h1}>KYC Kuyruğu</h1>
-      <p style={styles.subtitle}>{items.length} başvuru · {STATUS_LABEL[statusFilter as number]?.text ?? 'Tümü'}</p>
+      <p style={styles.subtitle}>
+        {totalCount} başvuru · sayfa {page}/{totalPages} · {STATUS_FILTER_LABEL[String(statusFilter)] ?? 'Tümü'}
+      </p>
 
       <div style={styles.filterRow}>
-        <FilterChip label="Bekliyor" active={statusFilter === 0} onClick={() => setStatusFilter(0)} />
-        <FilterChip label="İncelemede" active={statusFilter === 1} onClick={() => setStatusFilter(1)} />
-        <FilterChip label="Onaylı" active={statusFilter === 2} onClick={() => setStatusFilter(2)} />
-        <FilterChip label="Reddedildi" active={statusFilter === 3} onClick={() => setStatusFilter(3)} />
-        <FilterChip label="Tümü" active={statusFilter === 'all'} onClick={() => setStatusFilter('all')} />
+        <FilterChip label="Bekliyor" active={statusFilter === 0} onClick={() => selectStatus(0)} />
+        <FilterChip label="İncelemede" active={statusFilter === 1} onClick={() => selectStatus(1)} />
+        <FilterChip label="Onaylı" active={statusFilter === 2} onClick={() => selectStatus(2)} />
+        <FilterChip label="Reddedildi" active={statusFilter === 3} onClick={() => selectStatus(3)} />
+        <FilterChip label="Tümü" active={statusFilter === 'all'} onClick={() => selectStatus('all')} />
       </div>
 
       {error ? <div style={styles.error}>{error}</div> : null}
@@ -69,8 +119,8 @@ export default function KycPage() {
 
       <div style={styles.list}>
         {items.map((item) => {
-          const status = STATUS_LABEL[item.status] ?? { text: '?', color: '#9B9B9B' };
-          const isActionable = item.status === 0 || item.status === 1;
+          const status = STATUS_LABEL[String(item.status)] ?? { text: '?', color: '#9B9B9B' };
+          const actionable = isActionable(item.status);
           return (
             <div key={item.submissionId} style={styles.row}>
               <div style={styles.rowLeft}>
@@ -82,28 +132,57 @@ export default function KycPage() {
               </div>
               <div style={styles.rowRight}>
                 <span style={{ ...styles.badge, background: status.color }}>{status.text}</span>
-                {isActionable ? (
-                  <div style={styles.actions}>
-                    <button
-                      style={styles.approveBtn}
-                      onClick={() => setModal({ kind: 'approve', submission: item })}
-                    >
-                      Onayla
-                    </button>
-                    <button
-                      style={styles.rejectBtn}
-                      onClick={() => setModal({ kind: 'reject', submission: item })}
-                    >
-                      Reddet
-                    </button>
-                  </div>
-                ) : null}
+                <div style={styles.actions}>
+                  <button
+                    style={styles.docsBtn}
+                    onClick={() => setModal({ kind: 'docs', submission: item })}
+                  >
+                    Belgeler
+                  </button>
+                  {actionable ? (
+                    <>
+                      <button
+                        style={styles.approveBtn}
+                        onClick={() => setModal({ kind: 'approve', submission: item })}
+                      >
+                        Onayla
+                      </button>
+                      <button
+                        style={styles.rejectBtn}
+                        onClick={() => setModal({ kind: 'reject', submission: item })}
+                      >
+                        Reddet
+                      </button>
+                    </>
+                  ) : null}
+                </div>
               </div>
             </div>
           );
         })}
       </div>
 
+      <div style={styles.pagination}>
+        <button
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          style={styles.pageBtn}
+        >
+          ← Önceki
+        </button>
+        <span style={styles.pageInfo}>Sayfa {page} / {totalPages}</span>
+        <button
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={page >= totalPages}
+          style={styles.pageBtn}
+        >
+          Sonraki →
+        </button>
+      </div>
+
+      {modal?.kind === 'docs' ? (
+        <DocumentsModal submission={modal.submission} onClose={() => setModal(null)} />
+      ) : null}
       {modal?.kind === 'approve' ? (
         <ApproveModal
           submission={modal.submission}
@@ -138,6 +217,120 @@ function FilterChip({ label, active, onClick }: { label: string; active: boolean
   );
 }
 
+// Shared by the standalone "Belgeler" view and the Approve/Reject modals — the
+// GAP this closes is "admin kör onay": before this, the queue only showed a
+// document *count*, never the documents themselves. Preview needs an
+// authenticated fetch (Authorization header) since <img src> can't carry one,
+// so images are lazy-loaded as blobs and object URLs; PDFs open in a new tab
+// the same way.
+function KycDocumentsPanel({ submissionId }: { submissionId: string }) {
+  const [docs, setDocs] = useState<KycDocumentItem[] | null>(null);
+  const [docsError, setDocsError] = useState<string | null>(null);
+  const [previews, setPreviews] = useState<Record<string, { url: string; contentType: string }>>({});
+  const [previewLoading, setPreviewLoading] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    adminApi.kycDocuments(submissionId)
+      .then((list) => { if (!cancelled) setDocs(list); })
+      .catch((err) => {
+        if (cancelled) return;
+        setDocsError(err instanceof ApiClientError ? err.message : 'Belgeler yüklenemedi.');
+      });
+    return () => { cancelled = true; };
+  }, [submissionId]);
+
+  // Revoke object URLs on unmount so we don't leak blob memory across modal opens.
+  useEffect(() => () => {
+    Object.values(previews).forEach((p) => URL.revokeObjectURL(p.url));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function view(doc: KycDocumentItem) {
+    setPreviewError(null);
+    const existing = previews[doc.id];
+    if (existing) {
+      if (existing.contentType === 'application/pdf') {
+        window.open(existing.url, '_blank', 'noopener,noreferrer');
+      }
+      return;
+    }
+    setPreviewLoading(doc.id);
+    try {
+      const { blob, contentType } = await adminApi.kycDocumentContent(doc.id);
+      const url = URL.createObjectURL(blob);
+      setPreviews((m) => ({ ...m, [doc.id]: { url, contentType } }));
+      if (contentType === 'application/pdf') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }
+    } catch (err) {
+      setPreviewError(err instanceof ApiClientError ? err.message : 'Belge açılamadı.');
+    } finally {
+      setPreviewLoading(null);
+    }
+  }
+
+  if (docsError) return <div style={styles.error}>{docsError}</div>;
+  if (docs === null) return <div style={styles.hint}>Belgeler yükleniyor…</div>;
+  if (docs.length === 0) return <div style={styles.hint}>Bu başvuruya belge eklenmemiş.</div>;
+
+  return (
+    <div style={styles.docsPanel}>
+      {previewError ? <div style={styles.error}>{previewError}</div> : null}
+      {docs.map((doc) => {
+        const preview = previews[doc.id];
+        const isImage = preview?.contentType.startsWith('image/');
+        return (
+          <div key={doc.id} style={styles.docRow}>
+            <div style={styles.docRowHeader}>
+              <div>
+                <div style={styles.docType}>
+                  {DOCUMENT_TYPE_LABEL[String(doc.documentType)] ?? 'Belge'}
+                </div>
+                <div style={styles.docMeta}>
+                  {doc.fileName} · {(doc.sizeBytes / 1024).toFixed(0)} KB
+                </div>
+              </div>
+              <button
+                style={styles.viewBtn}
+                onClick={() => view(doc)}
+                disabled={previewLoading === doc.id}
+              >
+                {previewLoading === doc.id
+                  ? 'Yükleniyor…'
+                  : preview
+                    ? (isImage ? 'Yenile' : 'Yeni sekmede aç')
+                    : 'Görüntüle'}
+              </button>
+            </div>
+            {isImage ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={preview!.url} alt={doc.fileName} style={styles.previewImg} />
+            ) : null}
+            {preview && !isImage && preview.contentType !== 'application/pdf' ? (
+              <a href={preview.url} download={doc.fileName} style={styles.downloadLink}>
+                {doc.fileName} dosyasını indir
+              </a>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DocumentsModal({ submission, onClose }: { submission: KycQueueItem; onClose: () => void }) {
+  return (
+    <ModalShell title={`Belgeler — ${submission.barberShopName}`} onClose={onClose}>
+      <KycDocumentsPanel submissionId={submission.submissionId} />
+      <div style={styles.modalActions}>
+        <button style={styles.btnGhost} onClick={onClose}>Kapat</button>
+      </div>
+    </ModalShell>
+  );
+}
+
 function ApproveModal({
   submission, onClose, onDone,
 }: { submission: KycQueueItem; onClose: () => void; onDone: () => void }) {
@@ -166,7 +359,9 @@ function ApproveModal({
         İşletme aktif olur, müşteri ödemeleri PSP üzerinden bu sub-merchant
         anahtarına yönlendirilir.
       </p>
-      <label style={styles.label}>Sub-merchant anahtarı (PSP)</label>
+      <label style={styles.label}>Belgeler</label>
+      <KycDocumentsPanel submissionId={submission.submissionId} />
+      <label style={{ ...styles.label, marginTop: 16 }}>Sub-merchant anahtarı (PSP)</label>
       <input
         style={styles.input}
         value={subMerchantKey}
@@ -217,7 +412,9 @@ function RejectModal({
         <strong>{submission.barberShopName}</strong> başvurusunu reddediyorsun.
         Sebep işletme sahibine bildirimle iletilir.
       </p>
-      <label style={styles.label}>Red sebebi</label>
+      <label style={styles.label}>Belgeler</label>
+      <KycDocumentsPanel submissionId={submission.submissionId} />
+      <label style={{ ...styles.label, marginTop: 16 }}>Red sebebi</label>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
         {REJECTION_REASONS.map((reason) => (
           <button
@@ -289,7 +486,11 @@ const styles: Record<string, React.CSSProperties> = {
   meta: { fontSize: 13, color: '#6B6B6B', marginTop: 4 },
   metaSmall: { fontSize: 11, color: '#9B9B9B', marginTop: 4 },
   badge: { color: '#fff', padding: '4px 10px', borderRadius: 999, fontSize: 12, fontWeight: 600 },
-  actions: { display: 'flex', gap: 8, marginTop: 8 },
+  actions: { display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
+  docsBtn: {
+    background: '#fff', color: '#475569', border: '1px solid #CBD5E1', padding: '6px 14px',
+    borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+  },
   approveBtn: {
     background: '#22C55E', color: '#fff', border: 'none', padding: '6px 14px',
     borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer',
@@ -303,6 +504,30 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 12, background: '#FEF2F2', color: '#991B1B',
     borderRadius: 6, fontSize: 14, marginBottom: 16,
   },
+  pagination: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 16 },
+  pageBtn: {
+    padding: '8px 16px', background: '#fff', border: '1px solid #D4D4D4',
+    borderRadius: 6, cursor: 'pointer', fontSize: 13,
+  },
+  pageInfo: { fontSize: 13, color: '#6B6B6B' },
+
+  // Documents panel
+  docsPanel: { display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 8 },
+  docRow: { background: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 8, padding: 12 },
+  docRowHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
+  docType: { fontSize: 13, fontWeight: 600, color: '#1A1A1A' },
+  docMeta: { fontSize: 11, color: '#6B6B6B', marginTop: 2 },
+  viewBtn: {
+    background: '#EEF2FF', color: '#4338CA', border: 'none', padding: '6px 12px',
+    borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+  },
+  previewImg: {
+    marginTop: 10, maxWidth: '100%', maxHeight: 260, borderRadius: 6,
+    border: '1px solid #E2E8F0', display: 'block',
+  },
+  downloadLink: {
+    display: 'inline-block', marginTop: 10, fontSize: 12, color: '#4338CA', fontWeight: 600,
+  },
 
   // Modal
   backdrop: {
@@ -310,8 +535,9 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
   },
   modal: {
-    background: '#fff', borderRadius: 14, width: '92%', maxWidth: 500,
+    background: '#fff', borderRadius: 14, width: '92%', maxWidth: 520,
     padding: 24, boxShadow: '0 12px 40px rgba(0,0,0,0.18)',
+    maxHeight: '88vh', overflowY: 'auto',
   },
   modalHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   modalTitle: { fontSize: 20, fontWeight: 700, color: '#1A1A1A', margin: 0 },

@@ -2,6 +2,15 @@
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 'http://localhost:5100';
 const TOKEN_KEY = 'kuaforum.admin.access_token';
+const REFRESH_TOKEN_KEY = 'kuaforum.admin.refresh_token';
+const FINGERPRINT_KEY = 'kuaforum.admin.device_fingerprint';
+
+function randomFingerprint(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return `web-admin-${crypto.randomUUID()}`;
+  }
+  return `web-admin-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 
 export const adminAuth = {
   getToken(): string | null {
@@ -12,9 +21,39 @@ export const adminAuth = {
     if (typeof window === 'undefined') return;
     localStorage.setItem(TOKEN_KEY, token);
   },
+  getRefreshToken(): string | null {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
+  },
+  setRefreshToken(token: string) {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(REFRESH_TOKEN_KEY, token);
+  },
+  // Backend RefreshTokenCommand rejects a refresh call whose DeviceFingerprint doesn't
+  // match the one stored on the RefreshToken at issue time (device-bound rotation).
+  // AdminLoginRequest.DeviceFingerprint falls back server-side to the per-connection
+  // Connection.Id when omitted, which is NOT stable across requests — so the client
+  // must generate and persist its own fingerprint and send it both at login and at
+  // every refresh call, or refresh will 401 with "Cihaz parmak izi eşleşmiyor.".
+  getDeviceFingerprint(): string {
+    if (typeof window === 'undefined') return 'web-admin-ssr';
+    let fp = localStorage.getItem(FINGERPRINT_KEY);
+    if (!fp) {
+      fp = randomFingerprint();
+      localStorage.setItem(FINGERPRINT_KEY, fp);
+    }
+    return fp;
+  },
+  setSession(tokens: { accessToken: string; refreshToken: string }) {
+    this.setToken(tokens.accessToken);
+    this.setRefreshToken(tokens.refreshToken);
+  },
   clear() {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
+    // Device fingerprint is intentionally kept — it identifies this browser/device,
+    // not the session, and must stay stable across logout/login cycles.
   },
 };
 
@@ -26,9 +65,43 @@ export class ApiClientError extends Error {
   }
 }
 
+// Single-flight guard: if several requests 401 at once, only one /v1/auth/refresh
+// call goes out; the rest await the same promise.
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function refreshAccessToken(): Promise<boolean> {
+  const refreshToken = adminAuth.getRefreshToken();
+  if (!refreshToken) return false;
+  const deviceFingerprint = adminAuth.getDeviceFingerprint();
+
+  try {
+    // Raw fetch — deliberately bypasses apiFetch to avoid recursing into the
+    // refresh-on-401 logic below.
+    const res = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken, deviceFingerprint }),
+    });
+    if (!res.ok) return false;
+    const data = (await res.json()) as { accessToken?: string; refreshToken?: string };
+    if (!data.accessToken || !data.refreshToken) return false;
+    adminAuth.setSession({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function redirectToLogin() {
+  if (typeof window === 'undefined') return;
+  if (window.location.pathname === '/login') return;
+  window.location.href = '/login';
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   init: RequestInit = {},
+  _retried = false,
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Content-Type', 'application/json');
@@ -36,6 +109,22 @@ export async function apiFetch<T = unknown>(
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
   const res = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+
+  const isAuthPath = path.startsWith('/v1/auth/');
+
+  if (res.status === 401 && !isAuthPath && !_retried) {
+    if (!refreshInFlight) refreshInFlight = refreshAccessToken();
+    const refreshed = await refreshInFlight;
+    refreshInFlight = null;
+
+    if (refreshed) {
+      return apiFetch<T>(path, init, true);
+    }
+
+    adminAuth.clear();
+    redirectToLogin();
+    throw new ApiClientError(401, { detail: 'Oturum süresi doldu, tekrar giriş yapın.' });
+  }
 
   if (!res.ok) {
     let payload: ApiError | null = null;
@@ -49,6 +138,50 @@ export async function apiFetch<T = unknown>(
 
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
+}
+
+// Binary counterpart of apiFetch — used for KYC document content, which is streamed
+// (not JSON) from an authenticated proxy endpoint. <img src> can't carry an
+// Authorization header, so the caller fetches the bytes here and builds an
+// object URL from the returned Blob. Mirrors apiFetch's single-retry-on-401
+// refresh flow so an expired access token doesn't surface as a raw 401.
+export async function apiFetchBlob(
+  path: string,
+  _retried = false,
+): Promise<{ blob: Blob; contentType: string }> {
+  const token = adminAuth.getToken();
+  const headers = new Headers();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const res = await fetch(`${API_BASE_URL}${path}`, { headers });
+
+  if (res.status === 401 && !_retried) {
+    if (!refreshInFlight) refreshInFlight = refreshAccessToken();
+    const refreshed = await refreshInFlight;
+    refreshInFlight = null;
+
+    if (refreshed) {
+      return apiFetchBlob(path, true);
+    }
+
+    adminAuth.clear();
+    redirectToLogin();
+    throw new ApiClientError(401, { detail: 'Oturum süresi doldu, tekrar giriş yapın.' });
+  }
+
+  if (!res.ok) {
+    let payload: ApiError | null = null;
+    try {
+      payload = await res.json();
+    } catch {
+      // ignore — content endpoint errors are usually ProblemDetails but not always
+    }
+    throw new ApiClientError(res.status, payload);
+  }
+
+  const blob = await res.blob();
+  const contentType = res.headers.get('Content-Type') ?? 'application/octet-stream';
+  return { blob, contentType };
 }
 
 export type DashboardStats = {
@@ -70,7 +203,26 @@ export type KycQueueItem = {
   submitterName?: string;
   submittedAt: string;
   documentCount: number;
-  status: number;
+  // Backend enum serialization is JsonStringEnumConverter — this arrives as
+  // e.g. "Pending", not 0. Kept as string|number and read via String(status)
+  // everywhere (see bookings/barber-shops pages for the same pattern).
+  status: number | string;
+};
+
+export type KycQueuePage = {
+  items: KycQueueItem[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+};
+
+export type KycDocumentItem = {
+  id: string;
+  documentType: number | string;
+  fileName: string;
+  contentType?: string | null;
+  sizeBytes: number;
+  uploadedAt: string;
 };
 
 export type PendingReview = {
@@ -91,8 +243,9 @@ export type AdminUser = {
   phoneE164?: string;
   email?: string;
   displayName?: string;
-  role: number;
-  status: number;
+  // Backend JsonStringEnumConverter kullanıyor — canlıda enum adı ("Active") gelir; sayı da desteklenir.
+  role: number | string;
+  status: number | string;
   createdAt: string;
   lastLoginAt?: string;
   deletedAt?: string;
@@ -107,23 +260,38 @@ export type UsersAdminPage = {
 
 export const adminApi = {
   async login(email: string, password: string, totpCode: string) {
+    // deviceFingerprint must be stable across requests — it's persisted client-side and
+    // reused on every /v1/auth/refresh call (see adminAuth.getDeviceFingerprint doc comment).
+    const deviceFingerprint = adminAuth.getDeviceFingerprint();
     return apiFetch<{ accessToken: string; refreshToken: string; user: { id: string; role: string } }>(
       '/v1/auth/admin/login',
-      { method: 'POST', body: JSON.stringify({ email, password, totpCode }) },
+      {
+        method: 'POST',
+        body: JSON.stringify({ email, password, totpCode, deviceFingerprint, deviceName: 'Web Admin' }),
+      },
     );
   },
   async dashboard(): Promise<DashboardStats> {
     return apiFetch<DashboardStats>('/v1/admin/dashboard');
   },
-  async kycQueue(status?: number): Promise<KycQueueItem[]> {
-    const qs = status !== undefined ? `?status=${status}` : '';
-    return apiFetch<KycQueueItem[]>(`/v1/admin/kyc/queue${qs}`);
+  async kycQueue(params: { status?: number; page?: number; pageSize?: number } = {}): Promise<KycQueuePage> {
+    const qs = new URLSearchParams();
+    if (params.status !== undefined) qs.set('status', String(params.status));
+    qs.set('page', String(params.page ?? 1));
+    qs.set('pageSize', String(params.pageSize ?? 20));
+    return apiFetch<KycQueuePage>(`/v1/admin/kyc/queue?${qs}`);
   },
   async reviewKyc(submissionId: string, approve: boolean, rejectionReason?: string, subMerchantKey?: string) {
     return apiFetch(`/v1/admin/kyc/${submissionId}/review`, {
       method: 'POST',
       body: JSON.stringify({ approve, rejectionReason, subMerchantKey }),
     });
+  },
+  async kycDocuments(submissionId: string): Promise<KycDocumentItem[]> {
+    return apiFetch<KycDocumentItem[]>(`/v1/admin/kyc/${submissionId}/documents`);
+  },
+  async kycDocumentContent(documentId: string): Promise<{ blob: Blob; contentType: string }> {
+    return apiFetchBlob(`/v1/admin/kyc/documents/${documentId}/content`);
   },
   async pendingReviews(): Promise<PendingReview[]> {
     return apiFetch<PendingReview[]>('/v1/admin/reviews/pending');

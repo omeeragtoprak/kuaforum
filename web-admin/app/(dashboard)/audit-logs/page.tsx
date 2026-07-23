@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { adminApi, type AuditLogItem, ApiClientError } from '@/lib/api';
 
 const ACTOR_TONE: Record<string, { bg: string; color: string; label: string }> = {
@@ -126,8 +126,8 @@ export default function AuditLogsPage() {
               const tone = ACTOR_TONE[it.actorType] ?? ACTOR_TONE.System;
               const expanded = expandedId === it.id;
               return (
-                <>
-                  <tr key={it.id}>
+                <Fragment key={it.id}>
+                  <tr>
                     <td style={styles.td}>{new Date(it.createdAt).toLocaleString('tr-TR')}</td>
                     <td style={styles.td}>
                       <span style={{ ...styles.badge, background: tone.bg, color: tone.color }}>{tone.label}</span>
@@ -150,7 +150,7 @@ export default function AuditLogsPage() {
                     </td>
                   </tr>
                   {expanded && it.payloadJson ? (
-                    <tr key={`${it.id}-payload`}>
+                    <tr>
                       <td colSpan={5} style={styles.payloadRow}>
                         <pre style={styles.pre}>{formatJson(it.payloadJson)}</pre>
                         {it.ip || it.requestId ? (
@@ -162,7 +162,7 @@ export default function AuditLogsPage() {
                       </td>
                     </tr>
                   ) : null}
-                </>
+                </Fragment>
               );
             })}
           </tbody>

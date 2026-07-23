@@ -3,23 +3,33 @@
 import { useCallback, useEffect, useState } from 'react';
 import { adminApi, formatDateTime, type AdminUser, ApiClientError } from '@/lib/api';
 
-const ROLE_LABEL: Record<number, string> = {
-  0: 'Customer',
-  1: 'BarberOwner',
-  2: 'Stylist',
-  99: 'Admin',
+// Backend enum'ları JsonStringEnumConverter ile string serialize ediyor ("Active"),
+// eski kayıtlar/istemciler sayı gönderebilir — iki format da desteklenir (bookings/page.tsx kalıbı).
+const ROLE_LABEL: Record<string, string> = {
+  '0': 'Customer', Customer: 'Customer',
+  '1': 'BarberOwner', BarberOwner: 'BarberOwner',
+  '2': 'Stylist', Stylist: 'Stylist',
+  '99': 'Admin', Admin: 'Admin',
 };
-const STATUS_LABEL: Record<number, { text: string; color: string; bg: string }> = {
-  0: { text: 'Aktif', color: '#166534', bg: '#DCFCE7' },
-  1: { text: 'Askıda', color: '#92400E', bg: '#FEF3C7' },
-  2: { text: 'Silinmiş', color: '#525252', bg: '#E5E5E5' },
+const STATUS_LABEL: Record<string, { text: string; color: string; bg: string }> = {
+  '0': { text: 'Aktif', color: '#166534', bg: '#DCFCE7' },
+  Active: { text: 'Aktif', color: '#166534', bg: '#DCFCE7' },
+  '1': { text: 'Askıda', color: '#92400E', bg: '#FEF3C7' },
+  Suspended: { text: 'Askıda', color: '#92400E', bg: '#FEF3C7' },
+  '2': { text: 'Silinmiş', color: '#525252', bg: '#E5E5E5' },
+  Deleted: { text: 'Silinmiş', color: '#525252', bg: '#E5E5E5' },
 };
+const isActiveUser = (u: AdminUser) => String(u.status) === '0' || String(u.status) === 'Active';
+const isSuspendedUser = (u: AdminUser) => String(u.status) === '1' || String(u.status) === 'Suspended';
 
 type ToastState = { kind: 'success' | 'error'; msg: string } | null;
+
+const PAGE_SIZE = 20;
 
 export default function UsersPage() {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -37,6 +47,8 @@ export default function UsersPage() {
         search: search || undefined,
         role: roleFilter,
         status: statusFilter,
+        page,
+        pageSize: PAGE_SIZE,
       });
       setUsers(res.items);
       setTotal(res.totalCount);
@@ -46,7 +58,7 @@ export default function UsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, roleFilter, statusFilter]);
+  }, [search, roleFilter, statusFilter, page]);
 
   useEffect(() => {
     load();
@@ -62,10 +74,12 @@ export default function UsersPage() {
     return u.displayName ?? u.email ?? u.phoneE164 ?? u.id.slice(0, 8);
   }
 
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
   return (
     <div>
       <h1 style={styles.h1}>Kullanıcılar</h1>
-      <p style={styles.subtitle}>{total} kullanıcı</p>
+      <p style={styles.subtitle}>{total} kullanıcı · sayfa {page}/{totalPages}</p>
 
       <div style={styles.filters}>
         <div style={styles.searchBox}>
@@ -73,15 +87,15 @@ export default function UsersPage() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Telefon, e-posta, isim ara…"
             style={styles.search}
-            onKeyDown={(e) => e.key === 'Enter' && load()}
+            onKeyDown={(e) => { if (e.key === 'Enter') { setPage(1); load(); } }}
           />
         </div>
         <select
           value={roleFilter ?? ''}
-          onChange={(e) => setRoleFilter(e.target.value ? Number(e.target.value) : undefined)}
+          onChange={(e) => { setRoleFilter(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
           style={styles.select}
         >
           <option value="">Tüm roller</option>
@@ -92,7 +106,7 @@ export default function UsersPage() {
         </select>
         <select
           value={statusFilter ?? ''}
-          onChange={(e) => setStatusFilter(e.target.value ? Number(e.target.value) : undefined)}
+          onChange={(e) => { setStatusFilter(e.target.value ? Number(e.target.value) : undefined); setPage(1); }}
           style={styles.select}
         >
           <option value="">Tüm durumlar</option>
@@ -100,7 +114,7 @@ export default function UsersPage() {
           <option value="1">Askıda</option>
           <option value="2">Silinmiş</option>
         </select>
-        <button onClick={load} style={styles.searchBtn}>Filtrele</button>
+        <button onClick={() => { setPage(1); load(); }} style={styles.searchBtn}>Filtrele</button>
       </div>
 
       {error ? <div style={styles.error}>{error}</div> : null}
@@ -134,7 +148,7 @@ export default function UsersPage() {
             </thead>
             <tbody>
               {users.map((u) => {
-                const status = STATUS_LABEL[u.status] ?? { text: '?', color: '#525252', bg: '#E5E5E5' };
+                const status = STATUS_LABEL[String(u.status)] ?? { text: '?', color: '#525252', bg: '#E5E5E5' };
                 return (
                   <tr key={u.id} style={styles.tr}>
                     <td style={styles.td}>
@@ -145,7 +159,7 @@ export default function UsersPage() {
                       {u.email ? <div style={styles.contactSmall}>{u.email}</div> : null}
                     </td>
                     <td style={styles.td}>
-                      <span style={styles.roleChip}>{ROLE_LABEL[u.role]}</span>
+                      <span style={styles.roleChip}>{ROLE_LABEL[String(u.role)] ?? String(u.role)}</span>
                     </td>
                     <td style={styles.td}>
                       <span style={{ ...styles.badge, color: status.color, background: status.bg }}>
@@ -155,11 +169,11 @@ export default function UsersPage() {
                     <td style={styles.td}>{formatDateTime(u.createdAt)}</td>
                     <td style={styles.td}>{u.lastLoginAt ? formatDateTime(u.lastLoginAt) : '—'}</td>
                     <td style={styles.tdRight}>
-                      {u.status === 0 ? (
+                      {isActiveUser(u) ? (
                         <button style={styles.suspendBtn} onClick={() => setSuspendModal(u)}>
                           Askıya al
                         </button>
-                      ) : u.status === 1 ? (
+                      ) : isSuspendedUser(u) ? (
                         <button style={styles.unsuspendBtn} onClick={() => setUnsuspendModal(u)}>
                           Aç
                         </button>
@@ -174,6 +188,24 @@ export default function UsersPage() {
           </table>
         </div>
       )}
+
+      <div style={styles.pagination}>
+        <button
+          onClick={() => setPage((p) => Math.max(1, p - 1))}
+          disabled={page <= 1}
+          style={styles.pageBtn}
+        >
+          ← Önceki
+        </button>
+        <span style={styles.pageInfo}>Sayfa {page} / {totalPages}</span>
+        <button
+          onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+          disabled={page >= totalPages}
+          style={styles.pageBtn}
+        >
+          Sonraki →
+        </button>
+      </div>
 
       {suspendModal ? (
         <SuspendModal
@@ -364,6 +396,12 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
   },
   disabledLabel: { color: '#9B9B9B', fontSize: 13 },
+  pagination: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 16, marginTop: 16 },
+  pageBtn: {
+    padding: '8px 16px', background: '#fff', border: '1px solid #D4D4D4',
+    borderRadius: 6, cursor: 'pointer', fontSize: 13,
+  },
+  pageInfo: { fontSize: 13, color: '#6B6B6B' },
 
   // Loading skeleton
   skeletonWrap: { display: 'flex', flexDirection: 'column', gap: 8 },

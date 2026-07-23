@@ -18,7 +18,7 @@ export default function LoginPage() {
     setError(null);
     try {
       const res = await adminApi.login(email, password, totp);
-      adminAuth.setToken(res.accessToken);
+      adminAuth.setSession({ accessToken: res.accessToken, refreshToken: res.refreshToken });
       router.replace('/');
     } catch (err) {
       if (err instanceof ApiClientError) {
@@ -79,12 +79,6 @@ export default function LoginPage() {
         <button type="submit" disabled={loading} style={styles.button}>
           {loading ? 'Giriş yapılıyor...' : 'Giriş yap'}
         </button>
-
-        <div style={styles.note}>
-          🚧 Admin login + TOTP backend'de henüz wired değil (M1 spec'te tanımlı, implementation bekliyor).
-          Şu an bu sayfa hata gösterecek. Backend ekibinin ilk admin kullanıcı seed etmesi + TOTP endpoint
-          aktive etmesi sonrası çalışacak.
-        </div>
       </form>
     </main>
   );
@@ -137,13 +131,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#991B1B',
     borderRadius: 6,
     fontSize: 13,
-  },
-  note: {
-    padding: '10px 12px',
-    background: '#FFFBEB',
-    color: '#92400E',
-    borderRadius: 6,
-    fontSize: 12,
-    lineHeight: 1.5,
   },
 };
