@@ -8,9 +8,12 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
+import { PaymentApi, PaymentKind, InitiatePaymentResponse } from '@/api/payment';
 import { extractApiError } from '@/api/client';
 import { formatDateTime, formatDuration, formatTry } from '@/lib/format';
+import { estimateDepositMinor, remainingAtShopMinor } from '@/lib/deposit';
 import { Haptics } from '@/lib/haptics';
+import { ErrorReporter } from '@/lib/error-reporter';
 
 export default function ConfirmBookingScreen() {
   const params = useLocalSearchParams<{
@@ -26,25 +29,50 @@ export default function ConfirmBookingScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
+  const [payKind, setPayKind] = useState<PaymentKind>('Deposit');
 
   const serviceIds = params.services?.split(',').filter(Boolean) ?? [];
+  const total = params.totalAmount ? parseInt(params.totalAmount, 10) : undefined;
 
   async function handleConfirm() {
     setLoading(true);
     try {
-      await BookingApi.initiate(
+      const booking = await BookingApi.initiate(
         params.stylistId!,
         params.scheduledAt!,
         serviceIds,
         note || undefined,
         false,
       );
+      let pay: InitiatePaymentResponse;
+      try {
+        pay = await PaymentApi.initiate(booking.bookingId, payKind);
+      } catch (payErr) {
+        ErrorReporter.capture(payErr, { tag: 'booking.confirm.payment-initiate', extra: { bookingId: booking.bookingId, payKind } });
+        Haptics.warning();
+        Alert.alert(
+          'Randevun oluştu',
+          'Randevun oluştu ama ödeme başlatılamadı. Randevularım\'dan ödemeyi tamamlayabilirsin.',
+          [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
+        );
+        return;
+      }
       Haptics.success();
-      Alert.alert(
-        '✅ Randevu oluşturuldu',
-        'Randevun "Beklemede" durumunda kaydedildi. Kuaför onayladığında bildirim alacaksın.',
-        [{ text: 'Randevularıma git', onPress: () => router.replace('/(tabs)/bookings') }],
-      );
+      // '/booking/payment' T7'de eklenecek (henüz route yok) — expo-router typedRoutes
+      // union'ında bulunmadığı için diğer henüz-yok rotalarla aynı `as never` kalıbı (bkz.
+      // app/(tabs)/bookings.tsx) uygulanıyor; T7 sonrası gerçek route eklenince kaldırılabilir.
+      router.replace({
+        pathname: '/booking/payment',
+        params: {
+          paymentId: pay.paymentId,
+          checkoutUrl: pay.checkoutUrl,
+          amountMinor: String(pay.amountMinor),
+          remainingAtShopMinor: String(pay.remainingAtShopMinor),
+          kind: pay.kind,
+          bookingId: booking.bookingId,
+          expiresAt: pay.expiresAt,
+        },
+      } as never);
     } catch (err) {
       Haptics.error();
       Alert.alert('Hata', extractApiError(err));
@@ -127,11 +155,26 @@ export default function ConfirmBookingScreen() {
           </View>
         </Card>
 
-        <Card>
+        <Card style={{ gap: Spacing.sm }}>
           <Text style={styles.policyTitle}>💳 Ödeme</Text>
+          <PayOption
+            selected={payKind === 'Deposit'}
+            onPress={() => setPayKind('Deposit')}
+            title="Kapora ile ayırt (önerilen)"
+            detail={
+              total
+                ? `Şimdi ${formatTry(estimateDepositMinor(total))} · Salonda ${formatTry(remainingAtShopMinor(total, estimateDepositMinor(total)))}`
+                : 'Hizmet bedelinin %15’i şimdi, kalanı salonda'
+            }
+          />
+          <PayOption
+            selected={payKind === 'FullOnline'}
+            onPress={() => setPayKind('FullOnline')}
+            title="Tamamını şimdi öde"
+            detail={total ? `${formatTry(total)} — salonda ödeme kalmaz` : 'Tamamı online'}
+          />
           <Text style={styles.policySub}>
-            Ödeme adımı geliştirme aşamasında — şimdilik randevu "Beklemede" durumunda oluşur.
-            Onay sonrası kuaförden ödeme bilgisi alacaksın.
+            Kesin tutar ödeme adımında gösterilir. 30 dk içinde ödenmeyen randevu otomatik iptal olur.
           </Text>
         </Card>
 
@@ -165,6 +208,41 @@ function DetailRow({ icon, label, value }: { icon: string; label: string; value:
 
 function Divider() { return <View style={styles.divider} />; }
 
+function PayOption({
+  selected,
+  onPress,
+  title,
+  detail,
+}: {
+  selected: boolean;
+  onPress: () => void;
+  title: string;
+  detail: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessible
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      accessibilityLabel={`${title}. ${detail}`}
+      style={({ pressed }) => [
+        styles.payOption,
+        selected && styles.payOptionSelected,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.payRadio, selected && styles.payRadioSelected]}>
+        {selected ? '●' : '○'}
+      </Text>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.payTitle}>{title}</Text>
+        <Text style={styles.payDetail}>{detail}</Text>
+      </View>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scroll: {
@@ -196,4 +274,25 @@ const styles = StyleSheet.create({
   policyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   policyText: { fontSize: FontSize.sm, color: Colors.text },
   kvkk: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', lineHeight: 16, marginTop: Spacing.sm },
+  payOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    minHeight: Layout.tapTargetMin,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.surface,
+  },
+  payOptionSelected: {
+    borderColor: Colors.primary,
+    backgroundColor: Colors.primarySoft,
+  },
+  pressed: { opacity: 0.85 },
+  payRadio: { fontSize: 18, color: Colors.borderStrong, width: 20, textAlign: 'center' },
+  payRadioSelected: { color: Colors.primary },
+  payTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
+  payDetail: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
 });
