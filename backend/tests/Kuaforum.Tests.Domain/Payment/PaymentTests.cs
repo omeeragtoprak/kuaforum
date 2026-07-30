@@ -223,11 +223,13 @@ public class PaymentTests
 
     // ── PaymentKind (RFC-006 kapora) ────────────────────────────────────
 
-    [Fact]
-    public void Initiate_deposit_kind_persists_kind_and_accepts_deposit_at_least_commission()
+    [Theory]
+    [InlineData(15_00, 10_00)]
+    [InlineData(10_00, 10_00)] // eşitlik sınırı — "at least" sözleşmesinin floor'u
+    public void Initiate_deposit_kind_persists_kind_and_accepts_deposit_at_least_commission(long grossAmountMinor, long platformCommissionMinor)
     {
         var r = Kuaforum.Domain.Modules.Payment.Payment.Initiate(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-            grossAmountMinor: 15_00, platformCommissionMinor: 10_00,
+            grossAmountMinor: grossAmountMinor, platformCommissionMinor: platformCommissionMinor,
             PaymentProviderName.Mock, kind: PaymentKind.Deposit);
         Assert.True(r.IsSuccess);
         Assert.Equal(PaymentKind.Deposit, r.Value.Kind);
@@ -236,6 +238,7 @@ public class PaymentTests
     [Fact]
     public void Initiate_deposit_below_commission_fails()
     {
+        // Deposit'e özel kural yok — genel komisyon-aralık guard'ına biner (Payment.Initiate).
         var r = Kuaforum.Domain.Modules.Payment.Payment.Initiate(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
             grossAmountMinor: 9_00, platformCommissionMinor: 10_00,
             PaymentProviderName.Mock, kind: PaymentKind.Deposit);
