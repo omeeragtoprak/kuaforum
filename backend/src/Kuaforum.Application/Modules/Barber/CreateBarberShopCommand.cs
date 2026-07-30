@@ -1,4 +1,5 @@
 using FluentValidation;
+using Kuaforum.Application.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
@@ -30,6 +31,9 @@ public sealed class CreateBarberShopCommandHandler(
     IApplicationDbContext db,
     IAuditLogger audit) : IRequestHandler<CreateBarberShopCommand, Result<Guid>>
 {
+    private const string DuplicateShopMessage =
+        "Bu kullanıcının zaten bir işletmesi var. Çoklu işletme desteği V1.5'te gelecek.";
+
     public async Task<Result<Guid>> Handle(CreateBarberShopCommand request, CancellationToken cancellationToken)
     {
         var ctx = (DbContext)db;
@@ -37,7 +41,7 @@ public sealed class CreateBarberShopCommandHandler(
         if (owner is null) return Result.Failure<Guid>(Error.NotFound("Owner"));
 
         var existing = await ctx.Set<BarberShop>().AnyAsync(s => s.OwnerId == request.OwnerId, cancellationToken);
-        if (existing) return Result.Failure<Guid>(Error.Conflict("Bu kullanıcının zaten bir işletmesi var. Çoklu işletme desteği V1.5'te gelecek."));
+        if (existing) return Result.Failure<Guid>(Error.Conflict(DuplicateShopMessage));
 
         // RFC-007: self-serve onboarding — Customer, işletme oluştururken AYNI
         // SaveChanges içinde BarberOwner'a terfi eder (atomik rol geçişi).
@@ -63,7 +67,24 @@ public sealed class CreateBarberShopCommandHandler(
         await audit.RecordAsync("barber.shop.created", nameof(BarberShop), shop.Id.ToString(),
             actorUserId: request.OwnerId, payload: new { shop.Name, shop.GenderType, RoleAfter = owner.Role.ToString() }, ct: cancellationToken);
 
-        await db.SaveChangesAsync(cancellationToken);
+        try
+        {
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Çift-submit yarışında kaybeden taraf, kazananın aynı SaveChanges'te commit'lediği
+            // User.Version bump'ına (rol terfisi) takılabilir — 500 yerine 409.
+            return Result.Failure<Guid>(Error.Conflict(DuplicateShopMessage));
+        }
+        catch (DbUpdateException ex) when (PostgresErrorClassifier.IsUniqueViolation(ex, out var constraint))
+        {
+            // AnyAsync precheck'ini yarışta atlatan ikinci istek ux_barber_shops_owner'a çarpar.
+            return Result.Failure<Guid>(Error.Conflict(constraint == "ux_barber_shops_slug"
+                ? "Bu isimde bir işletme zaten kayıtlı. Lütfen farklı bir ad deneyin."
+                : DuplicateShopMessage));
+        }
+
         return Result.Success(shop.Id);
     }
 }

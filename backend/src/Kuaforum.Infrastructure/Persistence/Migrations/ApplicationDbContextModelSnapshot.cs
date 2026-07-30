@@ -127,7 +127,8 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("OwnerId")
-                        .HasDatabaseName("ix_barber_shops_owner");
+                        .IsUnique()
+                        .HasDatabaseName("ux_barber_shops_owner");
 
                     b.HasIndex("Slug")
                         .IsUnique()

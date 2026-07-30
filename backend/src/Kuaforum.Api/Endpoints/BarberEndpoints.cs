@@ -57,8 +57,22 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).AllowAnonymous().WithName("GetServicesByShop");
 
-        // Owner-protected
-        var ownerGroup = app.MapGroup("/v1/owner/barber-shop").WithTags("BarberShops").RequireAuthorization();
+        // Owner-protected (GAP P1-4): rol policy'si grup seviyesinde — Customer token'ı 403 alır.
+        var ownerGroup = app.MapGroup("/v1/owner/barber-shop").WithTags("BarberShops").RequireAuthorization("BarberOwner");
+
+        // Create-shop: rol geçiş tetiği — Customer da çağırabilir (RFC-007 self-serve onboarding);
+        // rol guard'ı handler'da (Customer → promote, Admin → Forbidden). Grup policy'si
+        // endpoint'ten geri alınamadığından istisna için AYRI grup şart.
+        var onboardGroup = app.MapGroup("/v1/owner/barber-shop").WithTags("BarberShops").RequireAuthorization();
+
+        onboardGroup.MapPost("", async ([FromBody] CreateBarberShopRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new CreateBarberShopCommand(ctx.UserId.Value, body.Name, body.GenderType, body.Description, body.Phone), token);
+            return r.IsSuccess
+                ? Results.Created($"/v1/barber-shops/{r.Value}", new { id = r.Value })
+                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "conflict" => 409, "forbidden" => 403, _ => 400 });
+        }).WithName("CreateBarberShop");
 
         ownerGroup.MapGet("", async (IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
@@ -85,15 +99,6 @@ public static class BarberEndpoints
             var r = await m.Send(new GetOwnerBookingsQuery(ctx.UserId.Value, fromUtc, toUtc, status), token);
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).WithName("GetOwnerBookings");
-
-        ownerGroup.MapPost("", async ([FromBody] CreateBarberShopRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
-        {
-            if (ctx.UserId is null) return Results.Unauthorized();
-            var r = await m.Send(new CreateBarberShopCommand(ctx.UserId.Value, body.Name, body.GenderType, body.Description, body.Phone), token);
-            return r.IsSuccess
-                ? Results.Created($"/v1/barber-shops/{r.Value}", new { id = r.Value })
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "conflict" => 409, "forbidden" => 403, _ => 400 });
-        }).WithName("CreateBarberShop");
 
         ownerGroup.MapPatch("/{id:guid}", async (Guid id, [FromBody] UpdateBarberShopRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
@@ -153,8 +158,8 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
         }).WithName("GetMyKycStatus");
 
-        // Stylist actions
-        var stylistGroup = app.MapGroup("/v1/stylists").WithTags("Stylists").RequireAuthorization();
+        // Stylist actions (GAP P1-4): "Stylist" policy'si BarberOwner'ı da kapsar (AuthSetup).
+        var stylistGroup = app.MapGroup("/v1/stylists").WithTags("Stylists").RequireAuthorization("Stylist");
 
         stylistGroup.MapPatch("/{id:guid}", async (Guid id, [FromBody] UpdateStylistRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {

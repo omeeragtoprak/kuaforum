@@ -151,6 +151,107 @@ public sealed class OwnerOnboardingTests(IntegrationTestFactory factory)
         Assert.Equal(UserRole.Admin, admin.Role); // rol dokunulmamış
     }
 
+    /// <summary>
+    /// GAP P1-4: owner grubu "BarberOwner" policy'sinde — Customer token'ı 403 alır.
+    /// İstisna: create-shop (RFC-007 rol geçiş tetiği) ayrı grupta, Customer çağırabilir.
+    /// </summary>
+    [Fact]
+    public async Task Customer_gets_403_on_owner_endpoints_but_can_create_shop()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("Customer");
+        client.SetBearer(login.AccessToken);
+
+        var patch = await client.PatchAsJsonAsync($"/v1/owner/barber-shop/{Guid.NewGuid()}",
+            new { name = "Hacklenen Salon" }, TestHelpers.Json);
+        Assert.Equal(HttpStatusCode.Forbidden, patch.StatusCode);
+
+        var kycStatus = await client.GetAsync("/v1/owner/barber-shop/kyc/status");
+        Assert.Equal(HttpStatusCode.Forbidden, kycStatus.StatusCode);
+
+        // İstisna: create-shop Customer'a açık — promote burada tetikleniyor.
+        var create = await PostCreateShopAsync(client, "Policy İstisna Salonu");
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+    }
+
+    [Fact]
+    public async Task Customer_gets_403_on_stylist_endpoints()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("Customer");
+        client.SetBearer(login.AccessToken);
+
+        var patch = await client.PatchAsJsonAsync($"/v1/stylists/{Guid.NewGuid()}",
+            new { displayName = "Sahte Stilist" }, TestHelpers.Json);
+        Assert.Equal(HttpStatusCode.Forbidden, patch.StatusCode);
+    }
+
+    /// <summary>
+    /// Mobil sihirbazın 2-3. adımlarının kanıtı: create-shop sonrası REFRESH şart —
+    /// eski access token'ın role claim'i hâlâ "Customer" olduğundan owner endpoint'leri
+    /// 403 döner (stale-claim pin'i); taze token'la 200.
+    /// </summary>
+    [Fact]
+    public async Task Promoted_owner_with_fresh_token_can_call_owner_endpoints()
+    {
+        await factory.ResetDatabaseAsync();
+
+        const string fingerprint = "onboarding-policy-fp";
+        using var client = factory.CreateClient();
+
+        var loginResp = await client.PostAsJsonAsync("/v1/auth/dev-login",
+            new { role = "Customer", deviceFingerprint = fingerprint }, TestHelpers.Json);
+        loginResp.EnsureSuccessStatusCode();
+        var login = (await loginResp.Content.ReadFromJsonAsync<TestHelpers.DevLoginResponse>(TestHelpers.Json))!;
+        client.SetBearer(login.AccessToken);
+
+        var create = await PostCreateShopAsync(client, "Fresh Token Salonu");
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+
+        // ESKİ token (role=Customer) ile owner endpoint'i hâlâ 403 — refresh'in NEDEN zorunlu olduğu.
+        var staleCall = await client.GetAsync("/v1/owner/barber-shop/kyc/status");
+        Assert.Equal(HttpStatusCode.Forbidden, staleCall.StatusCode);
+
+        var refreshResp = await client.PostAsJsonAsync("/v1/auth/refresh",
+            new { refreshToken = login.RefreshToken, deviceFingerprint = fingerprint }, TestHelpers.Json);
+        Assert.Equal(HttpStatusCode.OK, refreshResp.StatusCode);
+        var refreshed = (await refreshResp.Content.ReadFromJsonAsync<TestHelpers.DevLoginResponse>(TestHelpers.Json))!;
+
+        client.SetBearer(refreshed.AccessToken);
+        var freshCall = await client.GetAsync("/v1/owner/barber-shop/kyc/status");
+        Assert.Equal(HttpStatusCode.OK, freshCall.StatusCode);
+    }
+
+    /// <summary>
+    /// Tek-shop unique index (ux_barber_shops_owner): çift-submit yarışında AnyAsync
+    /// precheck'i iki isteği de geçirebilir — DB son savunma hattı, kaybeden 409 alır.
+    /// Farklı adlar bilinçli: slug unique'ine değil owner unique'ine çarpması için.
+    /// </summary>
+    [Fact]
+    public async Task Concurrent_create_shop_yields_single_shop()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("Customer");
+        client.SetBearer(login.AccessToken);
+
+        var task1 = PostCreateShopAsync(client, "Yarış Salonu A");
+        var task2 = PostCreateShopAsync(client, "Yarış Salonu B");
+        var responses = await Task.WhenAll(task1, task2);
+
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Created));
+        Assert.Equal(1, responses.Count(r => r.StatusCode == HttpStatusCode.Conflict));
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(1, await db.Set<BarberShop>().CountAsync(s => s.OwnerId == login.UserId));
+    }
+
     /// <summary>JWT payload'ını base64url decode edip claim okur — ek paket yok.</summary>
     private static string? ReadJwtClaim(string jwt, string claimName)
     {

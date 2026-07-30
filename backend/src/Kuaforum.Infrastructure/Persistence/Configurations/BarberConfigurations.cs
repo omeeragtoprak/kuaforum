@@ -32,7 +32,9 @@ internal sealed class BarberShopConfiguration : IEntityTypeConfiguration<BarberS
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");
 
-        builder.HasIndex(x => x.OwnerId).HasDatabaseName("ix_barber_shops_owner");
+        // Tek-shop kuralı (V1): çift-submit yarışında handler'daki AnyAsync precheck'i
+        // atlatılabilir — unique index son savunma hattı. V1.5 çoklu işletme gelirse düşürülür.
+        builder.HasIndex(x => x.OwnerId).IsUnique().HasDatabaseName("ux_barber_shops_owner");
         builder.HasIndex(x => x.Slug).IsUnique().HasDatabaseName("ux_barber_shops_slug");
         builder.HasIndex(x => x.Status).HasDatabaseName("ix_barber_shops_status");
         builder.HasIndex(x => new { x.AddressCityId, x.AddressDistrictId }).HasDatabaseName("ix_barber_shops_city_district");
