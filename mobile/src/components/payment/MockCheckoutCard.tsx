@@ -6,8 +6,9 @@ import { formatTry } from '@/lib/format';
 import type { PaymentKind } from '@/api/payment';
 
 type MockCheckoutCardProps = {
-  amountMinor: number;
-  remainingAtShopMinor: number;
+  /** null = param eksik/sayısal değil (ör. NaN) — bu durumda tutar satırı hiç render edilmez. */
+  amountMinor: number | null;
+  remainingAtShopMinor: number | null;
   kind: PaymentKind;
   loading: boolean;
   onSimulate: () => void;
@@ -32,11 +33,13 @@ export function MockCheckoutCard({
         Bu ortamda gerçek ödeme sağlayıcısı bağlı değil — aşağıdaki buton ödemeyi başarıyla
         tamamlanmış gibi simüle eder.
       </Text>
-      <View style={styles.amountRow}>
-        <Text style={styles.amountLabel}>Şimdi ödenecek</Text>
-        <Text style={styles.amountValue}>{formatTry(amountMinor)}</Text>
-      </View>
-      {kind === 'Deposit' && remainingAtShopMinor > 0 ? (
+      {amountMinor !== null ? (
+        <View style={styles.amountRow}>
+          <Text style={styles.amountLabel}>Şimdi ödenecek</Text>
+          <Text style={styles.amountValue}>{formatTry(amountMinor)}</Text>
+        </View>
+      ) : null}
+      {kind === 'Deposit' && !!remainingAtShopMinor && remainingAtShopMinor > 0 ? (
         <View style={styles.amountRow}>
           <Text style={styles.amountLabel}>Salonda ödenecek</Text>
           <Text style={styles.amountValueMuted}>{formatTry(remainingAtShopMinor)}</Text>

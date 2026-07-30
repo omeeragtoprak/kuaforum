@@ -20,12 +20,43 @@ type Phase = 'checkout' | 'verifying' | 'success' | 'cancelled' | 'pendingWebhoo
 const VERIFY_MAX_ATTEMPTS = 8;
 const VERIFY_INTERVAL_MS = 2000;
 
-// MockPaymentProvider bugün sabit `http://localhost:5000` üretiyor (dev backend portu
-// 5100, Android emülatörde localhost host makineye hiç ulaşmıyor) — checkoutUrl'in origin'i
-// bu yüzden güvenilir değil. apiClient zaten platforma göre doğru baseURL'i taşıyor,
-// origin'i atıp sadece path+query'yi ona veriyoruz.
-function stripOrigin(url: string): string {
-  return url.replace(/^https?:\/\/[^/]+/, '');
+/**
+ * checkoutUrl'i (backend'ten gelen, deep-link param'ı — yani kullanıcı/URL kontrolünde bir
+ * girdi) apiClient'ın kendi baseURL'ine göre relative bir path+query'e indirger.
+ *
+ * GÜVENLİK: MockPaymentProvider bugün sabit `http://localhost:5000` üretiyor (dev backend
+ * portu 5100, Android emülatörde localhost host makineye hiç ulaşmıyor) — checkoutUrl'in
+ * origin'i zaten güvenilir değil. Ama daha kritik olanı: apiClient'a çağrı Authorization
+ * Bearer header'ı taşıyor; naif bir "scheme://host soy" regex'i case-variant (`HTTP://…`)
+ * veya protocol-relative (`//evil.com/…`) girdileri kaçırabilir — axios böyle bir path'i
+ * absolute URL sayıp (bkz. axios isAbsoluteURL: `^([a-z][a-z\d+\-.]*:)?\/\//i`) token'ı
+ * saldırgan host'a gönderir. Bu yüzden:
+ *  1) case-insensitive şema + `//host` bloğunu (protocol-relative dahil) at,
+ *  2) sonucun KESİNLİKLE tek '/' ile başladığını ve ASLA '//' ile başlamadığını (axios'un
+ *     absolute saydığı tüm varyantları) assert et — belirsiz girdide `null` dön, apiClient'a
+ *     hiçbir şey verilmesin (çağıran taraf 'error' fazına düşürür).
+ *
+ * NOT: WHATWG `URL` API'si burada bilinçli KULLANILMADI. Bu repo'da `react-native-url-polyfill`
+ * yok ve Hermes'in native URL/URLSearchParams desteği hâlâ eksik/tutarsız — bare `new URL()`
+ * bu ortamda ReferenceError riski taşıyor (bkz. react-native-url-polyfill README ve
+ * facebook/react-native güncel issue'ları, "URLSearchParams.get is not implemented, js
+ * engine: hermes"). Regex tabanlı bu yaklaşım ek bağımlılık gerektirmeden aynı güvenlik
+ * garantisini sağlıyor.
+ */
+function toRelativePath(url: string): string | null {
+  if (typeof url !== 'string' || url.length === 0) return null;
+  // Opsiyonel şema (case-insensitive) + zorunlu '//host' bloğunu at — varsa geri kalan path'i al.
+  const match = /^(?:[a-z][a-z0-9+.-]*:)?\/\/[^/]+(\/.*)?$/i.exec(url);
+  const path = match ? (match[1] ?? '/') : url;
+  if (!path.startsWith('/') || path.startsWith('//')) return null;
+  return path;
+}
+
+/** amountMinor/remainingAtShopMinor param'ları eksik ya da sayısal değilse null — ekranda asla "NaN TL" gösterme. */
+function parseAmount(v: string | undefined): number | null {
+  if (!v) return null;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
 }
 
 export default function PaymentScreen() {
@@ -43,11 +74,19 @@ export default function PaymentScreen() {
   const checkoutUrl = params.checkoutUrl;
   const bookingId = params.bookingId;
   const expiresAt = params.expiresAt;
-  const amountMinor = params.amountMinor ? parseInt(params.amountMinor, 10) : 0;
-  const remaining = params.remainingAtShopMinor ? parseInt(params.remainingAtShopMinor, 10) : 0;
+  const amountMinor = parseAmount(params.amountMinor);
+  const remaining = parseAmount(params.remainingAtShopMinor);
   const kind: PaymentKind = params.kind === 'Deposit' ? 'Deposit' : 'FullOnline';
-  const paramsValid = !!checkoutUrl && !!bookingId;
-  const isMock = !!checkoutUrl?.includes('/payments/mock/complete');
+
+  // Mock tespiti normalize edilmiş (origin atılmış) path üzerinden yapılıyor — ham checkoutUrl
+  // string'ine güvenerek karar vermek yerine, "bu path apiClient'a güvenle verilebilir mi"
+  // sorusunu tek bir yerden (toRelativePath) cevaplıyoruz.
+  const relativeCheckoutPath = checkoutUrl ? toRelativePath(checkoutUrl) : null;
+  const isMock = !!relativeCheckoutPath?.includes('/payments/mock/complete');
+  // Gerçek modda WebView, checkoutUrl'i OLDUĞU GİBİ (relativize edilmemiş) yükler — PSP sayfası
+  // harici bir host'ta. Orada tek gereken, iyi biçimli bir http(s) absolute URL olması.
+  const isWellFormedHttpUrl = !!checkoutUrl && /^https?:\/\//i.test(checkoutUrl);
+  const paramsValid = !!bookingId && !!checkoutUrl && (isMock || isWellFormedHttpUrl);
 
   const [phase, setPhase] = useState<Phase>(paramsValid ? 'checkout' : 'error');
   const [errorMessage, setErrorMessage] = useState<string | null>(
@@ -95,11 +134,20 @@ export default function PaymentScreen() {
   }, [phase, bookingId]);
 
   async function handleSimulate() {
-    if (!checkoutUrl) return;
+    if (!relativeCheckoutPath) {
+      ErrorReporter.capture(new Error('Mock checkout path normalize edilemedi'), {
+        tag: 'booking.payment.mock-simulate-invalid-url',
+        extra: { paymentId: params.paymentId },
+      });
+      Haptics.error();
+      setErrorMessage('Ödeme bağlantısı geçersiz görünüyor.');
+      setPhase('error');
+      return;
+    }
     setMockLoading(true);
     Haptics.light();
     try {
-      await apiClient.get(stripOrigin(checkoutUrl));
+      await apiClient.get(relativeCheckoutPath);
       setPhase('verifying');
     } catch (err) {
       ErrorReporter.capture(err, { tag: 'booking.payment.mock-simulate', extra: { paymentId: params.paymentId } });
@@ -121,6 +169,12 @@ export default function PaymentScreen() {
     setPhase('cancelled');
   }
 
+  function handleWebViewError() {
+    Haptics.error();
+    setErrorMessage('Ödeme sayfası yüklenemedi. Bağlantını kontrol edip tekrar dener misin?');
+    setPhase('error');
+  }
+
   function handleRetry() {
     setErrorMessage(null);
     setPhase('checkout');
@@ -139,7 +193,7 @@ export default function PaymentScreen() {
   // hiç yok) — o durumda "Tekrar dene" yerine tek çıkış "Randevularıma dön".
   const canRetryCheckout = paramsValid;
   const showCountdown = !!expiresAt && (phase === 'checkout' || phase === 'verifying');
-  const showWebView = phase === 'checkout' && !isMock && !!checkoutUrl;
+  const showWebView = phase === 'checkout' && !isMock && isWellFormedHttpUrl;
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -166,6 +220,7 @@ export default function PaymentScreen() {
           checkoutUrl={checkoutUrl!}
           onSuccess={handleWebViewSuccess}
           onCancel={handleWebViewCancel}
+          onError={handleWebViewError}
         />
       ) : (
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -191,7 +246,7 @@ export default function PaymentScreen() {
               icon="✅"
               title="Ödeme alındı"
               message={
-                kind === 'Deposit' && remaining > 0
+                kind === 'Deposit' && !!remaining && remaining > 0
                   ? `Randevun onaylandı.\n\nSalonda ödenecek: ${formatTry(remaining)}`
                   : 'Randevun onaylandı.'
               }
