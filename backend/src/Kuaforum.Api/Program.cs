@@ -173,6 +173,7 @@ app.MapReviewEndpoints();
 app.MapNotificationEndpoints();
 app.MapDeviceTokenEndpoints();
 app.MapAdminEndpoints();
+app.MapWebhookEndpoints();
 
 // Hangfire dashboard + recurring jobs ancak Hangfire DI'a register edildiyse
 // (Hangfire:Enabled config flag). Test ortamında Postgres yokken eager bağlanma

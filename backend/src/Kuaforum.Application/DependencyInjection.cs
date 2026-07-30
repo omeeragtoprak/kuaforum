@@ -20,6 +20,9 @@ public static class DependencyInjection
 
         services.AddValidatorsFromAssembly(assembly);
 
+        // Capture → booking Confirm ortak bloğu — CompletePaymentCommand + PayTR webhook (RFC-006 T4).
+        services.AddScoped<Modules.Payment.PaymentCompletionService>();
+
         return services;
     }
 }

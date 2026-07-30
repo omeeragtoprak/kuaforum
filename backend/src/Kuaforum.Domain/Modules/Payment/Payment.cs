@@ -137,6 +137,7 @@ public sealed class Payment : AggregateRoot
     /// </summary>
     public Result ReinitiateCheckout(PaymentKind kind, long grossAmountMinor, long platformCommissionMinor)
     {
+        // TODO: PayTR gerçek entegrasyonunda reinitiate provider refresh gerekir — RFC-006 T4 review notu.
         if (Status is not (PaymentStatus.Initiated or PaymentStatus.Authorized or PaymentStatus.Failed))
             return Result.Failure(Error.Validation($"{Status} durumundaki ödeme yeniden başlatılamaz."));
         if (grossAmountMinor <= 0 || platformCommissionMinor < 0 || platformCommissionMinor > grossAmountMinor)

@@ -27,7 +27,8 @@ public sealed class CompletePaymentCommandValidator : AbstractValidator<Complete
 public sealed class CompletePaymentCommandHandler(
     IApplicationDbContext db,
     IPaymentProviderRegistry providerRegistry,
-    IAuditLogger audit) : IRequestHandler<CompletePaymentCommand, Result<Guid>>
+    IAuditLogger audit,
+    PaymentCompletionService completionService) : IRequestHandler<CompletePaymentCommand, Result<Guid>>
 {
     public async Task<Result<Guid>> Handle(CompletePaymentCommand request, CancellationToken cancellationToken)
     {
@@ -61,21 +62,12 @@ public sealed class CompletePaymentCommandHandler(
             return Result.Failure<Guid>(Error.Validation(verification.FailureReason ?? "Ödeme başarısız oldu."));
         }
 
-        var captureResult = payment.Capture(verification.ProviderTransactionId, verification.PspMdrMinor);
-        if (captureResult.IsFailure) return Result.Failure<Guid>(captureResult.Error);
-
-        // Confirm booking
-        var booking = await ctx.Set<BookingAggregate>().FirstOrDefaultAsync(b => b.Id == payment.BookingId, cancellationToken);
-        if (booking is null)
-            return Result.Failure<Guid>(Error.NotFound("Booking"));
-
-        var confirmResult = booking.Confirm(payment.Id);
-        if (confirmResult.IsFailure)
-            return Result.Failure<Guid>(confirmResult.Error);
-
-        await audit.RecordAsync("payment.captured", nameof(PaymentAggregate), payment.Id.ToString(),
-            payload: new { providerTxId = verification.ProviderTransactionId, payment.GrossAmountMinor },
-            ct: cancellationToken);
+        // Capture → booking Confirm → audit ortak bloğu PaymentCompletionService'te —
+        // PayTR webhook handler'ı ile paylaşılır (RFC-006 T4, kopya bırakma).
+        var completion = await completionService.CaptureAndConfirmAsync(
+            payment, verification.ProviderTransactionId, verification.PspMdrMinor,
+            confirmOnlyIfPending: false, ct: cancellationToken);
+        if (completion.IsFailure) return Result.Failure<Guid>(completion.Error);
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success(payment.Id);
