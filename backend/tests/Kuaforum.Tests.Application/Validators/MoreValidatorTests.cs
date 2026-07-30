@@ -164,9 +164,31 @@ public sealed class ToggleStylistWalkInCommandValidatorTests
 
 public sealed class SetBarberShopAddressCommandValidatorTests
 {
-    private SetBarberShopAddressCommand Build(double lat = 41.0, double lng = 29.0, string line1 = "Cad. 1") =>
-        new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+    private SetBarberShopAddressCommand Build(double lat = 41.0, double lng = 29.0, string line1 = "Cad. 1", Guid? neighborhoodId = null) =>
+        new(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), neighborhoodId,
             line1, null, null, lat, lng);
+
+    // RFC-007 kapanış: mahalle OPSİYONEL — null geçerli, ama gönderildiyse boş Guid olamaz.
+    [Fact]
+    public void Null_neighborhood_passes()
+    {
+        var r = new SetBarberShopAddressCommandValidator().TestValidate(Build(neighborhoodId: null));
+        r.ShouldNotHaveValidationErrorFor(x => x.NeighborhoodId);
+    }
+
+    [Fact]
+    public void Empty_guid_neighborhood_fails()
+    {
+        var r = new SetBarberShopAddressCommandValidator().TestValidate(Build(neighborhoodId: Guid.Empty));
+        r.ShouldHaveValidationErrorFor(x => x.NeighborhoodId);
+    }
+
+    [Fact]
+    public void Provided_neighborhood_passes_validator()
+    {
+        var r = new SetBarberShopAddressCommandValidator().TestValidate(Build(neighborhoodId: Guid.NewGuid()));
+        r.ShouldNotHaveValidationErrorFor(x => x.NeighborhoodId);
+    }
 
     [Fact]
     public void Outside_turkey_lat_fails()

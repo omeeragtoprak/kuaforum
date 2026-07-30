@@ -8,6 +8,7 @@ using Kuaforum.Domain.Modules.Identity.ValueObjects;
 using Kuaforum.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 
 namespace Kuaforum.Tests.Integration;
 
@@ -250,6 +251,147 @@ public sealed class OwnerOnboardingTests(IntegrationTestFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(1, await db.Set<BarberShop>().CountAsync(s => s.OwnerId == login.UserId));
+    }
+
+    /// <summary>
+    /// O2 review M: ux_barber_shops_owner unique index'inin DB-seviyesi kanıtı —
+    /// HTTP yarışı timing'e bağlı, bu test deterministik: raw DbContext ile aynı
+    /// OwnerId'ye ikinci shop insert → 23505 unique_violation.
+    /// </summary>
+    [Fact]
+    public async Task Owner_unique_index_rejects_second_shop_at_db_level()
+    {
+        await factory.ResetDatabaseAsync();
+
+        var ownerId = Guid.NewGuid(); // owner_id'de users FK yok — plain column + unique index
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        db.Set<BarberShop>().Add(BarberShop.Create(ownerId, "Index Kanıt Salonu 1", SalonGenderType.MaleOnly).Value);
+        await db.SaveChangesAsync(default);
+
+        db.Set<BarberShop>().Add(BarberShop.Create(ownerId, "Index Kanıt Salonu 2", SalonGenderType.MaleOnly).Value);
+        var ex = await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync(default));
+
+        var pg = Assert.IsType<PostgresException>(ex.InnerException);
+        Assert.Equal(PostgresErrorCodes.UniqueViolation, pg.SqlState); // 23505
+        Assert.Equal("ux_barber_shops_owner", pg.ConstraintName);
+    }
+
+    // ---------------------------------------------------------------
+    // RFC-007 kapanış: adres adımı — mahalle OPSİYONEL (Erzurum pilot)
+    // ---------------------------------------------------------------
+
+    private sealed record GeoIds(Guid CityId, Guid DistrictId, Guid NeighborhoodId);
+
+    /// <summary>Seed'li Erzurum/Yakutiye + ilk mahallesi. ResetDatabaseAsync geography'yi TRUNCATE ETMEZ.</summary>
+    private async Task<GeoIds> GetErzurumGeoAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var erzurum = await db.Cities.AsNoTracking().FirstAsync(c => c.PlateCode == 25);
+        var yakutiye = await db.Districts.AsNoTracking().FirstAsync(d => d.CityId == erzurum.Id && d.Name == "Yakutiye");
+        var mahalle = await db.Neighborhoods.AsNoTracking().FirstAsync(n => n.DistrictId == yakutiye.Id);
+        return new GeoIds(erzurum.Id, yakutiye.Id, mahalle.Id);
+    }
+
+    /// <summary>Customer → create shop → refresh (BarberOwner token) → (client, shopId).</summary>
+    private async Task<(HttpClient Client, Guid ShopId)> CreateOwnerClientWithShopAsync(string shopName, string fingerprint)
+    {
+        var client = factory.CreateClient();
+        var loginResp = await client.PostAsJsonAsync("/v1/auth/dev-login",
+            new { role = "Customer", deviceFingerprint = fingerprint }, TestHelpers.Json);
+        loginResp.EnsureSuccessStatusCode();
+        var login = (await loginResp.Content.ReadFromJsonAsync<TestHelpers.DevLoginResponse>(TestHelpers.Json))!;
+        client.SetBearer(login.AccessToken);
+
+        var create = await PostCreateShopAsync(client, shopName);
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var shopId = (await create.Content.ReadFromJsonAsync<CreatedResp>(TestHelpers.Json))!.Id;
+
+        var refreshResp = await client.PostAsJsonAsync("/v1/auth/refresh",
+            new { refreshToken = login.RefreshToken, deviceFingerprint = fingerprint }, TestHelpers.Json);
+        Assert.Equal(HttpStatusCode.OK, refreshResp.StatusCode);
+        var refreshed = (await refreshResp.Content.ReadFromJsonAsync<TestHelpers.DevLoginResponse>(TestHelpers.Json))!;
+        client.SetBearer(refreshed.AccessToken);
+
+        return (client, shopId);
+    }
+
+    [Fact]
+    public async Task Set_address_without_neighborhood_returns_204()
+    {
+        await factory.ResetDatabaseAsync();
+        var geo = await GetErzurumGeoAsync();
+        var (client, shopId) = await CreateOwnerClientWithShopAsync("Mahallesiz Salon", "addr-no-nb-fp");
+        using var _ = client;
+
+        var resp = await client.PutAsJsonAsync($"/v1/owner/barber-shop/{shopId}/address", new
+        {
+            cityId = geo.CityId,
+            districtId = geo.DistrictId,
+            neighborhoodId = (Guid?)null,
+            line1 = "Cumhuriyet Cad. No:12",
+            latitude = 39.9086,
+            longitude = 41.2769,
+        }, TestHelpers.Json);
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var shop = await db.Set<BarberShop>().AsNoTracking().FirstAsync(s => s.Id == shopId);
+        Assert.Null(shop.AddressNeighborhoodId);
+        Assert.Equal("Cumhuriyet Cad. No:12", shop.AddressLine1);
+    }
+
+    [Fact]
+    public async Task Set_address_with_seeded_erzurum_neighborhood_returns_204()
+    {
+        await factory.ResetDatabaseAsync();
+        var geo = await GetErzurumGeoAsync();
+        var (client, shopId) = await CreateOwnerClientWithShopAsync("Mahalleli Salon", "addr-nb-fp");
+        using var _ = client;
+
+        var resp = await client.PutAsJsonAsync($"/v1/owner/barber-shop/{shopId}/address", new
+        {
+            cityId = geo.CityId,
+            districtId = geo.DistrictId,
+            neighborhoodId = geo.NeighborhoodId,
+            line1 = "Lalapaşa Mah. Berber Sok. 3",
+            latitude = 39.9086,
+            longitude = 41.2769,
+        }, TestHelpers.Json);
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var shop = await db.Set<BarberShop>().AsNoTracking().FirstAsync(s => s.Id == shopId);
+        Assert.Equal(geo.NeighborhoodId, shop.AddressNeighborhoodId);
+    }
+
+    [Fact]
+    public async Task Set_address_with_unknown_neighborhood_returns_400()
+    {
+        await factory.ResetDatabaseAsync();
+        var geo = await GetErzurumGeoAsync();
+        var (client, shopId) = await CreateOwnerClientWithShopAsync("Sahte Mahalle Salonu", "addr-bad-nb-fp");
+        using var _ = client;
+
+        var resp = await client.PutAsJsonAsync($"/v1/owner/barber-shop/{shopId}/address", new
+        {
+            cityId = geo.CityId,
+            districtId = geo.DistrictId,
+            neighborhoodId = Guid.NewGuid(), // var olmayan mahalle
+            line1 = "Hayalet Mah. 1",
+            latitude = 39.9086,
+            longitude = 41.2769,
+        }, TestHelpers.Json);
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var shop = await db.Set<BarberShop>().AsNoTracking().FirstAsync(s => s.Id == shopId);
+        Assert.Null(shop.AddressLine1); // adres yazılmamış olmalı
     }
 
     /// <summary>JWT payload'ını base64url decode edip claim okur — ek paket yok.</summary>

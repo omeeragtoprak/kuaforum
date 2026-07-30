@@ -213,7 +213,7 @@ public static class BarberEndpoints
 
     public sealed record CreateBarberShopRequest(string Name, SalonGenderType GenderType, string? Description, string? Phone);
     public sealed record UpdateBarberShopRequest(string? Name, string? Description, SalonGenderType? GenderType, string? Phone);
-    public sealed record SetAddressRequest(Guid CityId, Guid DistrictId, Guid NeighborhoodId, string Line1, string? Line2, string? PostalCode, double Latitude, double Longitude);
+    public sealed record SetAddressRequest(Guid CityId, Guid DistrictId, Guid? NeighborhoodId, string Line1, string? Line2, string? PostalCode, double Latitude, double Longitude);
     public sealed record AddStylistRequest(string DisplayName, Guid? UserId);
     public sealed record UpdateStylistRequest(string? DisplayName, string? PhotoUrl, string? Bio, bool? IsActive);
     public sealed record ToggleWalkInRequest(bool Available);

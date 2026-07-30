@@ -67,12 +67,11 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
             var coordResult = Coordinate.TryCreate(demo.Latitude, demo.Longitude);
             if (coordResult.IsSuccess)
             {
-                // Use neighborhood = first available in district, or null
+                // Use neighborhood = first available in district, or null (mahalle opsiyonel — RFC-007)
                 var neighborhood = await db.Neighborhoods.AsNoTracking()
                     .FirstOrDefaultAsync(n => n.DistrictId == district.Id, ct);
                 var addressResult = Address.Create(
-                    city.Id, district.Id,
-                    neighborhood?.Id ?? district.Id, // fallback if no neighborhood
+                    city.Id, district.Id, neighborhood?.Id,
                     demo.AddressLine1, coordResult.Value);
                 if (addressResult.IsSuccess) shop.SetAddress(addressResult.Value);
             }

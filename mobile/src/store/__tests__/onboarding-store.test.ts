@@ -12,9 +12,6 @@ describe('useOnboardingStore', () => {
     expect(state.shopName).toBe('');
     expect(state.genderType).toBe('Unisex');
     expect(state.phone).toBe('');
-    expect(state.cityId).toBeNull();
-    expect(state.districtId).toBeNull();
-    expect(state.neighborhoodId).toBeNull();
     expect(state.addressLine).toBe('');
     expect(state.shopId).toBeNull();
   });

@@ -131,7 +131,8 @@ export type CreateShopRequest = {
 export type SetAddressRequest = {
   cityId: string;
   districtId: string;
-  neighborhoodId: string;
+  /** RFC-007 kapanış: mahalle OPSİYONEL (TR mahalle verisi Erzurum-pilot). Seçilmediyse alanı hiç gönderme. */
+  neighborhoodId?: string;
   line1: string;
   line2?: string;
   postalCode?: string;

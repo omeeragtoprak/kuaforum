@@ -20,12 +20,13 @@ import { useOnboardingStore } from '@/store/onboarding-store';
 type PickerKind = 'city' | 'district' | 'neighborhood' | null;
 
 /**
- * Adım 2 — il/ilçe/mahalle (backend SetAddressRequest NeighborhoodId'yi zorunlu
- * kılıyor, salt il/ilçe yetmiyor) + açık adres satırı. Şehir/ilçe/mahalle TAM
- * nesneleri yalnız bu ekranın local state'inde tutulur (isim + plaka kodu gerekli);
- * Zustand'a yalnız ID + addressLine yazılır. Bilinen sınır: ekran remount olursa
- * (ör. adım 3'ten geri dönülürse) il/ilçe/mahalle seçimleri sıfırlanır — isimleri
- * yeniden çözmek için ek round-trip gerekeceğinden MVP'de kapsam dışı bırakıldı.
+ * Adım 2 — il/ilçe + OPSİYONEL mahalle (RFC-007 kapanış: TR mahalle verisi
+ * Erzurum-pilot; backend NeighborhoodId'yi artık zorunlu tutmuyor, seçilmediyse
+ * alan hiç gönderilmez) + açık adres satırı. Şehir/ilçe/mahalle TAM nesneleri
+ * yalnız bu ekranın local state'inde tutulur (isim + plaka kodu gerekli);
+ * Zustand'a yalnız addressLine + shopId yazılır. Bilinen sınır: ekran remount
+ * olursa (ör. adım 3'ten geri dönülürse) il/ilçe/mahalle seçimleri sıfırlanır —
+ * isimleri yeniden çözmek için ek round-trip gerekeceğinden MVP'de kapsam dışı.
  */
 export default function OnboardingAddressScreen() {
   const router = useRouter();
@@ -95,13 +96,10 @@ export default function OnboardingAddressScreen() {
   function pickCity(item: GeoPickerItem) {
     const city = cities.find((c) => c.id === item.id) ?? null;
     setSelectedCity(city);
-    setField('cityId', item.id);
     setSelectedDistrict(null);
-    setField('districtId', null);
     setDistricts([]);
     setDistrictsStatus('idle');
     setSelectedNeighborhood(null);
-    setField('neighborhoodId', null);
     setNeighborhoods([]);
     setNeighborhoodsStatus('idle');
     setOpenPicker(null);
@@ -111,9 +109,7 @@ export default function OnboardingAddressScreen() {
   function pickDistrict(item: GeoPickerItem) {
     const district = districts.find((d) => d.id === item.id) ?? null;
     setSelectedDistrict(district);
-    setField('districtId', item.id);
     setSelectedNeighborhood(null);
-    setField('neighborhoodId', null);
     setNeighborhoods([]);
     setNeighborhoodsStatus('idle');
     setOpenPicker(null);
@@ -123,22 +119,23 @@ export default function OnboardingAddressScreen() {
   function pickNeighborhood(item: GeoPickerItem) {
     const neighborhood = neighborhoods.find((n) => n.id === item.id) ?? null;
     setSelectedNeighborhood(neighborhood);
-    setField('neighborhoodId', item.id);
     setOpenPicker(null);
   }
 
   const addressValid = isValidAddressLine(addressLine);
-  const formValid = !!selectedCity && !!selectedDistrict && !!selectedNeighborhood && addressValid;
+  // Mahalle OPSİYONEL — il + ilçe + açık adres yeterli.
+  const formValid = !!selectedCity && !!selectedDistrict && addressValid;
 
   async function handleContinue() {
-    if (!formValid || submitting || !shopId || !selectedCity || !selectedDistrict || !selectedNeighborhood) return;
+    if (!formValid || submitting || !shopId || !selectedCity || !selectedDistrict) return;
     setSubmitting(true);
     try {
       const centroid = getCityCentroid(selectedCity.plateCode);
       await BarberApi.setAddress(shopId, {
         cityId: selectedCity.id,
         districtId: selectedDistrict.id,
-        neighborhoodId: selectedNeighborhood.id,
+        // Seçilmediyse alanı hiç gönderme (backend Guid? null kabul ediyor).
+        ...(selectedNeighborhood ? { neighborhoodId: selectedNeighborhood.id } : {}),
         line1: addressLine.trim(),
         latitude: centroid.latitude,
         longitude: centroid.longitude,
@@ -201,13 +198,18 @@ export default function OnboardingAddressScreen() {
           />
 
           <GeoPickerRow
-            label="Mahalle *"
+            label="Mahalle (opsiyonel)"
             value={selectedNeighborhood?.name ?? null}
             placeholder={selectedDistrict ? 'Mahalle seç' : 'Önce ilçe seç'}
             status={selectedDistrict ? neighborhoodsStatus : 'idle'}
-            onPress={() => neighborhoodsStatus === 'ready' && setOpenPicker('neighborhood')}
+            onPress={() => neighborhoodsStatus === 'ready' && neighborhoods.length > 0 && setOpenPicker('neighborhood')}
             onRetry={() => selectedDistrict && loadNeighborhoods(selectedDistrict.id)}
-            disabled={!selectedDistrict || neighborhoodsStatus === 'loading'}
+            disabled={!selectedDistrict || neighborhoodsStatus === 'loading' || (neighborhoodsStatus === 'ready' && neighborhoods.length === 0)}
+            hint={
+              selectedDistrict && neighborhoodsStatus === 'ready' && neighborhoods.length === 0
+                ? 'Bu ilçe için mahalle verisi yok — geçebilirsin.'
+                : undefined
+            }
           />
 
           <Input

@@ -11,10 +11,12 @@ type GeoPickerRowProps = {
   onPress: () => void;
   onRetry: () => void;
   disabled: boolean;
+  /** Satırın altında küçük bilgi metni (ör. "bu ilçe için mahalle verisi yok — geçebilirsin"). */
+  hint?: string;
 };
 
 /** Adres adımında il/ilçe/mahalle satırı: seçili değer, yükleniyor spinner'ı veya hata + tekrar dene. */
-export function GeoPickerRow({ label, value, placeholder, status, onPress, onRetry, disabled }: GeoPickerRowProps) {
+export function GeoPickerRow({ label, value, placeholder, status, onPress, onRetry, disabled, hint }: GeoPickerRowProps) {
   return (
     <View style={styles.wrapper}>
       <Text style={styles.label}>{label}</Text>
@@ -34,6 +36,7 @@ export function GeoPickerRow({ label, value, placeholder, status, onPress, onRet
           {status === 'loading' ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.chevron}>›</Text>}
         </Pressable>
       )}
+      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
     </View>
   );
 }
@@ -52,4 +55,5 @@ const styles = StyleSheet.create({
   placeholder: { fontSize: FontSize.md, color: Colors.textMuted },
   error: { fontSize: FontSize.sm, color: Colors.error, fontWeight: FontWeight.medium },
   chevron: { fontSize: 20, color: Colors.textMuted },
+  hint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },
 });

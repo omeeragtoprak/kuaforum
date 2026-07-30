@@ -105,8 +105,9 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
             {
                 var neighborhood = await db.Neighborhoods.AsNoTracking()
                     .FirstOrDefaultAsync(n => n.DistrictId == district.Id, ct);
+                // Mahalle opsiyonel (RFC-007) — ilçede mahalle seed'i yoksa null bırak.
                 var addressResult = Address.Create(
-                    city.Id, district.Id, neighborhood?.Id ?? district.Id,
+                    city.Id, district.Id, neighborhood?.Id,
                     demo.AddressLine1, coordResult.Value);
                 if (addressResult.IsSuccess) shop.SetAddress(addressResult.Value);
             }

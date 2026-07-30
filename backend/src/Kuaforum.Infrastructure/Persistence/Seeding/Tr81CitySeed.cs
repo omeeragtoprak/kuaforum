@@ -137,4 +137,31 @@ internal static class Tr81CitySeed
             "Sapanca", "Serdivan", "Söğütlü", "Taraklı",
         },
     };
+
+    /// <summary>
+    /// Erzurum-pilot mahalle seed'i (RFC-007): default şehir Erzurum'un 3 merkez
+    /// ilçesi için bilinen merkez mahalleler. Mahalle adres adımında OPSİYONEL;
+    /// bu liste yalnız pilot şehirde seçim yapılabilsin diye var.
+    /// Key: ilçe adı (SampleDistricts[25] ile birebir aynı yazım).
+    /// // kaynak: yaygın bilinen merkez mahalleler — tam liste V1.5'te resmi veriyle
+    /// // (TÜİK/PTT/NVİ import'u backlog'da; buradaki adlar genel bilinenlerle sınırlı,
+    /// // Aziziye listesi bilinçli kısa tutuldu — emin olunmayan ad UYDURULMADI).
+    /// </summary>
+    public static readonly IReadOnlyDictionary<string, string[]> ErzurumNeighborhoods = new Dictionary<string, string[]>
+    {
+        ["Yakutiye"] = new[]
+        {
+            "Cumhuriyet", "Lalapaşa", "Muratpaşa", "Aşağı Mumcu", "Yukarı Mumcu",
+            "Gürcükapı", "Gez", "Mahallebaşı", "Şükrüpaşa", "Sanayi",
+        },
+        ["Palandöken"] = new[]
+        {
+            "Yunus Emre", "Adnan Menderes", "Osmangazi", "Abdurrahman Gazi",
+            "Hüseyin Avni Ulaş", "Maksut Efendi", "Solakzade", "Palandöken",
+        },
+        ["Aziziye"] = new[]
+        {
+            "Ilıca", "Dadaşkent", "Selçuklu", "Saltuklu", "Gezköy",
+        },
+    };
 }

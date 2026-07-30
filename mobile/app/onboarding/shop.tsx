@@ -123,6 +123,12 @@ export default function OnboardingShopScreen() {
         const shop = await BarberApi.getMyShop();
         if (!mountedRef.current) return;
         setSubmitting(false);
+        if (!shop) {
+          // 409 ama işletme yok (ör. slug çakışması) — sessiz kalma, gerçek hatayı göster.
+          Haptics.error();
+          Alert.alert('Hata', extractApiError(err));
+          return;
+        }
         routeForExistingShop(shop);
         return;
       }

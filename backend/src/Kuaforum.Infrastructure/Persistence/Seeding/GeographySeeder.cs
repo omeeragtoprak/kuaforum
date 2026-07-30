@@ -60,5 +60,40 @@ public sealed class GeographySeeder(ApplicationDbContext db, ILogger<GeographySe
             await db.SaveChangesAsync(ct);
             logger.LogInformation("GeographySeeder: added {N} new districts.", districtsAdded);
         }
+
+        // Erzurum-pilot mahalle seed'i (RFC-007) — mahalle adres adımında opsiyonel,
+        // ama default şehirde seçilebilir liste olmalı. Idempotent (slug guard).
+        if (citiesByPlate.TryGetValue(25, out var erzurum))
+        {
+            var erzurumDistricts = await db.Districts
+                .Where(d => d.CityId == erzurum.Id)
+                .ToListAsync(ct);
+            var districtsByName = erzurumDistricts.ToDictionary(d => d.Name);
+
+            var neighborhoodsAdded = 0;
+            foreach (var (districtName, neighborhoodNames) in Tr81CitySeed.ErzurumNeighborhoods)
+            {
+                if (!districtsByName.TryGetValue(districtName, out var district)) continue;
+
+                var existingNeighborhoodSlugs = await db.Neighborhoods
+                    .Where(n => n.DistrictId == district.Id)
+                    .Select(n => n.Slug)
+                    .ToListAsync(ct);
+                var existingNeighborhoodSlugSet = existingNeighborhoodSlugs.ToHashSet();
+
+                foreach (var neighborhoodName in neighborhoodNames)
+                {
+                    var n = Neighborhood.Create(district.Id, neighborhoodName);
+                    if (existingNeighborhoodSlugSet.Contains(n.Slug)) continue;
+                    db.Neighborhoods.Add(n);
+                    neighborhoodsAdded++;
+                }
+            }
+            if (neighborhoodsAdded > 0)
+            {
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("GeographySeeder: added {N} Erzurum pilot neighborhoods.", neighborhoodsAdded);
+            }
+        }
     }
 }

@@ -3,18 +3,13 @@ import { create } from 'zustand';
 /** Backend `SalonGenderType` enum'ı ile senkron string adları (JsonStringEnumConverter). */
 export type OnboardingGenderType = 'Unisex' | 'FemaleOnly' | 'MaleOnly';
 
+// NOT (O5 review M-1): cityId/districtId/neighborhoodId store'dan kaldırıldı —
+// hiçbir yerde OKUNMUYORDU; il/ilçe/mahalle TAM nesneleri adres ekranının local
+// state'inde yaşıyor (isim + plaka kodu gerekli, salt ID yetmiyor).
 type OnboardingFields = {
   shopName: string;
   genderType: OnboardingGenderType;
   phone: string;
-  cityId: string | null;
-  districtId: string | null;
-  /**
-   * Görev tanımındaki alan listesinde yoktu ama backend `SetAddressRequest`
-   * `NeighborhoodId`'yi ZORUNLU kılıyor (il/ilçe yetmiyor) — adres adımının
-   * gerçekten submit edilebilmesi için eklendi.
-   */
-  neighborhoodId: string | null;
   addressLine: string;
   shopId: string | null;
 };
@@ -29,9 +24,6 @@ const initialFields: OnboardingFields = {
   shopName: '',
   genderType: 'Unisex',
   phone: '',
-  cityId: null,
-  districtId: null,
-  neighborhoodId: null,
   addressLine: '',
   shopId: null,
 };

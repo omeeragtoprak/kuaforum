@@ -8,7 +8,13 @@ public sealed class Address
 
     public Guid CityId { get; private set; }
     public Guid DistrictId { get; private set; }
-    public Guid NeighborhoodId { get; private set; }
+
+    /// <summary>
+    /// RFC-007 kapanış: mahalle OPSİYONEL — TR mahalle verisi henüz tam seed'li
+    /// değil (Erzurum pilot), zorunlu tutmak gerçek owner'ların adres adımını
+    /// bloke ediyordu. Verildiyse geçerliliği application katmanında doğrulanır.
+    /// </summary>
+    public Guid? NeighborhoodId { get; private set; }
     public string Line1 { get; private set; } = null!;
     public string? Line2 { get; private set; }
     public string? PostalCode { get; private set; }
@@ -17,7 +23,7 @@ public sealed class Address
     public static Result<Address> Create(
         Guid cityId,
         Guid districtId,
-        Guid neighborhoodId,
+        Guid? neighborhoodId,
         string line1,
         Coordinate coordinate,
         string? line2 = null,

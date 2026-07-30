@@ -71,9 +71,9 @@ export default function BarberKycScreen() {
         <EmptyState
           emoji="🏪"
           title="Salon yok"
-          description="Önce profil sekmesinden salon bilgilerini gir."
-          actionLabel="Geri"
-          onAction={() => router.back()}
+          description="Henüz bir salonun yok — onboarding akışıyla salonunu oluştur."
+          actionLabel="Salon oluştur"
+          onAction={() => router.push('/onboarding/shop' as never)}
         />
       </SafeAreaView>
     );

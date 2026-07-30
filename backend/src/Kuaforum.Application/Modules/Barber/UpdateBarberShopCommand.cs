@@ -53,7 +53,7 @@ public sealed record SetBarberShopAddressCommand(
     Guid BarberShopId,
     Guid CityId,
     Guid DistrictId,
-    Guid NeighborhoodId,
+    Guid? NeighborhoodId,
     string Line1,
     string? Line2,
     string? PostalCode,
@@ -68,7 +68,12 @@ public sealed class SetBarberShopAddressCommandValidator : AbstractValidator<Set
         RuleFor(x => x.BarberShopId).NotEmpty();
         RuleFor(x => x.CityId).NotEmpty();
         RuleFor(x => x.DistrictId).NotEmpty();
-        RuleFor(x => x.NeighborhoodId).NotEmpty();
+        // RFC-007 kapanış: mahalle OPSİYONEL (TR mahalle verisi Erzurum-pilot).
+        // Gönderildiyse boş Guid olamaz; varlık kontrolü handler'da (DB gerekli).
+        RuleFor(x => x.NeighborhoodId)
+            .NotEqual(Guid.Empty)
+            .When(x => x.NeighborhoodId.HasValue)
+            .WithMessage("Mahalle seçimi geçersiz.");
         RuleFor(x => x.Line1).NotEmpty().MaximumLength(200);
         RuleFor(x => x.Line2).MaximumLength(200);
         RuleFor(x => x.PostalCode).MaximumLength(10);
@@ -90,6 +95,18 @@ public sealed class SetBarberShopAddressCommandHandler(
 
         var coordResult = Coordinate.TryCreate(request.Latitude, request.Longitude);
         if (coordResult.IsFailure) return coordResult;
+
+        // Mahalle opsiyonel; ama VERİLDİYSE gerçekten var olmalı ve seçilen
+        // ilçeye ait olmalı — aksi halde keşfet/filtre tarafında çöp FK kalır.
+        if (request.NeighborhoodId.HasValue)
+        {
+            var neighborhood = await ctx.Set<Neighborhood>().AsNoTracking()
+                .FirstOrDefaultAsync(n => n.Id == request.NeighborhoodId.Value, cancellationToken);
+            if (neighborhood is null)
+                return Result.Failure(Error.Validation("Mahalle bulunamadı."));
+            if (neighborhood.DistrictId != request.DistrictId)
+                return Result.Failure(Error.Validation("Mahalle seçilen ilçeye ait değil."));
+        }
 
         var addressResult = Address.Create(
             request.CityId, request.DistrictId, request.NeighborhoodId,
