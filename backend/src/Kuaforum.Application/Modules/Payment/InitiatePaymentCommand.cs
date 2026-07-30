@@ -29,7 +29,7 @@ public sealed record InitiatePaymentResponse(
     DateTimeOffset ExpiresAt,
     long AmountMinor,
     long RemainingAtShopMinor,
-    string Kind);
+    PaymentKind Kind);
 
 public sealed class InitiatePaymentCommandValidator : AbstractValidator<InitiatePaymentCommand>
 {
@@ -66,13 +66,16 @@ public sealed class InitiatePaymentCommandHandler(
         if (booking.CustomerId != request.CustomerId)
             return Result.Failure<InitiatePaymentResponse>(Error.Forbidden("Bu randevu size ait değil."));
 
-        // Already paid?
+        // Booking başına TEK payment satırı (ux_payments_booking). Para hareketi başlamışsa
+        // (Captured/Settled/PartiallyRefunded/Refunded) → 409; henüz tamamlanmamışsa
+        // (Initiated/Authorized/Failed) satır aşağıda ReinitiateCheckout ile yeniden kullanılır —
+        // müşteri ödeme türünü değiştirebilir veya başarısız ödemeyi yeniden deneyebilir (RFC-006).
         var existingPayment = await ctx.Set<PaymentAggregate>()
             .FirstOrDefaultAsync(p => p.BookingId == booking.Id, cancellationToken);
-        if (existingPayment is not null)
+        if (existingPayment is not null &&
+            existingPayment.Status is not (PaymentStatus.Initiated or PaymentStatus.Authorized or PaymentStatus.Failed))
         {
-            if (existingPayment.Status is PaymentStatus.Captured or PaymentStatus.Settled)
-                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Bu randevunun ödemesi zaten yapılmış."));
+            return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Bu randevunun ödemesi zaten yapılmış."));
         }
 
         var shop = await ctx.Set<BarberShop>().AsNoTracking()
@@ -93,19 +96,29 @@ public sealed class InitiatePaymentCommandHandler(
             ? PaymentAmounts.CalculateDepositMinor(booking.TotalAmountMinor, opts.DepositRate)
             : booking.TotalAmountMinor;
 
-        var paymentResult = PaymentAggregate.Initiate(
-            booking.Id,
-            booking.CustomerId,
-            booking.BarberShopId,
-            onlineAmountMinor,
-            booking.PlatformCommissionMinor,
-            providerName,
-            kind: request.Kind,
-            idempotencyKey: request.IdempotencyKey);
-        if (paymentResult.IsFailure) return Result.Failure<InitiatePaymentResponse>(paymentResult.Error);
+        PaymentAggregate payment;
+        if (existingPayment is not null)
+        {
+            var reinit = existingPayment.ReinitiateCheckout(request.Kind, onlineAmountMinor, booking.PlatformCommissionMinor);
+            if (reinit.IsFailure) return Result.Failure<InitiatePaymentResponse>(reinit.Error);
+            payment = existingPayment; // yeni satır YOK — mevcut satır yeni checkout ile devam eder
+        }
+        else
+        {
+            var paymentResult = PaymentAggregate.Initiate(
+                booking.Id,
+                booking.CustomerId,
+                booking.BarberShopId,
+                onlineAmountMinor,
+                booking.PlatformCommissionMinor,
+                providerName,
+                kind: request.Kind,
+                idempotencyKey: request.IdempotencyKey);
+            if (paymentResult.IsFailure) return Result.Failure<InitiatePaymentResponse>(paymentResult.Error);
 
-        var payment = paymentResult.Value;
-        ctx.Set<PaymentAggregate>().Add(payment);
+            payment = paymentResult.Value;
+            ctx.Set<PaymentAggregate>().Add(payment);
+        }
 
         var checkoutSession = await provider.InitiateAsync(new CheckoutRequest(
             PaymentId: payment.Id,
@@ -143,7 +156,7 @@ public sealed class InitiatePaymentCommandHandler(
 
         return Result.Success(new InitiatePaymentResponse(
             payment.Id, checkoutSession.CheckoutUrl, checkoutSession.ProviderToken, checkoutSession.ExpiresAt,
-            onlineAmountMinor, booking.TotalAmountMinor - onlineAmountMinor, request.Kind.ToString()));
+            onlineAmountMinor, booking.TotalAmountMinor - onlineAmountMinor, request.Kind));
     }
 
     /// <summary>

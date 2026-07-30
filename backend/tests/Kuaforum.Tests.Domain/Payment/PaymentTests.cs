@@ -253,4 +253,52 @@ public class PaymentTests
         Assert.True(r.IsSuccess);
         Assert.Equal(PaymentKind.FullOnline, r.Value.Kind);
     }
+
+    // ── ReinitiateCheckout (RFC-006 resume/switch) ─────────────────────
+
+    [Fact]
+    public void ReinitiateCheckout_OnInitiated_SwitchesKindAndAmounts()
+    {
+        var deposit = Kuaforum.Domain.Modules.Payment.Payment.Initiate(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            grossAmountMinor: 30_00, platformCommissionMinor: 20_00,
+            PaymentProviderName.Mock, kind: PaymentKind.Deposit).Value;
+
+        var r = deposit.ReinitiateCheckout(PaymentKind.FullOnline, grossAmountMinor: 200_00, platformCommissionMinor: 20_00);
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(PaymentStatus.Initiated, deposit.Status);
+        Assert.Equal(PaymentKind.FullOnline, deposit.Kind);
+        Assert.Equal(200_00, deposit.GrossAmountMinor);
+        Assert.Equal(20_00, deposit.PlatformCommissionMinor);
+    }
+
+    [Fact]
+    public void ReinitiateCheckout_OnFailed_ResetsCheckoutStateAndSucceeds()
+    {
+        var p = Initiate(gross: 200_00, commission: 20_00);
+        p.Authorize("tx-auth"); // ProviderTransactionId + AuthorizedAt dolu
+        p.Fail("3DS reddedildi");
+
+        var r = p.ReinitiateCheckout(PaymentKind.Deposit, grossAmountMinor: 30_00, platformCommissionMinor: 20_00);
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(PaymentStatus.Initiated, p.Status);
+        Assert.Equal(PaymentKind.Deposit, p.Kind);
+        Assert.Equal(30_00, p.GrossAmountMinor);
+        Assert.Null(p.FailureReason);
+        Assert.Null(p.ProviderTransactionId);
+        Assert.Null(p.AuthorizedAt);
+    }
+
+    [Fact]
+    public void ReinitiateCheckout_OnCaptured_Fails()
+    {
+        var p = Initiate(gross: 200_00, commission: 20_00);
+        p.Capture("tx-1", 0);
+
+        var r = p.ReinitiateCheckout(PaymentKind.Deposit, grossAmountMinor: 30_00, platformCommissionMinor: 20_00);
+
+        Assert.True(r.IsFailure);
+        Assert.Equal(PaymentStatus.Captured, p.Status); // para hareketi başladı — dokunulmaz
+    }
 }

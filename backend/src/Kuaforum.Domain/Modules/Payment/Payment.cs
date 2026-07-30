@@ -129,6 +129,30 @@ public sealed class Payment : AggregateRoot
         return Result.Success();
     }
 
+    /// <summary>
+    /// RFC-006: Ödeme tamamlanmadan tür değiştirme / yeniden deneme — checkout'u sıfırlar.
+    /// Booking başına TEK payment satırı invariantı (ux_payments_booking) korunur: yeni satır
+    /// açmak yerine mevcut satır yeniden kullanılır. Yalnız Initiated/Authorized/Failed
+    /// durumlarında geçerli; Captured ve sonrası için para hareketi başlamıştır, reddedilir.
+    /// </summary>
+    public Result ReinitiateCheckout(PaymentKind kind, long grossAmountMinor, long platformCommissionMinor)
+    {
+        if (Status is not (PaymentStatus.Initiated or PaymentStatus.Authorized or PaymentStatus.Failed))
+            return Result.Failure(Error.Validation($"{Status} durumundaki ödeme yeniden başlatılamaz."));
+        if (grossAmountMinor <= 0 || platformCommissionMinor < 0 || platformCommissionMinor > grossAmountMinor)
+            return Result.Failure(Error.Validation("Tutarlar geçerli aralıkta değil."));
+
+        Status = PaymentStatus.Initiated;
+        Kind = kind;
+        GrossAmountMinor = grossAmountMinor;
+        PlatformCommissionMinor = platformCommissionMinor;
+        FailureReason = null;
+        ProviderTransactionId = null;
+        AuthorizedAt = null;
+        Touch();
+        return Result.Success();
+    }
+
     public Result<Refund> AddRefund(long amountMinor, RefundReason reason, string? providerRefundId = null)
     {
         if (Status != PaymentStatus.Captured && Status != PaymentStatus.Settled && Status != PaymentStatus.PartiallyRefunded)

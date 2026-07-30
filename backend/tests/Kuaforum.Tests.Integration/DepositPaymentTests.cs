@@ -157,6 +157,84 @@ public sealed class DepositPaymentTests(IntegrationTestFactory factory)
         Assert.Equal(PaymentStatus.Refunded, payment.Status);
     }
 
+    /// <summary>
+    /// RFC-006 resume/switch: tamamlanmamış (Initiated) payment varken aynı booking'e farklı
+    /// kind ile ikinci initiate 409 DEĞİL — mevcut satır ReinitiateCheckout ile yeniden
+    /// kullanılır (aynı paymentId, booking başına tek satır invariantı korunur).
+    /// </summary>
+    [Fact]
+    public async Task Reinitiate_switches_deposit_to_full_and_reuses_single_payment_row()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+
+        var depositInit = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "Deposit");
+        Assert.Equal(HttpStatusCode.OK, depositInit.StatusCode);
+        var depositPay = (await depositInit.Content.ReadFromJsonAsync<InitiatePaymentResp>(TestHelpers.Json))!;
+
+        // Müşteri fikir değiştirdi: tamamı online — YENİ Idempotency-Key ile (mobile her denemede yeni key üretir).
+        var fullInit = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "FullOnline");
+        if (fullInit.StatusCode != HttpStatusCode.OK)
+        {
+            var body = await fullInit.Content.ReadAsStringAsync();
+            Assert.Fail($"Reinitiate failed: {(int)fullInit.StatusCode} body={body}");
+        }
+        var fullPay = (await fullInit.Content.ReadFromJsonAsync<InitiatePaymentResp>(TestHelpers.Json))!;
+        Assert.Equal(depositPay.PaymentId, fullPay.PaymentId); // AYNI satır — yeni payment yaratılmadı
+        Assert.Equal(KnownTotalMinor, fullPay.AmountMinor);
+        Assert.Equal(0, fullPay.RemainingAtShopMinor);
+        Assert.Equal("FullOnline", fullPay.Kind);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(1, await db.Set<Payment>().CountAsync(p => p.BookingId == bookingId)); // tek satır invariantı
+        var payment = await db.Set<Payment>().AsNoTracking().FirstAsync(p => p.Id == fullPay.PaymentId);
+        Assert.Equal(PaymentKind.FullOnline, payment.Kind);
+        Assert.Equal(KnownTotalMinor, payment.GrossAmountMinor);
+        Assert.Equal(PaymentStatus.Initiated, payment.Status);
+    }
+
+    [Fact]
+    public async Task Reinitiate_after_capture_conflicts_and_payment_untouched()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 45);
+
+        var depositInit = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "Deposit");
+        Assert.Equal(HttpStatusCode.OK, depositInit.StatusCode);
+        var depositPay = (await depositInit.Content.ReadFromJsonAsync<InitiatePaymentResp>(TestHelpers.Json))!;
+
+        var completeUrl = $"/v1/payments/mock/complete?token={Uri.EscapeDataString(depositPay.ProviderToken ?? "MOCK")}";
+        var complete = await customerClient.GetAsync(completeUrl);
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        // Para hareketi başladı (Captured) — tür değiştirme/yeniden deneme reddedilir.
+        var retry = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "FullOnline");
+        Assert.Equal(HttpStatusCode.Conflict, retry.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(1, await db.Set<Payment>().CountAsync(p => p.BookingId == bookingId));
+        var payment = await db.Set<Payment>().AsNoTracking().FirstAsync(p => p.Id == depositPay.PaymentId);
+        Assert.Equal(PaymentKind.Deposit, payment.Kind);
+        Assert.Equal(ExpectedDepositMinor, payment.GrossAmountMinor);
+        Assert.Equal(PaymentStatus.Captured, payment.Status); // dokunulmamış
+    }
+
     private async Task SeedAsync()
     {
         using var scope = factory.Services.CreateScope();

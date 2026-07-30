@@ -8,6 +8,7 @@ using Kuaforum.Application.Modules.Notification;
 using Kuaforum.Application.Modules.Payment;
 using Kuaforum.Application.Modules.Review;
 using Kuaforum.Domain.Modules.Identity;
+using Kuaforum.Domain.Modules.Payment;
 using Kuaforum.Domain.Modules.Review;
 
 namespace Kuaforum.Tests.Application.Validators;
@@ -291,7 +292,7 @@ public sealed class InitiatePaymentCommandValidatorTests
     public void Empty_customer_fails()
     {
         var r = new InitiatePaymentCommandValidator().TestValidate(new InitiatePaymentCommand(
-            Guid.Empty, Guid.NewGuid(), Kuaforum.Domain.Modules.Payment.PaymentKind.FullOnline, null));
+            Guid.Empty, Guid.NewGuid(), PaymentKind.FullOnline, null));
         r.ShouldHaveValidationErrorFor(x => x.CustomerId);
     }
 
@@ -299,7 +300,7 @@ public sealed class InitiatePaymentCommandValidatorTests
     public void Undefined_kind_fails()
     {
         var r = new InitiatePaymentCommandValidator().TestValidate(new InitiatePaymentCommand(
-            Guid.NewGuid(), Guid.NewGuid(), (Kuaforum.Domain.Modules.Payment.PaymentKind)99, null));
+            Guid.NewGuid(), Guid.NewGuid(), (PaymentKind)99, null));
         r.ShouldHaveValidationErrorFor(x => x.Kind);
     }
 
@@ -307,7 +308,7 @@ public sealed class InitiatePaymentCommandValidatorTests
     public void Valid_passes()
     {
         var r = new InitiatePaymentCommandValidator().TestValidate(new InitiatePaymentCommand(
-            Guid.NewGuid(), Guid.NewGuid(), Kuaforum.Domain.Modules.Payment.PaymentKind.Deposit, "idem-key-1"));
+            Guid.NewGuid(), Guid.NewGuid(), PaymentKind.Deposit, "idem-key-1"));
         r.ShouldNotHaveAnyValidationErrors();
     }
 }
