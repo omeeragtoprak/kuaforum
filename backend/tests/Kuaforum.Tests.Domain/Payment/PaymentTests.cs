@@ -220,4 +220,34 @@ public class PaymentTests
         Assert.True(p.AddRefund(0, RefundReason.CustomerRequested).IsFailure);
         Assert.True(p.AddRefund(-10, RefundReason.CustomerRequested).IsFailure);
     }
+
+    // ── PaymentKind (RFC-006 kapora) ────────────────────────────────────
+
+    [Fact]
+    public void Initiate_deposit_kind_persists_kind_and_accepts_deposit_at_least_commission()
+    {
+        var r = Kuaforum.Domain.Modules.Payment.Payment.Initiate(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            grossAmountMinor: 15_00, platformCommissionMinor: 10_00,
+            PaymentProviderName.Mock, kind: PaymentKind.Deposit);
+        Assert.True(r.IsSuccess);
+        Assert.Equal(PaymentKind.Deposit, r.Value.Kind);
+    }
+
+    [Fact]
+    public void Initiate_deposit_below_commission_fails()
+    {
+        var r = Kuaforum.Domain.Modules.Payment.Payment.Initiate(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            grossAmountMinor: 9_00, platformCommissionMinor: 10_00,
+            PaymentProviderName.Mock, kind: PaymentKind.Deposit);
+        Assert.True(r.IsFailure);
+    }
+
+    [Fact]
+    public void Initiate_defaults_to_full_online_kind()
+    {
+        var r = Kuaforum.Domain.Modules.Payment.Payment.Initiate(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            grossAmountMinor: 100_00, platformCommissionMinor: 10_00, PaymentProviderName.Mock);
+        Assert.True(r.IsSuccess);
+        Assert.Equal(PaymentKind.FullOnline, r.Value.Kind);
+    }
 }

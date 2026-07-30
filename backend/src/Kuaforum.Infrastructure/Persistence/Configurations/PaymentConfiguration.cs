@@ -16,6 +16,7 @@ internal sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
         builder.Property(x => x.SubMerchantBarberShopId).HasColumnName("sub_merchant_barber_shop_id");
         builder.Property(x => x.Provider).HasColumnName("provider").HasConversion<int>();
         builder.Property(x => x.Status).HasColumnName("status").HasConversion<int>();
+        builder.Property(x => x.Kind).HasColumnName("kind").HasConversion<int>().HasDefaultValue(PaymentKind.FullOnline);
         builder.Property(x => x.GrossAmountMinor).HasColumnName("gross_amount_minor");
         builder.Property(x => x.PlatformCommissionMinor).HasColumnName("platform_commission_minor");
         builder.Property(x => x.PspMdrMinor).HasColumnName("psp_mdr_minor");

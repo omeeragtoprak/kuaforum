@@ -1440,6 +1440,12 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("idempotency_key");
 
+                    b.Property<int>("Kind")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("kind");
+
                     b.Property<long>("NetToBarberMinor")
                         .HasColumnType("bigint")
                         .HasColumnName("net_to_barber_minor");

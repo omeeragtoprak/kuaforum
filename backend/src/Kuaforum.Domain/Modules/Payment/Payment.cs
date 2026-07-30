@@ -14,6 +14,7 @@ public sealed class Payment : AggregateRoot
     public Guid SubMerchantBarberShopId { get; private set; }
     public PaymentProviderName Provider { get; private set; }
     public PaymentStatus Status { get; private set; }
+    public PaymentKind Kind { get; private set; }
 
     public long GrossAmountMinor { get; private set; }       // total customer paid (TL minor)
     public long PlatformCommissionMinor { get; private set; }
@@ -38,6 +39,7 @@ public sealed class Payment : AggregateRoot
         long grossAmountMinor,
         long platformCommissionMinor,
         PaymentProviderName provider,
+        PaymentKind kind = PaymentKind.FullOnline,
         string? idempotencyKey = null)
     {
         if (grossAmountMinor <= 0)
@@ -52,6 +54,7 @@ public sealed class Payment : AggregateRoot
             SubMerchantBarberShopId = subMerchantBarberShopId,
             Provider = provider,
             Status = PaymentStatus.Initiated,
+            Kind = kind,
             GrossAmountMinor = grossAmountMinor,
             PlatformCommissionMinor = platformCommissionMinor,
             IdempotencyKey = idempotencyKey,

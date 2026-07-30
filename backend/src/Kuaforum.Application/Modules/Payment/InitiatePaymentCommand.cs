@@ -81,7 +81,7 @@ public sealed class InitiatePaymentCommandHandler(
             booking.TotalAmountMinor,
             booking.PlatformCommissionMinor,
             providerName,
-            request.IdempotencyKey);
+            idempotencyKey: request.IdempotencyKey);
         if (paymentResult.IsFailure) return Result.Failure<InitiatePaymentResponse>(paymentResult.Error);
 
         var payment = paymentResult.Value;
