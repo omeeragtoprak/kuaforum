@@ -14,6 +14,7 @@
 | [RFC-004](RFC-004-erzurum-pilot.md) | Fiili Pilot Şehir: Erzurum | ✅ Accepted (founder onayı 2026-07-23 — "şimdilik Erzurum", 81 il açık) | 2026-07-23 |
 | [RFC-005](RFC-005-otp-only-launch.md) | MVP Launch'ta Yalnız Telefon+OTP Girişi | ✅ Accepted (founder onayı 2026-07-23) | 2026-07-23 |
 | [RFC-006](RFC-006-kapora-checkout.md) | Ödeme Modeli: Kapora %15 + Tam Ödeme + Salonda Kalan | ✅ Accepted (founder onayı 2026-07-24) | 2026-07-29 |
+| [RFC-007](RFC-007-owner-onboarding.md) | Owner Onboarding: Self-Serve Rol Geçişi + Mobile Sihirbaz | ✅ Accepted (founder onayı 2026-07-30) | 2026-07-30 |
 
 ---
 
