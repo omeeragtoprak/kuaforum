@@ -59,14 +59,14 @@ public sealed class KycFlowTests(IntegrationTestFactory factory)
 
         // --- first submission → rejected ---
         var taxKey1 = await UploadFakePdfAsync(draftClient, "vergi-1.pdf");
-        var permitKey1 = await UploadFakePdfAsync(draftClient, "ruhsat-1.pdf");
+        var idKey1 = await UploadFakePdfAsync(draftClient, "kimlik-1.pdf");
 
         var submit1 = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
         {
             documents = new[]
             {
                 new { documentType = "TaxLicense", fileName = "vergi-1.pdf", storageKey = taxKey1, sizeBytes = 64L, contentType = "application/pdf" },
-                new { documentType = "SanitaryPermit", fileName = "ruhsat-1.pdf", storageKey = permitKey1, sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "IdentityCard", fileName = "kimlik-1.pdf", storageKey = idKey1, sizeBytes = 64L, contentType = "application/pdf" },
             },
         });
         Assert.Equal(HttpStatusCode.OK, submit1.StatusCode);
@@ -96,14 +96,14 @@ public sealed class KycFlowTests(IntegrationTestFactory factory)
 
         // --- resubmission must now succeed (previously blocked forever) ---
         var taxKey2 = await UploadFakePdfAsync(draftClient, "vergi-2.pdf");
-        var permitKey2 = await UploadFakePdfAsync(draftClient, "ruhsat-2.pdf");
+        var idKey2 = await UploadFakePdfAsync(draftClient, "kimlik-2.pdf");
 
         var submit2 = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
         {
             documents = new[]
             {
                 new { documentType = "TaxLicense", fileName = "vergi-2.pdf", storageKey = taxKey2, sizeBytes = 64L, contentType = "application/pdf" },
-                new { documentType = "SanitaryPermit", fileName = "ruhsat-2.pdf", storageKey = permitKey2, sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "IdentityCard", fileName = "kimlik-2.pdf", storageKey = idKey2, sizeBytes = 64L, contentType = "application/pdf" },
             },
         });
         Assert.Equal(HttpStatusCode.OK, submit2.StatusCode);
@@ -145,14 +145,14 @@ public sealed class KycFlowTests(IntegrationTestFactory factory)
 
         var taxBytes = Encoding.UTF8.GetBytes("%PDF-1.4 vergi levhasi test bytes");
         var taxKey = await UploadBytesAsync(draftClient, "vergi.pdf", "application/pdf", taxBytes);
-        var permitKey = await UploadFakePdfAsync(draftClient, "ruhsat.pdf");
+        var idKey = await UploadFakePdfAsync(draftClient, "kimlik.pdf");
 
         var submit = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
         {
             documents = new[]
             {
                 new { documentType = "TaxLicense", fileName = "vergi.pdf", storageKey = taxKey, sizeBytes = (long)taxBytes.Length, contentType = "application/pdf" },
-                new { documentType = "SanitaryPermit", fileName = "ruhsat.pdf", storageKey = permitKey, sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "IdentityCard", fileName = "kimlik.pdf", storageKey = idKey, sizeBytes = 64L, contentType = "application/pdf" },
             },
         });
         Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
@@ -190,6 +190,111 @@ public sealed class KycFlowTests(IntegrationTestFactory factory)
 
         var missingDocument = await adminClient.GetAsync($"/v1/admin/kyc/documents/{Guid.NewGuid()}/content");
         Assert.Equal(HttpStatusCode.NotFound, missingDocument.StatusCode);
+    }
+
+    /// <summary>
+    /// RFC-007 Task 3: "herhangi 2 belge" kuralı tip-bazlı kurala evrildi — TaxLicense VE
+    /// IdentityCard zorunlu, geri kalanlar (SanitaryPermit/MykCertificate/Other) opsiyonel.
+    /// Kimlik eksikse hata mesajı "Kimlik" belirtmeli.
+    /// </summary>
+    [Fact]
+    public async Task Submit_without_identity_card_returns_400_with_kimlik_message()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAdminAsync(factory);
+
+        using var draftClient = factory.CreateClient();
+        draftClient.SetBearer((await draftClient.DevLoginAsync("BarberOwnerDraft")).AccessToken);
+
+        var shop = await draftClient.GetJson<DraftShopDto>("/v1/owner/barber-shop");
+
+        var submit = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
+        {
+            documents = new[]
+            {
+                new { documentType = "TaxLicense", fileName = "vergi.pdf", storageKey = "kyc/test/tax.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "SanitaryPermit", fileName = "ruhsat.pdf", storageKey = "kyc/test/permit.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, submit.StatusCode);
+        var body = await submit.Content.ReadAsStringAsync();
+        Assert.Contains("Kimlik", body);
+    }
+
+    /// <summary>Vergi Levhası eksikse hata mesajı "Vergi" belirtmeli.</summary>
+    [Fact]
+    public async Task Submit_without_tax_license_returns_400_with_vergi_message()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAdminAsync(factory);
+
+        using var draftClient = factory.CreateClient();
+        draftClient.SetBearer((await draftClient.DevLoginAsync("BarberOwnerDraft")).AccessToken);
+
+        var shop = await draftClient.GetJson<DraftShopDto>("/v1/owner/barber-shop");
+
+        var submit = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
+        {
+            documents = new[]
+            {
+                new { documentType = "IdentityCard", fileName = "kimlik.pdf", storageKey = "kyc/test/id.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "MykCertificate", fileName = "myk.pdf", storageKey = "kyc/test/myk.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, submit.StatusCode);
+        var body = await submit.Content.ReadAsStringAsync();
+        Assert.Contains("Vergi", body);
+    }
+
+    /// <summary>Zorunlu ikili (TaxLicense + IdentityCard) tek başına yeterli — mevcut akış.</summary>
+    [Fact]
+    public async Task Submit_with_tax_license_and_identity_card_succeeds()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAdminAsync(factory);
+
+        using var draftClient = factory.CreateClient();
+        draftClient.SetBearer((await draftClient.DevLoginAsync("BarberOwnerDraft")).AccessToken);
+
+        var shop = await draftClient.GetJson<DraftShopDto>("/v1/owner/barber-shop");
+
+        var submit = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
+        {
+            documents = new[]
+            {
+                new { documentType = "TaxLicense", fileName = "vergi.pdf", storageKey = "kyc/test/tax.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "IdentityCard", fileName = "kimlik.pdf", storageKey = "kyc/test/id.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
+    }
+
+    /// <summary>Zorunlu ikili + opsiyonel ek belge(ler) serbestçe eklenebilir.</summary>
+    [Fact]
+    public async Task Submit_with_required_documents_plus_optional_extra_succeeds()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAdminAsync(factory);
+
+        using var draftClient = factory.CreateClient();
+        draftClient.SetBearer((await draftClient.DevLoginAsync("BarberOwnerDraft")).AccessToken);
+
+        var shop = await draftClient.GetJson<DraftShopDto>("/v1/owner/barber-shop");
+
+        var submit = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
+        {
+            documents = new[]
+            {
+                new { documentType = "TaxLicense", fileName = "vergi.pdf", storageKey = "kyc/test/tax.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "IdentityCard", fileName = "kimlik.pdf", storageKey = "kyc/test/id.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "MykCertificate", fileName = "myk.pdf", storageKey = "kyc/test/myk.pdf", sizeBytes = 64L, contentType = "application/pdf" },
+            },
+        });
+
+        Assert.Equal(HttpStatusCode.OK, submit.StatusCode);
     }
 
     private static async Task<string> UploadBytesAsync(HttpClient client, string fileName, string contentType, byte[] bytes)

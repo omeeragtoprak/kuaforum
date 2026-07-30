@@ -304,7 +304,7 @@ public sealed class AvailabilityEnforcementTests(IntegrationTestFactory factory)
             documents = new[]
             {
                 new { documentType = "TaxLicense", fileName = "vergi.pdf", storageKey = "kyc/draft/tax.pdf", sizeBytes = 12345L, contentType = "application/pdf" },
-                new { documentType = "SanitaryPermit", fileName = "ruhsat.pdf", storageKey = "kyc/draft/permit.pdf", sizeBytes = 23456L, contentType = "application/pdf" },
+                new { documentType = "IdentityCard", fileName = "kimlik.pdf", storageKey = "kyc/draft/identity.pdf", sizeBytes = 23456L, contentType = "application/pdf" },
             },
         });
         Assert.Equal(HttpStatusCode.OK, submitResp.StatusCode);
@@ -334,18 +334,18 @@ public sealed class AvailabilityEnforcementTests(IntegrationTestFactory factory)
 
         // Upload first document via multipart.
         var taxKey = await UploadFakePdfAsync(draftClient, "vergi-levhasi.pdf");
-        var permitKey = await UploadFakePdfAsync(draftClient, "ruhsat.pdf");
+        var idKey = await UploadFakePdfAsync(draftClient, "kimlik.pdf");
 
         Assert.StartsWith("kyc/", taxKey);
-        Assert.StartsWith("kyc/", permitKey);
-        Assert.NotEqual(taxKey, permitKey);
+        Assert.StartsWith("kyc/", idKey);
+        Assert.NotEqual(taxKey, idKey);
 
         var submitResp = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{shop.Id}/kyc/submit", new
         {
             documents = new[]
             {
                 new { documentType = "TaxLicense", fileName = "vergi-levhasi.pdf", storageKey = taxKey, sizeBytes = 64L, contentType = "application/pdf" },
-                new { documentType = "SanitaryPermit", fileName = "ruhsat.pdf", storageKey = permitKey, sizeBytes = 64L, contentType = "application/pdf" },
+                new { documentType = "IdentityCard", fileName = "kimlik.pdf", storageKey = idKey, sizeBytes = 64L, contentType = "application/pdf" },
             },
         });
         Assert.Equal(HttpStatusCode.OK, submitResp.StatusCode);

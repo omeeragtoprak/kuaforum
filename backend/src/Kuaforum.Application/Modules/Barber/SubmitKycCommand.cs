@@ -25,8 +25,15 @@ public sealed class SubmitKycCommandValidator : AbstractValidator<SubmitKycComma
     {
         RuleFor(x => x.OwnerId).NotEmpty();
         RuleFor(x => x.BarberShopId).NotEmpty();
-        RuleFor(x => x.Documents).NotEmpty().Must(d => d.Count >= 2)
-            .WithMessage("En az 2 belge gerekli (vergi levhası + işyeri açma ruhsatı).");
+        RuleFor(x => x.Documents).NotEmpty();
+        RuleFor(x => x.Documents)
+            .Must(d => d.Select(x => x.DocumentType).Contains(DocumentType.TaxLicense))
+            .WithMessage("Vergi Levhası belgesi zorunludur.")
+            .When(x => x.Documents is { Count: > 0 });
+        RuleFor(x => x.Documents)
+            .Must(d => d.Select(x => x.DocumentType).Contains(DocumentType.IdentityCard))
+            .WithMessage("Kimlik belgesi zorunludur.")
+            .When(x => x.Documents is { Count: > 0 });
     }
 }
 
