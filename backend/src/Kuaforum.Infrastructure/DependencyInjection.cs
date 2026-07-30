@@ -1,5 +1,6 @@
 using Hangfire;
 using Hangfire.PostgreSql;
+using Kuaforum.Application.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Availability;
 using Kuaforum.Application.Modules.Payment;
@@ -55,6 +56,17 @@ public static class DependencyInjection
         services.Configure<AppleOAuthOptions>(configuration.GetSection(AppleOAuthOptions.SectionName));
         services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
         services.Configure<Persistence.Seeding.AdminSeederOptions>(configuration.GetSection(Persistence.Seeding.AdminSeederOptions.SectionName));
+
+        // RFC-006 kapora planı: komisyon + kapora oranı config-driven. DepositRate < CommissionRate
+        // startup'ta fail-fast — production'da yanlış config'le kapora'nın platform komisyonunu
+        // karşılamaması sessizce deploy edilmesin diye.
+        services.AddOptions<PaymentOptions>()
+            .Bind(configuration.GetSection(PaymentOptions.SectionName))
+            .Validate(o => o.DepositRate >= o.CommissionRate,
+                "Payment:DepositRate, Payment:CommissionRate'ten küçük olamaz (RFC-006 kapora ≥ komisyon invariantı).")
+            .Validate(o => o.CommissionRate > 0 && o.CommissionRate < 1 && o.DepositRate > 0 && o.DepositRate <= 1,
+                "Payment oranları (0,1] aralığında olmalı.")
+            .ValidateOnStart();
 
         services.AddHttpClient();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

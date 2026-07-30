@@ -7,6 +7,7 @@ using BookingAggregate = Kuaforum.Domain.Modules.Booking.Booking;
 using Kuaforum.Domain.Modules.Booking;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Kuaforum.Application.Modules.Booking;
 
@@ -40,9 +41,9 @@ public sealed class InitiateBookingCommandHandler(
     IDistributedLock distributedLock,
     IBusyRangeQuery busyRangeQuery,
     IStylistScheduleChecker scheduleChecker,
-    IAuditLogger audit) : IRequestHandler<InitiateBookingCommand, Result<InitiateBookingResponse>>
+    IAuditLogger audit,
+    IOptions<PaymentOptions> paymentOptions) : IRequestHandler<InitiateBookingCommand, Result<InitiateBookingResponse>>
 {
-    private const decimal DefaultCommissionRate = 0.10m;
     private static readonly TimeSpan SlotLockDuration = TimeSpan.FromMinutes(2);
 
     /// <summary>
@@ -116,7 +117,7 @@ public sealed class InitiateBookingCommandHandler(
             request.ScheduledAt,
             orderedServices,
             request.IsWalkIn ? BookingType.WalkIn : BookingType.Scheduled,
-            DefaultCommissionRate,
+            paymentOptions.Value.CommissionRate,
             request.CustomerNote);
 
         if (bookingResult.IsFailure) return Result.Failure<InitiateBookingResponse>(bookingResult.Error);
