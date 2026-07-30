@@ -13,7 +13,7 @@ import { Haptics } from '@/lib/haptics';
 import {
   formatTime, formatTry, formatPhoneTr,
   bookingStatusInfo, isBookingConfirmed, isBookingInProgress,
-  isBookingRevenueCounted, isBookingUpcoming,
+  isBookingRevenueCounted, isBookingUpcoming, isBookingCancelled,
 } from '@/lib/format';
 
 export default function BarberTodayScreen() {
@@ -259,7 +259,7 @@ function BookingRow({
         <Text style={styles.amount}>{formatTry(booking.totalAmountMinor)}</Text>
       </View>
 
-      {booking.remainingAtShopMinor ? (
+      {booking.remainingAtShopMinor && !isBookingCancelled(booking.status) ? (
         <View
           accessible
           accessibilityLabel={`Salonda ödenecek tutar: ${formatTry(booking.remainingAtShopMinor)}`}

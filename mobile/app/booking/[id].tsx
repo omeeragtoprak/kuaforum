@@ -15,7 +15,7 @@ import { Haptics } from '@/lib/haptics';
 import {
   formatDateTime, formatDuration, formatTry, formatPhoneTr,
   bookingStatusInfo, isBookingUpcoming,
-  isBookingPending, isBookingConfirmed, isBookingInProgress, isBookingCompleted,
+  isBookingPending, isBookingConfirmed, isBookingInProgress, isBookingCompleted, isBookingCancelled,
 } from '@/lib/format';
 import { useAuthStore } from '@/store/auth-store';
 import { estimateDepositMinor } from '@/lib/deposit';
@@ -322,7 +322,7 @@ export default function BookingDetailScreen() {
           <DetailRow icon="⏱️" label="Bitiş" value={formatDateTime(b.scheduledEndsAt)} />
           <Divider />
           <DetailRow icon="💰" label="Toplam" value={formatTry(b.totalAmountMinor)} />
-          {b.paymentKind === 'Deposit' && b.remainingAtShopMinor ? (
+          {b.paymentKind === 'Deposit' && b.remainingAtShopMinor && !isBookingCancelled(b.status) ? (
             <>
               <Divider />
               <DetailRow icon="💵" label="Salonda ödenecek" value={formatTry(b.remainingAtShopMinor)} />
