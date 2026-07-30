@@ -64,8 +64,8 @@ public static class DependencyInjection
             .Bind(configuration.GetSection(PaymentOptions.SectionName))
             .Validate(o => o.DepositRate >= o.CommissionRate,
                 "Payment:DepositRate, Payment:CommissionRate'ten küçük olamaz (RFC-006 kapora ≥ komisyon invariantı).")
-            .Validate(o => o.CommissionRate > 0 && o.CommissionRate < 1 && o.DepositRate > 0 && o.DepositRate <= 1,
-                "Payment oranları (0,1] aralığında olmalı.")
+            .Validate(o => o.CommissionRate > 0 && o.CommissionRate <= 0.5m && o.DepositRate > 0 && o.DepositRate <= 1,
+                "Payment:CommissionRate (0, 0.5] aralığında olmalı (Booking.Initiate domain guard'ı ile uyumlu); Payment:DepositRate (0, 1] aralığında olmalı.")
             .ValidateOnStart();
 
         services.AddHttpClient();

@@ -49,7 +49,7 @@ public sealed class Booking : AggregateRoot
 
         var totalDuration = services.Sum(s => s.DurationMinutes + s.BufferMinutes);
         var totalAmount = services.Sum(s => s.PriceMinor);
-        var commission = (long)(totalAmount * commissionRate);
+        var commission = PaymentAmounts.CalculateCommissionMinor(totalAmount, commissionRate);
 
         var booking = new Booking
         {
