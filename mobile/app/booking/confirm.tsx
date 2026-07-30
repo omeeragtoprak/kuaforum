@@ -58,9 +58,6 @@ export default function ConfirmBookingScreen() {
         return;
       }
       Haptics.success();
-      // '/booking/payment' T7'de eklenecek (henüz route yok) — expo-router typedRoutes
-      // union'ında bulunmadığı için diğer henüz-yok rotalarla aynı `as never` kalıbı (bkz.
-      // app/(tabs)/bookings.tsx) uygulanıyor; T7 sonrası gerçek route eklenince kaldırılabilir.
       router.replace({
         pathname: '/booking/payment',
         params: {
@@ -72,7 +69,7 @@ export default function ConfirmBookingScreen() {
           bookingId: booking.bookingId,
           expiresAt: pay.expiresAt,
         },
-      } as never);
+      });
     } catch (err) {
       Haptics.error();
       Alert.alert('Hata', extractApiError(err));
@@ -157,22 +154,24 @@ export default function ConfirmBookingScreen() {
 
         <Card style={{ gap: Spacing.sm }}>
           <Text style={styles.policyTitle}>💳 Ödeme</Text>
-          <PayOption
-            selected={payKind === 'Deposit'}
-            onPress={() => setPayKind('Deposit')}
-            title="Kapora ile ayırt (önerilen)"
-            detail={
-              total
-                ? `Şimdi ${formatTry(estimateDepositMinor(total))} · Salonda ${formatTry(remainingAtShopMinor(total, estimateDepositMinor(total)))}`
-                : 'Hizmet bedelinin %15’i şimdi, kalanı salonda'
-            }
-          />
-          <PayOption
-            selected={payKind === 'FullOnline'}
-            onPress={() => setPayKind('FullOnline')}
-            title="Tamamını şimdi öde"
-            detail={total ? `${formatTry(total)} — salonda ödeme kalmaz` : 'Tamamı online'}
-          />
+          <View accessibilityRole="radiogroup" style={{ gap: Spacing.sm }}>
+            <PayOption
+              selected={payKind === 'Deposit'}
+              onPress={() => setPayKind('Deposit')}
+              title="Kapora ile ayırt (önerilen)"
+              detail={
+                total
+                  ? `Şimdi ${formatTry(estimateDepositMinor(total))} · Salonda ${formatTry(remainingAtShopMinor(total, estimateDepositMinor(total)))}`
+                  : 'Hizmet bedelinin %15’i şimdi, kalanı salonda'
+              }
+            />
+            <PayOption
+              selected={payKind === 'FullOnline'}
+              onPress={() => setPayKind('FullOnline')}
+              title="Tamamını şimdi öde"
+              detail={total ? `${formatTry(total)} — salonda ödeme kalmaz` : 'Tamamı online'}
+            />
+          </View>
           <Text style={styles.policySub}>
             Kesin tutar ödeme adımında gösterilir. 30 dk içinde ödenmeyen randevu otomatik iptal olur.
           </Text>
@@ -224,7 +223,7 @@ function PayOption({
       onPress={onPress}
       accessible
       accessibilityRole="radio"
-      accessibilityState={{ selected }}
+      accessibilityState={{ checked: selected, selected }}
       accessibilityLabel={`${title}. ${detail}`}
       style={({ pressed }) => [
         styles.payOption,
