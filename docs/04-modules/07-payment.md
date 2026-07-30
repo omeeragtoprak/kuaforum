@@ -197,6 +197,45 @@ Kaynak: `PaymentEndpoints.cs:11-36`.
 
 ---
 
+## 14. RFC-006 İmplementasyonu (2026-07-30, as-built)
+
+> [RFC-006 kapora + checkout](../rfc/RFC-006-kapora-checkout.md) implementasyonunun kaydı. §7'nin "webhook yok" tespiti ve §12 tablosundaki 4/7 numaralı satırların webhook + mobile-UI kısımları bu bölümle **güncellenmiştir** — kalan tek açık iş gerçek PayTR credentials + canlıya alma checklist'i (🟣 founder-bloklu, bkz. GAP-ANALYSIS P0-5 güncellemesi).
+
+### 14.1 PaymentKind + kapora hesabı
+
+- `PaymentKind` enum'u `FullOnline=0 | Deposit=1` — `Kuaforum.Domain/Modules/Payment/PaymentKind.cs:4-8`; `Payment.Kind` kolonu M16 migration ile (`Persistence/Migrations/20260730052747_M16_PaymentKind.cs`).
+- Oranlar config-driven: `PaymentOptions` → `Payment:CommissionRate=0.10` + `Payment:DepositRate=0.15` (`Kuaforum.Application/Common/PaymentOptions.cs:9-18`). Startup invariant'ı: `DepositRate >= CommissionRate` + aralık kontrolleri, `ValidateOnStart()` ile boot'ta fail-fast (`Infrastructure/DependencyInjection.cs:63-69`).
+- Tutar matematiği tek kaynak: `PaymentAmounts.CalculateDepositMinor = ceil(total × rate)`, `CalculateCommissionMinor = round` (`Kuaforum.Domain/Common/PaymentAmounts.cs:14-18`). **Ceil + invariant birlikte kapora ≥ komisyon garantisini küçük tutarlarda da korur**; domain guard'ı ayrıca `Payment.cs:47` (komisyon > gross reddi).
+
+### 14.2 InitiatePayment: `kind` parametresi + ReinitiateCheckout (resume/switch)
+
+- `InitiatePaymentCommand(CustomerId, BookingId, Kind, IdempotencyKey)`; response artık `AmountMinor` (online tahsil edilen) + `RemainingAtShopMinor` + `Kind` taşır (`InitiatePaymentCommand.cs:15-32`).
+- Booking başına tek payment satırı korunur (`ux_payments_booking`): para hareketi başlamışsa (Captured+) → 409; `Initiated/Authorized/Failed`'da mevcut satır `Payment.ReinitiateCheckout(kind, gross, commission)` ile yeniden kullanılır — müşteri Deposit ⇄ FullOnline geçebilir veya başarısız ödemeyi yeniden dener (`InitiatePaymentCommand.cs:69-106`; domain geçiş guard'ı `Payment.cs:138-149`). Eşzamanlı reinitiate yarışı `Version` concurrency token'ıyla yakalanıp 409'a çevrilir (`InitiatePaymentCommand.cs:149-154`).
+
+### 14.3 PayTR webhook iskeleti
+
+- `POST /v1/webhooks/paytr` — AllowAnonymous + HMAC (`Api/Endpoints/WebhookEndpoints.cs:15-66`). Şema PayTR resmi doc ile doğrulandı (2026-07-30): form-urlencoded `merchant_oid` + `status` + `total_amount` + `hash`; yanıt gövdesi literal `"OK"` olmalı, aksi halde PayTR bildirimi tekrar eder.
+- **Fail-closed guard:** `MerchantKey`/`MerchantSalt` yapılandırılmamışsa imza doğrulamasına hiç girilmez → 503 (`WebhookEndpoints.cs:36-40`) — boş key ile HMAC deterministik hesaplanabilir olurdu (ödemesiz confirm forge riski).
+- İmza karşılaştırması `CryptographicOperations.FixedTimeEquals` (`WebhookEndpoints.cs:50-51`); hesap `PaytrWebhookSignature.Compute` (`Infrastructure/Payments/PaytrWebhookSignature.cs:13-17`).
+- İş mantığı `ProcessPaytrWebhookCommand` (`Application/Modules/Payment/ProcessPaytrWebhookCommand.cs`): **idempotency** — Captured/Settled/(Partially)Refunded satıra gelen retry hiçbir şey yazmadan OK'lenir (`:47-51`); **tutar-mismatch koruması** — ReinitiateCheckout sonrası stale checkout session'ının eski tutarlı callback'i capture edilmez, `payment.webhook_amount_mismatch` audit satırı yazılır (`:53-72`); success → `PaymentCompletionService.CaptureAndConfirmAsync` (`PaymentCompletionService.cs:16`), failed → `payment.Fail` (`:74-86`). Bilinmeyen `merchant_oid` dahil her durumda 200 "OK" — PayTR retry fırtınası önlenir.
+
+### 14.4 Mobile akış
+
+- **Seçim kartı** — `mobile/app/booking/confirm.tsx:155-178`: radiogroup, kapora varsayılan seçili, "Şimdi X TL · Salonda Y TL" / "Tamamını şimdi öde: Z TL". Ön izleme helper'ları `mobile/src/lib/deposit.ts` (`DEPOSIT_RATE` backend `Payment:DepositRate` ile elle senkron — kesin tutar initiate response'undan).
+- **Checkout ekranı** — `mobile/app/booking/payment.tsx`: fazlar `checkout → verifying → success | cancelled | pendingWebhook | error`; mock provider'da yerel simülasyon (`toRelativePath` origin-soyma + token sızıntısı koruması, `:46-53`), gerçek modda `CheckoutWebView` (originWhitelist'li); `verifying` 2sn aralıkla max 8 poll; success'te `['booking', id]` + `['my-bookings']` TanStack cache invalidation (60sn staleTime'lı bayat CTA fix'i).
+- **Detay + rozet** — `mobile/app/booking/[id].tsx`: "Salonda ödenecek" satırı, "Ödemeyi tamamla" CTA (yalnız müşteri + Pending + payment yok), Alert seçeneklerinde hesaplanmış tutarlar; owner Bugün ekranı `mobile/app/(barber)/today.tsx:262-268` "Salonda: X TL" rozeti.
+- **API katmanı** — `mobile/src/api/payment.ts`: `PaymentApi.initiate(bookingId, kind)` + idempotency-key header.
+
+### 14.5 DTO alanları
+
+Booking detay/liste DTO'ları `PaymentKind? PaymentKind` + `long? PaidOnlineMinor` + `long RemainingAtShopMinor` döner (`GetBookingQueries.cs:35-37`). Türetme tek yerden: `BookingPaymentProjection.Resolve` (`GetBookingQueries.cs:44-60`) — yalnız fiilen ödenmiş (`PaidStatuses`: Captured/Settled/PartiallyRefunded/Refunded) payment sayılır, kalan tutar yalnız `Deposit`'te > 0.
+
+### 14.6 Test kapsamı (RFC-006 eklentisi)
+
+`DepositPaymentTests` (kapora tutarı/ceil + invariant + resume/switch), `PaytrWebhookTests` (HMAC + idempotency + tutar-mismatch + fail-closed), tam ödeme regresyonu mevcut suite'te; mobile `deposit.test.ts` helper jest'leri. Suite toplamı: 123 domain + 63 application + 76 integration + 53 mobile jest (2026-07-30, tamamı yeşil).
+
+---
+
 ## Bağlantılar
 
 - [`docs/GAP-ANALYSIS.md`](../GAP-ANALYSIS.md) §1 (M7), §3 (P0-1, P0-2, P0-4, P0-5, P0-13), §5 (P2-1)
@@ -206,4 +245,4 @@ Kaynak: `PaymentEndpoints.cs:11-36`.
 - [`docs/04-modules/00-module-list.md`](00-module-list.md)
 - [`docs/PHASE-0-MASTER-SPEC.md`](../PHASE-0-MASTER-SPEC.md)
 
-**Son güncelleme:** 2026-07-23
+**Son güncelleme:** 2026-07-30 (RFC-006 as-built bölümü — §14)

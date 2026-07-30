@@ -216,6 +216,13 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - Kanıt: `PayTrPaymentProvider.cs:12` "This is a SCAFFOLDED stub" (placeholder URL, `VerifyAsync` daima false); `IyzicoPaymentProvider.cs` aynı; Endpoints altında hiçbir `/webhooks` route'u yok; `mobile/app/booking/confirm.tsx:131-135` "Ödeme adımı geliştirme aşamasında" hardcoded — mobile'da tek payment API çağrısı yok. Not: eski GAP-ANALYSIS'in "3DS callback mevcut" iddiası **yanlıştı**.
 - Öneri: Hesap beklemeden yapılabilir kısım: `POST /v1/webhooks/paytr` iskeleti (HMAC doğrulama + idempotent completion + duplicate/out-of-order tolerans + integration testleri) ve mobile WebView checkout ekranı mock provider ile uçtan uca. PayTR gerçek entegrasyonu founder merchant hesabı sonrası; Iyzico fallback V1.5.
 - Efor: webhook iskeleti + mobile UI: 4-6 gün; PayTR gerçek: 1-2 hafta (🟣 founder hesap bloklu)
+- **Güncelleme 2026-07-30 (RFC-006 implementasyonu):** Hesap beklemeden yapılabilir kısmın tamamı kapandı — mock provider ile uçtan uca müşteri ödeme akışı (mobile seçim kartı `confirm.tsx` + checkout ekranı `payment.tsx` + detay/owner rozeti), `POST /v1/webhooks/paytr` iskeleti (HMAC doğrulanmış şema + fail-closed config guard + idempotent completion + tutar-mismatch koruması) ve kapora modeli (`PaymentKind` + `Payment:DepositRate` config, ceil yuvarlama + kapora ≥ komisyon startup invariantı) canlı. As-built kayıt: [`docs/04-modules/07-payment.md`](04-modules/07-payment.md) §14. **Kalan yalnız founder-bloklu (🟣) gerçek PayTR credentials + şu canlıya alma checklist'i:**
+  1. PayTR key/salt env değerleri (`PayTr:MerchantKey`/`MerchantSalt` + merchant id) ve sandbox'ta bir gerçek callback smoke testi.
+  2. `total_amount` vs `payment_amount` taksit/vade-farkı kuralı teyidi — webhook tutar-mismatch koruması şu an `total_amount == GrossAmountMinor` eşitliği bekliyor; taksitli ödemede `total_amount` büyük gelebilir (`ProcessPaytrWebhookCommand.cs:53-72` içindeki not).
+  3. MDR settlement hesabı: capture'da `pspMdrMinor` şu an 0 geçiliyor — gerçek PSP kesintisinin `NetToBarberMinor` hesabına bağlanması.
+  4. WebView PSP host whitelist'i: `CheckoutWebView` originWhitelist'ine gerçek PayTR iFrame host'larının eklenmesi.
+  5. Stale PSP session / provider-refresh davranışı: 30dk `ExpiresAt` geçmiş checkout URL'inin reddi + yeni initiate'e zorlama akışının gerçek PSP ile doğrulanması.
+  6. `PayTrOptions`'a `ValidateOnStart` — prod'da eksik key/salt boot'ta yakalansın (webhook'taki fail-closed 503 guard'ı ikinci savunma katmanına insin).
 
 **P0-6. NetGSM stub + config key mismatch: prod'da OTP asla SMS'le gitmez, düz metin loga düşer → hiçbir kullanıcı kayıt olamaz**
 - Kanıt: `backend/src/Kuaforum.Infrastructure/Auth/NetGsmSmsService.cs:24,49-51` — options `UserCode`/`Originator` bekliyor, `UserCode` boşsa "MOCK SMS ... code is {Code}" Warning loglar, doluysa bile HTTP çağrısı yok (TODO); `appsettings.Production.json` ise `NetGsm:Username/Password/Header` veriyor → `UserCode` asla bind olmaz, prod HER ZAMAN mock fallback. OTP-only auth'ta bu tam launch blocker + OTP'nin loga düşmesi KVKK/hesap ele geçirme riski.
@@ -343,7 +350,7 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 
 ---
 
-## 5. P2 — Backlog / Kalite Borcu (10 madde)
+## 5. P2 — Backlog / Kalite Borcu (11 madde)
 
 **P2-1. Komisyon oranı hard-coded 0.10m — `CommissionTier` alanı ölü**
 - Kanıt: `InitiateBookingCommand.cs:44` `private const DefaultCommissionRate=0.10m`; `BarberShop.CommissionTier` "standard" set ediliyor ama hiçbir yerde okunmuyor.
@@ -394,6 +401,16 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - Kanıt: Prometheus/OpenTelemetry grep → 0; Better Stack config yok; repo'da hiçbir load-test script'i (k6/NBomber) yok; Bruno/Schemathesis → 0; Detox yok; web-admin test altyapısı sıfır.
 - Öneri: Deploy sonrası ilk hafta: Better Stack ile `/health/ready` izleme (1 saat) + basit k6 smoke; OpenTelemetry + Schemathesis nightly + Playwright admin smoke'u ölçek sinyali gelince. Şimdi yatırım yapma (premature).
 - Efor: uptime 1 saat; kalanı deploy sonrası 2-3 gün
+
+**P2-11 (2026-07-30). RFC-006 implementasyon kalıntıları — küçük kalite borçları (review zincirinden)**
+- `BookingPaymentProjection.Resolve` imza sıkılaştırma (nullable tuple yerine daha dar tip) + payment yükleme sorgusunun `LoadPaidAsync` benzeri tek helper'da ortaklaştırılması (`GetBookingQueries.cs` + `GetShopBookingsQuery.cs` aynı kalıbı tekrarlıyor).
+- `DepositPaymentTests` doc-header güncelleme + dosya bölme: ortak booking/ödeme akış yardımcılarının `BookingTestApi` extraction'ı ile ayrılması.
+- `mobile/app/booking/[id].tsx` 638+ satır — mutation/Alert bloklarının `useBookingActions` hook'una refactor'u.
+- `GetStylistsByShopQuery`'ye deterministik `OrderBy` sigortası (sırasız SELECT — UI'da stilist sırası rastgele değişebilir).
+- %15 kapora metinlerinin tek kaynağa inmesi: `confirm.tsx` fallback metnindeki "Hizmet bedelinin %15'i" hardcoded oran, `DEPOSIT_RATE`'ten türetilmeli (detay Alert'i 2026-07-30'da tutara çevrildi, fallback metin kaldı).
+- Integration suite'te 1/4 oranında gözlemlenen isimsiz flake (reproduce edilemedi, 2026-07-30 tam koşuda temiz) — CI'da izlenmeli, tekrar ederse test adı + seed loglanmalı.
+- Webhook failed-retry senaryosunda `payment.webhook_processed` audit satırı birikimi (her retry yeni satır) — retention/purge P2-5 kapsamına dahil edilmeli.
+- Efor: toplam 1-1.5 gün (parça parça alınabilir)
 
 ---
 
@@ -503,4 +520,4 @@ Kod tarafı bu cycle'da ilerlerken paralel başlaması gereken 🟣 işler — l
 - M1 Auth spec: `docs/04-modules/01-auth.md`
 - CLAUDE.md: proje kökü
 
-**Son güncelleme:** 2026-07-23
+**Son güncelleme:** 2026-07-23 (tam tarama); 2026-07-30 nokta güncellemesi — P0-5 RFC-006 kapanış notu + canlıya alma checklist'i + P2-11

@@ -1,6 +1,7 @@
 # RFC-006 — Ödeme Modeli: Kapora (%15) + Tam Ödeme + Salonda Kalan
 
 **Status:** ✅ Accepted — founder onayı 2026-07-24 (brainstorming döngüsü, üç aşamalı karar zinciri)
+**İmplementasyon:** tamamlandı 2026-07-30 (mock uçtan uca; canlıya alma checklist'i için [GAP-ANALYSIS P0-5 güncellemesine](../GAP-ANALYSIS.md) bakınız; as-built kayıt: [`04-modules/07-payment.md`](../04-modules/07-payment.md) §14)
 **Tarih:** 2026-07-29 (yazım); kararlar 2026-07-24
 **Kapsam:** `Kuaforum.Domain/Modules/Payment`, `Kuaforum.Application/Modules/Payment`, `Kuaforum.Api` (checkout + webhook), `mobile/app/booking/` (confirm + payment ekranları), owner Bugün ekranı
 **İlgili:** [RFC-005](RFC-005-otp-only-launch.md) (launch scope), `docs/04-modules/07-payment.md` (as-built temel), GAP-ANALYSIS P0-5 (gerçek ödeme zinciri)
