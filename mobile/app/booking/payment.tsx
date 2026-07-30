@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
 import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
@@ -24,9 +25,9 @@ const VERIFY_INTERVAL_MS = 2000;
  * checkoutUrl'i (backend'ten gelen, deep-link param'ı — yani kullanıcı/URL kontrolünde bir
  * girdi) apiClient'ın kendi baseURL'ine göre relative bir path+query'e indirger.
  *
- * GÜVENLİK: MockPaymentProvider bugün sabit `http://localhost:5000` üretiyor (dev backend
- * portu 5100, Android emülatörde localhost host makineye hiç ulaşmıyor) — checkoutUrl'in
- * origin'i zaten güvenilir değil. Ama daha kritik olanı: apiClient'a çağrı Authorization
+ * GÜVENLİK: MockPaymentProvider artık relative path üretiyor (`/v1/payments/mock/complete?...`)
+ * ama checkoutUrl deep-link param'ı olarak dışarıdan da gelebilir — origin'ine asla
+ * güvenilmez. Ve daha kritik olanı: apiClient'a çağrı Authorization
  * Bearer header'ı taşıyor; naif bir "scheme://host soy" regex'i case-variant (`HTTP://…`)
  * veya protocol-relative (`//evil.com/…`) girdileri kaçırabilir — axios böyle bir path'i
  * absolute URL sayıp (bkz. axios isAbsoluteURL: `^([a-z][a-z\d+\-.]*:)?\/\//i`) token'ı
@@ -70,6 +71,7 @@ export default function PaymentScreen() {
     expiresAt?: string;
   }>();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const checkoutUrl = params.checkoutUrl;
   const bookingId = params.bookingId;
@@ -110,6 +112,11 @@ export default function PaymentScreen() {
         const booking = await BookingApi.getById(bookingId!);
         if (cancelled) return;
         if (isBookingConfirmed(booking.status)) {
+          // Ödeme doğrulandı → cache'teki eski (Pending) booking'i düşür. Aksi halde detay
+          // ekranı global staleTime (60sn, bkz. _layout.tsx) boyunca Pending + "Ödemeyi
+          // tamamla" CTA'sını göstermeye devam ediyor (ikinci initiate 409'a düşüyor ama UX bozuk).
+          queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
+          queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
           Haptics.success();
           setPhase('success');
           return;
@@ -131,7 +138,7 @@ export default function PaymentScreen() {
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [phase, bookingId]);
+  }, [phase, bookingId, queryClient]);
 
   async function handleSimulate() {
     if (!relativeCheckoutPath) {

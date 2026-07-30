@@ -16,8 +16,11 @@ public sealed class MockPaymentProvider(ILogger<MockPaymentProvider> logger) : I
     {
         logger.LogWarning("MOCK PAYMENT: initiated for booking {BookingId}, amount {Amount} kuruş.", request.BookingId, request.GrossAmountMinor);
         var token = $"mock-{request.PaymentId:N}";
+        // Relative URL bilinçli: mobile client (payment.tsx toRelativePath) origin'i zaten
+        // soyup kendi apiClient baseURL'ine istek atıyor. Sabit bir origin (örn. localhost:5000)
+        // hem gerçek dev portuyla (5100) çelişiyordu hem de Android emülatörde erişilemezdi.
         return Task.FromResult(new CheckoutSession(
-            CheckoutUrl: $"http://localhost:5000/v1/payments/mock/complete?token={token}",
+            CheckoutUrl: $"/v1/payments/mock/complete?token={token}",
             ProviderToken: token,
             ExpiresAt: DateTimeOffset.UtcNow.AddMinutes(30)));
     }

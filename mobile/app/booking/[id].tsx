@@ -18,6 +18,7 @@ import {
   isBookingPending, isBookingConfirmed, isBookingInProgress, isBookingCompleted,
 } from '@/lib/format';
 import { useAuthStore } from '@/store/auth-store';
+import { estimateDepositMinor } from '@/lib/deposit';
 
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -133,12 +134,23 @@ export default function BookingDetailScreen() {
   });
 
   function handleCompletePayment() {
+    const booking = query.data;
+    if (!booking) return;
+    // Tutarlar ön izleme (estimateDepositMinor) — kesin tutar initiate response'undan gelir
+    // (kapora ≥ komisyon tabanı backend'de uygulanıyor). Hardcoded "%15" metni yerine
+    // hesaplanmış TL göstererek oran bilgisini tek kaynağa (lib/deposit) indiriyoruz.
     Alert.alert(
       'Ödeme türü',
       'Bu randevu için nasıl ödeme yapmak istersin?',
       [
-        { text: 'Kapora (%15)', onPress: () => payMutation.mutate('Deposit') },
-        { text: 'Tamamını öde', onPress: () => payMutation.mutate('FullOnline') },
+        {
+          text: `Kapora (${formatTry(estimateDepositMinor(booking.totalAmountMinor))})`,
+          onPress: () => payMutation.mutate('Deposit'),
+        },
+        {
+          text: `Tamamını öde (${formatTry(booking.totalAmountMinor)})`,
+          onPress: () => payMutation.mutate('FullOnline'),
+        },
         { text: 'Vazgeç', style: 'cancel' },
       ],
     );
