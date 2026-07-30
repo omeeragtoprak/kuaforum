@@ -244,6 +244,7 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - Kanıt: (1) `mobile/app/(barber)/profile.tsx:113-114` "Salon oluştur" disabled ("şu an web admin'den") — backend `POST /v1/owner/barber-shop` hazırken; (2) `kyc.tsx:145-171` manuel storage-key text input ("Test için herhangi bir string girebilirsin"), `uploadKycDocument` (`barber.ts:137-148`) hiçbir ekranda çağrılmıyor, picker paketi yüklü değil; (3) `ReviewKyc` reject dalı shop status'a dokunmuyor (`SubmitKycCommand.cs:105-111`) + `BarberShop.cs:77-84` yalnız Draft→PendingKyc'ye izin veriyor → reddedilen kuaför backend'de **sonsuza dek** başvuramaz — mobile'daki re-submit formu her zaman 400 alır (critic çelişki çözümü). Gerçek bir kuaför tek başına Active olamıyor.
 - Öneri: (a) Reject dalına `RevertToDraft()` + "reject→re-submit" integration testi (1-2 saat, önce bu); (b) `expo-document-picker` + `expo-image-picker` ile gerçek upload → mevcut `/v1/uploads/kyc`'a bağla; (c) salon oluşturma formu (ad/cinsiyet/il-ilçe/adres) mobile'a bağla + owner registration akışı kararı (Customer→BarberOwner rol geçişi).
 - Efor: 3-4 gün toplam
+- **Güncelleme 2026-07-30 (RFC-007): ✅ KAPANDI.** Dört bacak da canlı: (1) salon oluşturma mobile 3 adımlı sihirbaz (`app/onboarding/shop|address|documents.tsx`) `POST /v1/owner/barber-shop`'a bağlı; (2) gerçek KYC upload — `expo-document-picker`/`expo-image-picker` → `POST /v1/uploads/kyc` → submit; (3) reject-kilidi çözüldü — reject dalı shop'u Draft'a döndürüyor, re-submit çalışıyor; (4) Customer→BarberOwner atomik rol geçişi create-shop içinde (unique `ux_barber_shops_owner` index + concurrency 409 + DB-seviyesi index kanıt testi). Owner mobile'dan uçtan uca Active olabiliyor — curl E2E kanıtı: create→refresh(BarberOwner)→address→upload→submit→approve→Active. Kapanışta bulunan son blocker da giderildi: `neighborhoods` tablosu boştu ve NeighborhoodId zorunluydu → adres adımı gerçek hiçbir owner için geçilemiyordu; mahalle artık OPSİYONEL (nullable zincir: `SetAddressRequest`→command→`Address` VO; DB kolonu zaten nullable, migration gerekmedi) + Erzurum 3 merkez ilçesine pilot mahalle seed'i (`Tr81CitySeed.ErzurumNeighborhoods`); verilirse varlık + ilçe-tutarlılık kontrolü (400). Kalan ilgili borçlar: R2 (P1-6), KYC bildirimi (P1-10), TR mahalle verisi genişletme (P2-12).
 
 **P0-10. KVKK aydınlatma metni + ToS uygulamada hiçbir yerde görüntülenemiyor; kayıtta parçalı açık rıza yok**
 - Kanıt: `mobile/app/(auth)/login.tsx:123-126` legalLink Text'lerinin onPress'i yok (salt görsel); `(tabs)/profile.tsx:169` "Kullanım Koşulları" disabled+"Yakında"; kayıt akışında parçalı rıza ekranı yok — consents ekranı yalnız sonradan yönetim. Master spec "KVKK aydınlatma + parçalı açık rıza her kayıt akışında" der; mevcut "devam ederek kabul" bundled consent'in geçersiz rıza sayılma riski `[unverified 2026-07-23 — hukukçu teyidi gerek]`.
@@ -288,6 +289,7 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - Kanıt: `AuthSetup.cs:46-52`'de Customer/BarberOwner/Stylist policy'leri tanımlı; grep sonucu yalnız "Admin" 2 yerde kullanılıyor; `/v1/owner/barber-shop` (`BarberEndpoints.cs:61`), `/v1/stylists` (`:155`) düz `RequireAuthorization`; `CreateBarberShopCommand`'da rol kontrolü yok — Customer dükkan açabilir.
 - Öneri: Grup bazında policy uygula (`ownerGroup.RequireAuthorization("BarberOwner")`); Customer→BarberOwner rol geçiş akışını owner onboarding işiyle birlikte bilinçli tasarla.
 - Efor: 0.5 gün
+- **Güncelleme 2026-07-30 (RFC-007): ✅ KAPANDI.** Owner grubu `BarberOwner`, stylist grubu `Stylist` policy'sinde; tek bilinçli istisna create-shop (rol geçiş tetiği, Customer'a açık). Integration pinleri: Customer → owner/stylist endpoint'leri 403; create-shop 201; promote sonrası bayat token 403 → refresh sonrası 200 (`OwnerOnboardingTests.cs`).
 
 **P1-5. No-show server-side zaman guard'ı yok — owner sabah 09:00'da akşam randevusunu iadesiz no-show işaretleyebilir**
 - Kanıt: `MarkNoShowCommandHandler` (`BookingActions.cs:171-191`) yalnız sahiplik + status kontrolü; `Booking.MarkNoShow` (`Booking.cs:178`) randevu saatine hiç bakmıyor; koruma sadece client-side (`booking/[id].tsx:209`). No-show iadesiz → müşteri parasını kaybeder, itirazda platform aleyhine.
@@ -351,7 +353,7 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 
 ---
 
-## 5. P2 — Backlog / Kalite Borcu (11 madde)
+## 5. P2 — Backlog / Kalite Borcu (12 madde)
 
 **P2-1. Komisyon oranı hard-coded 0.10m — `CommissionTier` alanı ölü**
 - Kanıt: `InitiateBookingCommand.cs:44` `private const DefaultCommissionRate=0.10m`; `BarberShop.CommissionTier` "standard" set ediliyor ama hiçbir yerde okunmuyor.
@@ -412,6 +414,16 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - Integration suite'te 1/4 oranında gözlemlenen isimsiz flake (reproduce edilemedi, 2026-07-30 tam koşuda temiz) — CI'da izlenmeli, tekrar ederse test adı + seed loglanmalı.
 - Webhook failed-retry senaryosunda `payment.webhook_processed` audit satırı birikimi (her retry yeni satır) — retention/purge P2-5 kapsamına dahil edilmeli.
 - Efor: toplam 1-1.5 gün (parça parça alınabilir)
+
+**P2-12 (2026-07-30). RFC-007 owner onboarding kalıntıları — küçük kalite borçları (review zincirinden)**
+- TR mahalle verisinin resmi kaynaktan genişletilmesi: mahalle seed'i şu an Erzurum-pilot (Yakutiye/Palandöken/Aziziye, yaygın bilinen merkez mahalleler). Tam TR kapsamı için TÜİK/PTT verisi import'u `[unverified — kaynak seçimi araştırılacak]`; mahalle backend'de opsiyonel olduğundan launch'ı bloklamaz.
+- `GeoPickerModal` (onboarding) ↔ keşfet `CityPickerModal` birleşmesi — iki ayrı şehir seçici komponenti aynı işi yapıyor, tek paylaşımlı komponente inmeli.
+- `BarberApi.getMyShop` hata-yutma ayrımı: her hatada `null` dönüyor — "shop yok (404/403)" ile "network hatası" ayrılamıyor; onboarding devam mantığı network hatasında yanlışlıkla adım 1'e düşebilir.
+- Orphan KYC upload'ları: upload edilip submit'e bağlanmayan dosyalar diskte kalıyor — delete endpoint'i veya TTL temizliği (R2 geçişiyle birlikte, P1-6 kapsamına bağla).
+- `expo-image-picker` `microphonePermission` prebuild teyidi: config plugin'in iOS Info.plist çıktısı gerçek prebuild ile doğrulanmadı.
+- Gerçek geocoding: adres koordinatı şu an `tr-city-centroids` il merkezi yaklaşımı — salon haritada il merkezinde görünür; V1.5'te Google Maps geocoding (master spec kararı) ile değiştir.
+- Onboarding concurrency-catch mesaj dürüstlüğü (O2 review M-2): create-shop yarış 409'unda kullanıcıya "zaten işletmen var" yerine jenerik hata metni gösterilebiliyor — mesajı duruma özel hâle getir.
+- Efor: toplam 1-2 gün (parça parça alınabilir; mahalle import'u ayrı, kaynak kararı sonrası)
 
 ---
 

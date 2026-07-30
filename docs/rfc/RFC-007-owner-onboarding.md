@@ -1,6 +1,7 @@
 # RFC-007 — Owner Onboarding: Self-Serve Rol Geçişi + Mobile Sihirbaz
 
 **Status:** ✅ Accepted — founder onayı 2026-07-30 (brainstorming döngüsü, 2 karar + tasarım onayı)
+**İmplementasyon:** tamamlandı 2026-07-30 (curl E2E doğrulamalı: create→refresh(BarberOwner)→address→upload→submit→approve→Active; mahalle verisi Erzurum-pilot kapsamında — mahalle adres adımında opsiyonel, genişletme GAP P2-12 backlog'unda)
 **Tarih:** 2026-07-30
 **Kapsam:** `Kuaforum.Domain/Modules/Identity` (User), `Kuaforum.Application/Modules/Barber` (CreateBarberShop, SubmitKyc), `Kuaforum.Api` (rol policy'leri), `mobile/app/onboarding/` (yeni sihirbaz), `mobile/app/(barber)/kyc.tsx`, müşteri profil girişi
 **İlgili:** GAP-ANALYSIS P0-9 (owner onboarding kopuk) + P1-4 (rol policy'leri kullanılmıyor); Cycle 9 KYC onarımı (reject→re-submit, admin belge görüntüleme, sonuç bildirimleri — hepsi hazır altyapı)
