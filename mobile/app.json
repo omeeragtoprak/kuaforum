@@ -12,9 +12,7 @@
       "bundleIdentifier": "com.kuaforum.app",
       "config": { "usesNonExemptEncryption": false },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Yakındaki kuaförleri göstermek için konum izni gerekli.",
-        "NSCameraUsageDescription": "Profil fotoğrafı yüklemek için.",
-        "NSPhotoLibraryUsageDescription": "Profil fotoğrafı seçmek için."
+        "NSLocationWhenInUseUsageDescription": "Yakındaki kuaförleri göstermek için konum izni gerekli."
       }
     },
     "android": {
@@ -24,7 +22,15 @@
     "web": { "bundler": "metro" },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Belge fotoğrafı çekmek için kameraya erişim gerekli.",
+          "photosPermission": "Belge fotoğrafı seçmek için galeriye erişim gerekli.",
+          "microphonePermission": false
+        }
+      ]
     ],
     "experiments": { "typedRoutes": true },
     "extra": {

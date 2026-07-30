@@ -3,22 +3,20 @@ import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Card } from '@/components/Card';
-import { Button } from '@/components/Button';
-import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
+import { Button } from '@/components/Button';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi, KycDocumentRequest } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
+import { canSubmitKyc } from '@/lib/kyc';
+import { KycDocumentSection } from '@/components/kyc/KycDocumentSection';
+import { UploadedKycDoc } from '@/components/kyc/KycDocumentPicker';
 
 /**
- * KYC submit form. Backend SubmitKycCommand requires ≥2 documents. We collect document
- * metadata + storage keys; **actual file upload is a placeholder** — real impl needs
- * Cloudflare R2 presigned PUT URL flow (M4-photo-upload, GAP §9).
- *
- * Until R2 is wired, this screen lets the founder/dev manually input pre-uploaded keys
- * for testing. Production path: file picker → presigned URL → R2 upload → submit keys.
+ * KYC submit form. Belgeler kamera/galeri/PDF picker'ları ile gerçek dosya olarak
+ * `POST /v1/uploads/kyc`'ye yüklenir, dönen storage key'ler submit payload'ına toplanır.
+ * Backend SubmitKycCommandValidator: TaxLicense + IdentityCard zorunlu, geri kalanı opsiyonel.
  */
 export default function BarberKycScreen() {
   const router = useRouter();
@@ -30,29 +28,19 @@ export default function BarberKycScreen() {
     enabled: !!shopQuery.data?.id,
   });
 
-  const [taxLicenseKey, setTaxLicenseKey] = useState('');
-  const [sanitaryPermitKey, setSanitaryPermitKey] = useState('');
+  const [docs, setDocs] = useState<UploadedKycDoc[]>([]);
 
   const submitMut = useMutation({
     mutationFn: () => {
       if (!shopQuery.data?.id) throw new Error('Shop bilgisi yüklenemedi.');
-      const docs: KycDocumentRequest[] = [
-        {
-          documentType: 'TaxLicense',
-          fileName: 'tax-license.pdf',
-          storageKey: taxLicenseKey.trim(),
-          sizeBytes: 100_000,
-          contentType: 'application/pdf',
-        },
-        {
-          documentType: 'SanitaryPermit',
-          fileName: 'sanitary-permit.pdf',
-          storageKey: sanitaryPermitKey.trim(),
-          sizeBytes: 100_000,
-          contentType: 'application/pdf',
-        },
-      ];
-      return BarberApi.submitKyc(shopQuery.data.id, docs);
+      const documents: KycDocumentRequest[] = docs.map((d) => ({
+        documentType: d.documentType,
+        fileName: d.fileName,
+        storageKey: d.storageKey,
+        sizeBytes: d.sizeBytes,
+        contentType: d.contentType,
+      }));
+      return BarberApi.submitKyc(shopQuery.data.id, documents);
     },
     onSuccess: () => {
       Haptics.success();
@@ -67,7 +55,7 @@ export default function BarberKycScreen() {
     onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
-  const canSubmit = taxLicenseKey.trim().length > 0 && sanitaryPermitKey.trim().length > 0;
+  const canSubmit = canSubmitKyc(docs);
   const kyc = kycStatusQuery.data;
   // Status comes as 0/1/2/3 number or "Pending"/"UnderReview"/"Approved"/"Rejected" string.
   const statusVal = kyc?.status;
@@ -96,7 +84,7 @@ export default function BarberKycScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>KYC Doğrulama</Text>
         <Text style={styles.subtitle}>
-          Yasal kuaför hizmeti sunabilmek için vergi levhası ve işyeri açma ruhsatı gerekli.
+          Yasal kuaför hizmeti sunabilmek için vergi levhası ve kimlik belgesi gerekli.
           Belgelerin admin tarafından onaylanması ortalama 1-2 iş günü sürer.
         </Text>
 
@@ -141,37 +129,10 @@ export default function BarberKycScreen() {
 
         {formDisabled ? null : (
           <>
-            <Card>
-              <Text style={styles.label}>Vergi levhası (storage key)</Text>
-              <Input
-                value={taxLicenseKey}
-                onChangeText={setTaxLicenseKey}
-                placeholder="örn: kyc/2026/tax-abc123.pdf"
-                autoCapitalize="none"
-              />
-              <Text style={styles.hint}>Belgenizi yüklediğinizde sistem size bir storage key verir.</Text>
-            </Card>
-
-            <Card>
-              <Text style={styles.label}>İşyeri açma ruhsatı (storage key)</Text>
-              <Input
-                value={sanitaryPermitKey}
-                onChangeText={setSanitaryPermitKey}
-                placeholder="örn: kyc/2026/permit-xyz456.pdf"
-                autoCapitalize="none"
-              />
-              <Text style={styles.hint}>Belediyeden alınmış sıhhî müsaade veya işyeri açma ruhsatı.</Text>
-            </Card>
-
-            <Card style={styles.warningCard}>
-              <Text style={styles.warningText}>
-                ⚠️ Dosya yükleme şu anda manuel girilen storage key ile çalışıyor (Cloudflare R2 entegrasyonu
-                sonraki sürümde). Test için herhangi bir string girebilirsin.
-              </Text>
-            </Card>
-
+            <KycDocumentSection docs={docs} onChange={setDocs} />
+            {!canSubmit ? <Text style={styles.hint}>Vergi Levhası ve Kimlik zorunludur.</Text> : null}
             <Button
-              label={isRejected ? '📤 Yeniden gönder' : '📤 KYC\'yi gönder'}
+              label={isRejected ? '📤 Yeniden gönder' : "📤 KYC'yi gönder"}
               onPress={() => submitMut.mutate()}
               disabled={!canSubmit}
               loading={submitMut.isPending}
@@ -202,8 +163,7 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20, marginBottom: Spacing.sm },
-  label: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text, marginBottom: 6 },
-  hint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },
+  hint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: -Spacing.sm },
 
   statusBoxOk: {
     backgroundColor: Colors.successSoft,
@@ -251,6 +211,4 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   reasonText: { fontSize: FontSize.sm, color: Colors.text, marginTop: 4, lineHeight: 20 },
-  warningCard: { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' },
-  warningText: { fontSize: FontSize.xs, color: '#92400E', lineHeight: 18 },
 });
