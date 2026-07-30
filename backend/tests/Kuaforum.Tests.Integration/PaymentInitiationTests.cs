@@ -99,6 +99,31 @@ public sealed class PaymentInitiationTests(IntegrationTestFactory factory)
             $"Başkasının booking'i için payment initiate edilememeli (got {(int)attempt.StatusCode})");
     }
 
+    [Fact]
+    public async Task Initiate_payment_with_empty_booking_id_returns_400_not_500()
+    {
+        // T10 regresyon: InitiatePaymentCommand → ICommand<InitiatePaymentResponse> → Result<InitiatePaymentResponse>.
+        // Eski ValidationBehavior kodu `(TResponse)(object)Result.Failure(error)` — Result.Failure(error)
+        // her zaman base `Result` döner, cast Result<InitiatePaymentResponse>'a InvalidCastException fırlatırdı
+        // → istek 400 yerine 500 dönerdi. Bu endpoint tam da bug'lı yol (Result<T> response) olduğu ve
+        // hiçbir integration testi validation-fail input'la buraya vurmadığı için bug gizli kalmıştı.
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var customerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+
+        var response = await PostInitiatePayment(customerClient, Guid.Empty, Guid.NewGuid().ToString());
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync();
+        Assert.Contains("BookingId", body);
+    }
+
     private static async Task<HttpResponseMessage> PostInitiatePayment(HttpClient client, Guid bookingId, string idempotencyKey)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, "/v1/payments/initiate");
