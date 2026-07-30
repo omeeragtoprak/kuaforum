@@ -6,6 +6,7 @@ using Kuaforum.Domain.Modules.Identity;
 using Kuaforum.Domain.Modules.Payment;
 using Kuaforum.Infrastructure.Payments;
 using Kuaforum.Infrastructure.Persistence;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -37,6 +38,62 @@ public sealed class PaytrWebhookTests(IntegrationTestFactory factory)
 
     private const long KnownTotalMinor = 200_00;
     private const long ExpectedDepositMinor = 30_00; // ceil(20000 × 0.15)
+
+    /// <summary>
+    /// Known-answer (golden value) testi — external contract pin'i. PayTR bildirim hash'i
+    /// base64(HMAC-SHA256(merchant_oid + merchant_salt + status + total_amount, key)) olmalı;
+    /// şema resmi C# örneğiyle doğrulandı (https://dev.paytr.com/en/iframe-api/iframe-api-2-adim,
+    /// 2026-07-30) ve bu sabit çıktı o formülü kilitler. Compute içindeki concat sırası/algoritma
+    /// bir refactor'de sessizce değişirse diğer testler (aynı fonksiyonla hash ürettikleri için)
+    /// yeşil kalır ama BU test kırılır — PayTR ile uyumsuzluk canlıda değil burada yakalanır.
+    /// </summary>
+    [Fact]
+    public void Compute_matches_known_answer_from_official_formula()
+    {
+        var hash = PaytrWebhookSignature.Compute(
+            merchantOid: "abc123", merchantSalt: "SALT", status: "success", totalAmount: "3000", merchantKey: "KEY");
+        Assert.Equal("bw6tbwNxb+eLO7XdNvE5Hs3g7qBsz0+fEOdwNfBw65c=", hash);
+    }
+
+    /// <summary>
+    /// Fail-closed guard: MerchantKey yapılandırılmamışsa (boş) endpoint imza doğrulamasına hiç
+    /// girmeden 503 döner. Boş key ile HMAC herkesçe hesaplanabilir olurdu — saldırgan kendi
+    /// paymentId'siyle ödemesiz booking confirm forge edebilirdi.
+    /// </summary>
+    [Fact]
+    public async Task Missing_merchant_key_returns_503_and_payment_untouched()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+        var (_, paymentId) = await CreateDepositInitiatedBookingAsync(daysAhead: 46);
+
+        // Aynı Testcontainers altyapısını paylaşan, PayTr:MerchantKey'i boş override eden host.
+        await using var unconfiguredFactory = factory.WithWebHostBuilder(b =>
+            b.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["PayTr:MerchantKey"] = "",
+            })));
+        using var client = unconfiguredFactory.CreateClient();
+
+        // Saldırı senaryosu: boş key/salt ile "geçerli" görünen hash üretilebilirdi.
+        var oid = paymentId.ToString("N");
+        var amount = ExpectedDepositMinor.ToString();
+        var forgedHash = PaytrWebhookSignature.Compute(oid, "", "success", amount, "");
+        var resp = await client.PostAsync("/v1/webhooks/paytr", new FormUrlEncodedContent(new Dictionary<string, string>
+        {
+            ["merchant_oid"] = oid,
+            ["status"] = "success",
+            ["total_amount"] = amount,
+            ["hash"] = forgedHash,
+        }));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var payment = await db.Set<Payment>().AsNoTracking().FirstAsync(p => p.Id == paymentId);
+        Assert.Equal(PaymentStatus.Initiated, payment.Status); // forge işe yaramadı
+    }
 
     [Fact]
     public async Task Success_webhook_captures_deposit_and_confirms_booking()
