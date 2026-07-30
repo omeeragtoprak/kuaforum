@@ -291,15 +291,23 @@ public sealed class InitiatePaymentCommandValidatorTests
     public void Empty_customer_fails()
     {
         var r = new InitiatePaymentCommandValidator().TestValidate(new InitiatePaymentCommand(
-            Guid.Empty, Guid.NewGuid(), null));
+            Guid.Empty, Guid.NewGuid(), Kuaforum.Domain.Modules.Payment.PaymentKind.FullOnline, null));
         r.ShouldHaveValidationErrorFor(x => x.CustomerId);
+    }
+
+    [Fact]
+    public void Undefined_kind_fails()
+    {
+        var r = new InitiatePaymentCommandValidator().TestValidate(new InitiatePaymentCommand(
+            Guid.NewGuid(), Guid.NewGuid(), (Kuaforum.Domain.Modules.Payment.PaymentKind)99, null));
+        r.ShouldHaveValidationErrorFor(x => x.Kind);
     }
 
     [Fact]
     public void Valid_passes()
     {
         var r = new InitiatePaymentCommandValidator().TestValidate(new InitiatePaymentCommand(
-            Guid.NewGuid(), Guid.NewGuid(), "idem-key-1"));
+            Guid.NewGuid(), Guid.NewGuid(), Kuaforum.Domain.Modules.Payment.PaymentKind.Deposit, "idem-key-1"));
         r.ShouldNotHaveAnyValidationErrors();
     }
 }

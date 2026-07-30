@@ -44,7 +44,7 @@ public static class PaymentEndpoints
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var idempKey = http.Request.Headers["Idempotency-Key"].FirstOrDefault();
-        var r = await m.Send(new InitiatePaymentCommand(ctx.UserId.Value, body.BookingId, idempKey), token);
+        var r = await m.Send(new InitiatePaymentCommand(ctx.UserId.Value, body.BookingId, body.Kind, idempKey), token);
         return r.IsSuccess
             ? Results.Ok(r.Value)
             : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "conflict" ? 409 : 400);
@@ -74,6 +74,8 @@ public static class PaymentEndpoints
             : Results.Problem(r.Error.Message, statusCode: 400);
     }
 
-    public sealed record InitiateRequest(Guid BookingId);
+    // Kind body'de gönderilmezse FullOnline — eski istekler davranış değiştirmeden çalışır (RFC-006).
+    // Global JsonStringEnumConverter "Deposit"/"FullOnline" string'lerini bind eder.
+    public sealed record InitiateRequest(Guid BookingId, PaymentKind Kind = PaymentKind.FullOnline);
     public sealed record RefundRequest(Guid PaymentId);
 }

@@ -1,4 +1,5 @@
 using FluentValidation;
+using Kuaforum.Application.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
@@ -7,19 +8,28 @@ using PaymentAggregate = Kuaforum.Domain.Modules.Payment.Payment;
 using Kuaforum.Domain.Modules.Payment;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Kuaforum.Application.Modules.Payment;
 
 public sealed record InitiatePaymentCommand(
     Guid CustomerId,
     Guid BookingId,
+    PaymentKind Kind,
     string? IdempotencyKey) : ICommand<InitiatePaymentResponse>;
 
+/// <summary>
+/// RFC-006: AmountMinor = online tahsil edilen tutar (FullOnline'da booking toplamı,
+/// Deposit'te ceil(toplam × DepositRate) kapora); RemainingAtShopMinor = salonda ödenecek kalan.
+/// </summary>
 public sealed record InitiatePaymentResponse(
     Guid PaymentId,
     string CheckoutUrl,
     string? ProviderToken,
-    DateTimeOffset ExpiresAt);
+    DateTimeOffset ExpiresAt,
+    long AmountMinor,
+    long RemainingAtShopMinor,
+    string Kind);
 
 public sealed class InitiatePaymentCommandValidator : AbstractValidator<InitiatePaymentCommand>
 {
@@ -27,13 +37,15 @@ public sealed class InitiatePaymentCommandValidator : AbstractValidator<Initiate
     {
         RuleFor(x => x.CustomerId).NotEmpty();
         RuleFor(x => x.BookingId).NotEmpty();
+        RuleFor(x => x.Kind).IsInEnum();
     }
 }
 
 public sealed class InitiatePaymentCommandHandler(
     IApplicationDbContext db,
     IPaymentProviderRegistry providerRegistry,
-    IAuditLogger audit) : IRequestHandler<InitiatePaymentCommand, Result<InitiatePaymentResponse>>
+    IAuditLogger audit,
+    IOptions<PaymentOptions> paymentOptions) : IRequestHandler<InitiatePaymentCommand, Result<InitiatePaymentResponse>>
 {
     public async Task<Result<InitiatePaymentResponse>> Handle(InitiatePaymentCommand request, CancellationToken cancellationToken)
     {
@@ -74,13 +86,21 @@ public sealed class InitiatePaymentCommandHandler(
         var providerName = providerRegistry.DefaultProvider;
         var provider = providerRegistry.GetProvider(providerName);
 
+        // RFC-006: Deposit'te online tahsilat kapora — ceil garantisi + DepositRate >= CommissionRate
+        // invariantı (startup validation) sayesinde kapora platform komisyonunu her zaman karşılar.
+        var opts = paymentOptions.Value;
+        var onlineAmountMinor = request.Kind == PaymentKind.Deposit
+            ? PaymentAmounts.CalculateDepositMinor(booking.TotalAmountMinor, opts.DepositRate)
+            : booking.TotalAmountMinor;
+
         var paymentResult = PaymentAggregate.Initiate(
             booking.Id,
             booking.CustomerId,
             booking.BarberShopId,
-            booking.TotalAmountMinor,
+            onlineAmountMinor,
             booking.PlatformCommissionMinor,
             providerName,
+            kind: request.Kind,
             idempotencyKey: request.IdempotencyKey);
         if (paymentResult.IsFailure) return Result.Failure<InitiatePaymentResponse>(paymentResult.Error);
 
@@ -93,7 +113,7 @@ public sealed class InitiatePaymentCommandHandler(
             CustomerId: customer.Id,
             CustomerPhone: customer.PhoneE164 ?? string.Empty,
             CustomerEmail: customer.Email,
-            GrossAmountMinor: booking.TotalAmountMinor,
+            GrossAmountMinor: onlineAmountMinor,
             CommissionMinor: booking.PlatformCommissionMinor,
             SubMerchantKey: shop.SubMerchantKey ?? "MOCK-SUB",
             Currency: booking.Currency,
@@ -105,7 +125,7 @@ public sealed class InitiatePaymentCommandHandler(
             nameof(PaymentAggregate),
             payment.Id.ToString(),
             actorUserId: request.CustomerId,
-            payload: new { booking.Id, providerName = providerName.ToString(), payment.GrossAmountMinor },
+            payload: new { booking.Id, providerName = providerName.ToString(), payment.GrossAmountMinor, kind = request.Kind.ToString() },
             ct: cancellationToken);
 
         try
@@ -122,7 +142,8 @@ public sealed class InitiatePaymentCommandHandler(
         }
 
         return Result.Success(new InitiatePaymentResponse(
-            payment.Id, checkoutSession.CheckoutUrl, checkoutSession.ProviderToken, checkoutSession.ExpiresAt));
+            payment.Id, checkoutSession.CheckoutUrl, checkoutSession.ProviderToken, checkoutSession.ExpiresAt,
+            onlineAmountMinor, booking.TotalAmountMinor - onlineAmountMinor, request.Kind.ToString()));
     }
 
     /// <summary>
