@@ -4,6 +4,8 @@ using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Identity;
 using BookingAggregate = Kuaforum.Domain.Modules.Booking.Booking;
 using Kuaforum.Domain.Modules.Booking;
+using PaymentAggregate = Kuaforum.Domain.Modules.Payment.Payment;
+using Kuaforum.Domain.Modules.Payment;
 using ReviewAggregate = Kuaforum.Domain.Modules.Review.Review;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -29,7 +31,33 @@ public sealed record BookingDto(
     string? CustomerNote = null,
     string? ShopName = null,
     string? StylistName = null,
-    bool HasReview = false);
+    bool HasReview = false,
+    PaymentKind? PaymentKind = null,
+    long? PaidOnlineMinor = null,
+    long RemainingAtShopMinor = 0);
+
+/// <summary>
+/// RFC-006 Task 5: booking detay/liste DTO'ları için "ödeme fiilen alındı mı" filtresi.
+/// Initiated/Authorized/Failed durumundaki payment'lar sayılmaz — müşteri henüz ödemedi,
+/// booking detayında "salonda ödenecek" bilgisini bu payment'lardan türetmek yanıltıcı olur.
+/// </summary>
+internal static class BookingPaymentProjection
+{
+    public static readonly PaymentStatus[] PaidStatuses =
+    {
+        PaymentStatus.Captured, PaymentStatus.Settled, PaymentStatus.PartiallyRefunded, PaymentStatus.Refunded,
+    };
+
+    public static (PaymentKind? Kind, long? PaidOnlineMinor, long RemainingAtShopMinor) Resolve(
+        long bookingTotalAmountMinor, PaymentKind? kind, long? grossAmountMinor)
+    {
+        if (kind is null || grossAmountMinor is null)
+            return (null, null, 0);
+
+        var remaining = kind == PaymentKind.Deposit ? bookingTotalAmountMinor - grossAmountMinor.Value : 0;
+        return (kind, grossAmountMinor, remaining);
+    }
+}
 
 public sealed record GetMyBookingsQuery(Guid CustomerId, BookingStatus? StatusFilter) : IQuery<IReadOnlyList<BookingDto>>;
 
@@ -74,11 +102,21 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
             .ToListAsync(ct);
         var reviewedSet = reviewedBookingIds.ToHashSet();
 
+        // RFC-006 Task 5: booking başına tek payment satırı (ux_payments_booking) — toplu
+        // WHERE BookingId IN (...) sorgusuyla N+1'den kaçınıyoruz.
+        var payments = await ctx.Set<PaymentAggregate>().AsNoTracking()
+            .Where(p => bookingIds.Contains(p.BookingId) && BookingPaymentProjection.PaidStatuses.Contains(p.Status))
+            .Select(p => new { p.BookingId, p.Kind, p.GrossAmountMinor })
+            .ToDictionaryAsync(p => p.BookingId, ct);
+
         var result = list.Select(b =>
         {
             customers.TryGetValue(b.CustomerId, out var c);
             shops.TryGetValue(b.BarberShopId, out var sh);
             stylists.TryGetValue(b.StylistId, out var st);
+            payments.TryGetValue(b.Id, out var pay);
+            var (paymentKind, paidOnlineMinor, remainingAtShopMinor) =
+                BookingPaymentProjection.Resolve(b.TotalAmountMinor, pay?.Kind, pay?.GrossAmountMinor);
             return new BookingDto(
                 b.Id, b.CustomerId, b.BarberShopId, b.StylistId,
                 b.ScheduledAt, b.ScheduledEndsAt, b.Status,
@@ -91,7 +129,10 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
                 CustomerNote: b.CustomerNote,
                 ShopName: sh?.Name,
                 StylistName: st?.DisplayName,
-                HasReview: reviewedSet.Contains(b.Id));
+                HasReview: reviewedSet.Contains(b.Id),
+                PaymentKind: paymentKind,
+                PaidOnlineMinor: paidOnlineMinor,
+                RemainingAtShopMinor: remainingAtShopMinor);
         }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(result);
@@ -138,6 +179,13 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
         var hasReview = await ctx.Set<ReviewAggregate>().AsNoTracking()
             .AnyAsync(r => r.BookingId == booking.Id, ct);
 
+        var payment = await ctx.Set<PaymentAggregate>().AsNoTracking()
+            .Where(p => p.BookingId == booking.Id && BookingPaymentProjection.PaidStatuses.Contains(p.Status))
+            .Select(p => new { p.Kind, p.GrossAmountMinor })
+            .FirstOrDefaultAsync(ct);
+        var (paymentKind, paidOnlineMinor, remainingAtShopMinor) =
+            BookingPaymentProjection.Resolve(booking.TotalAmountMinor, payment?.Kind, payment?.GrossAmountMinor);
+
         return Result.Success(new BookingDto(
             booking.Id, booking.CustomerId, booking.BarberShopId, booking.StylistId,
             booking.ScheduledAt, booking.ScheduledEndsAt, booking.Status,
@@ -150,6 +198,9 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             CustomerNote: booking.CustomerNote,
             ShopName: shopMeta,
             StylistName: stylistMeta,
-            HasReview: hasReview));
+            HasReview: hasReview,
+            PaymentKind: paymentKind,
+            PaidOnlineMinor: paidOnlineMinor,
+            RemainingAtShopMinor: remainingAtShopMinor));
     }
 }

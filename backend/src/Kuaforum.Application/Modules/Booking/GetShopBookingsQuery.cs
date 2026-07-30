@@ -4,6 +4,7 @@ using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Identity;
 using BookingAggregate = Kuaforum.Domain.Modules.Booking.Booking;
 using Kuaforum.Domain.Modules.Booking;
+using PaymentAggregate = Kuaforum.Domain.Modules.Payment.Payment;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -50,10 +51,20 @@ public sealed class GetOwnerBookingsQueryHandler(IApplicationDbContext db)
             .Select(s => new { s.Id, s.DisplayName })
             .ToDictionaryAsync(s => s.Id, ct);
 
+        // RFC-006 Task 5: tek toplu WHERE BookingId IN (...) sorgusu — liste tarafında N+1 yok.
+        var bookingIds = list.Select(b => b.Id).ToList();
+        var payments = await ctx.Set<PaymentAggregate>().AsNoTracking()
+            .Where(p => bookingIds.Contains(p.BookingId) && BookingPaymentProjection.PaidStatuses.Contains(p.Status))
+            .Select(p => new { p.BookingId, p.Kind, p.GrossAmountMinor })
+            .ToDictionaryAsync(p => p.BookingId, ct);
+
         var dtos = list.Select(b =>
         {
             customers.TryGetValue(b.CustomerId, out var c);
             stylists.TryGetValue(b.StylistId, out var st);
+            payments.TryGetValue(b.Id, out var pay);
+            var (paymentKind, paidOnlineMinor, remainingAtShopMinor) =
+                BookingPaymentProjection.Resolve(b.TotalAmountMinor, pay?.Kind, pay?.GrossAmountMinor);
             return new BookingDto(
                 b.Id, b.CustomerId, b.BarberShopId, b.StylistId,
                 b.ScheduledAt, b.ScheduledEndsAt, b.Status,
@@ -65,7 +76,10 @@ public sealed class GetOwnerBookingsQueryHandler(IApplicationDbContext db)
                 CustomerPhone: c?.PhoneE164,
                 CustomerNote: b.CustomerNote,
                 ShopName: shop.Name,
-                StylistName: st?.DisplayName);
+                StylistName: st?.DisplayName,
+                PaymentKind: paymentKind,
+                PaidOnlineMinor: paidOnlineMinor,
+                RemainingAtShopMinor: remainingAtShopMinor);
         }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(dtos);

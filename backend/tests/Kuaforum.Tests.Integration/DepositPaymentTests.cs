@@ -235,6 +235,156 @@ public sealed class DepositPaymentTests(IntegrationTestFactory factory)
         Assert.Equal(PaymentStatus.Captured, payment.Status); // dokunulmamış
     }
 
+    /// <summary>
+    /// RFC-006 Task 5: müşteri booking detayı ve owner randevu listesi DTO'larına eklenen
+    /// paymentKind / paidOnlineMinor / remainingAtShopMinor alanlarının doğru doldurulduğunu
+    /// (veya ödeme yoksa/henüz tamamlanmadıysa null/null/0 kaldığını) pinler.
+    /// </summary>
+    public sealed record BookingDetailPaymentResp(
+        Guid Id, long TotalAmountMinor, string? PaymentKind, long? PaidOnlineMinor, long RemainingAtShopMinor);
+
+    public sealed record OwnerBookingPaymentResp(
+        Guid Id, string? PaymentKind, long? PaidOnlineMinor, long RemainingAtShopMinor);
+
+    [Fact]
+    public async Task Detail_shows_deposit_payment_fields_after_mock_complete()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+
+        var initiate = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "Deposit");
+        Assert.Equal(HttpStatusCode.OK, initiate.StatusCode);
+        var pay = (await initiate.Content.ReadFromJsonAsync<InitiatePaymentResp>(TestHelpers.Json))!;
+
+        var completeUrl = $"/v1/payments/mock/complete?token={Uri.EscapeDataString(pay.ProviderToken ?? "MOCK")}";
+        var complete = await customerClient.GetAsync(completeUrl);
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        var detail = await customerClient.GetJson<BookingDetailPaymentResp>($"/v1/bookings/{bookingId}");
+        Assert.Equal("Deposit", detail.PaymentKind);
+        Assert.Equal(ExpectedDepositMinor, detail.PaidOnlineMinor);
+        Assert.Equal(KnownTotalMinor - ExpectedDepositMinor, detail.RemainingAtShopMinor); // 170_00
+    }
+
+    [Fact]
+    public async Task Detail_has_null_payment_fields_when_no_payment_initiated()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+
+        var detail = await customerClient.GetJson<BookingDetailPaymentResp>($"/v1/bookings/{bookingId}");
+        Assert.Null(detail.PaymentKind);
+        Assert.Null(detail.PaidOnlineMinor);
+        Assert.Equal(0, detail.RemainingAtShopMinor);
+    }
+
+    [Fact]
+    public async Task Detail_shows_full_online_payment_fields_after_mock_complete()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+
+        var initiate = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "FullOnline");
+        Assert.Equal(HttpStatusCode.OK, initiate.StatusCode);
+        var pay = (await initiate.Content.ReadFromJsonAsync<InitiatePaymentResp>(TestHelpers.Json))!;
+
+        var completeUrl = $"/v1/payments/mock/complete?token={Uri.EscapeDataString(pay.ProviderToken ?? "MOCK")}";
+        var complete = await customerClient.GetAsync(completeUrl);
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        var detail = await customerClient.GetJson<BookingDetailPaymentResp>($"/v1/bookings/{bookingId}");
+        Assert.Equal("FullOnline", detail.PaymentKind);
+        Assert.Equal(KnownTotalMinor, detail.PaidOnlineMinor);
+        Assert.Equal(0, detail.RemainingAtShopMinor);
+    }
+
+    [Fact]
+    public async Task Owner_list_shows_remaining_at_shop_for_deposit_booking()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+
+        var initiate = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "Deposit");
+        Assert.Equal(HttpStatusCode.OK, initiate.StatusCode);
+        var pay = (await initiate.Content.ReadFromJsonAsync<InitiatePaymentResp>(TestHelpers.Json))!;
+
+        var completeUrl = $"/v1/payments/mock/complete?token={Uri.EscapeDataString(pay.ProviderToken ?? "MOCK")}";
+        var complete = await customerClient.GetAsync(completeUrl);
+        Assert.Equal(HttpStatusCode.OK, complete.StatusCode);
+
+        var fromIso = Uri.EscapeDataString(DateTimeOffset.UtcNow.ToString("o"));
+        var toIso = Uri.EscapeDataString(DateTimeOffset.UtcNow.AddDays(70).ToString("o"));
+        var ownerBookings = await ownerClient.GetJson<IReadOnlyList<OwnerBookingPaymentResp>>(
+            $"/v1/owner/barber-shop/bookings?from={fromIso}&to={toIso}");
+        var ownerBooking = Assert.Single(ownerBookings, b => b.Id == bookingId);
+        Assert.Equal("Deposit", ownerBooking.PaymentKind);
+        Assert.Equal(ExpectedDepositMinor, ownerBooking.PaidOnlineMinor);
+        Assert.Equal(KnownTotalMinor - ExpectedDepositMinor, ownerBooking.RemainingAtShopMinor); // 170_00
+    }
+
+    /// <summary>
+    /// Yok-sayma kuralının pin'i: Initiated (henüz ödenmemiş) bir payment satırı var olsa bile
+    /// booking detayı "salonda ödenecek" bilgisini bu payment'tan TÜRETMEMELİ — müşteri parayı
+    /// henüz göndermedi (T8'deki "Ödemeyi tamamla" CTA'sı ayrıca status==Pending üzerinden çalışır).
+    /// </summary>
+    [Fact]
+    public async Task Detail_ignores_initiated_unpaid_payment()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedAsync();
+
+        using var customerClient = factory.CreateClient();
+        using var ownerClient = factory.CreateClient();
+        customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        var bookingId = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+
+        // Initiate ama HİÇ mock-complete etme — payment Initiated durumunda kalır.
+        var initiate = await PostInitiatePayment(customerClient, bookingId, Guid.NewGuid().ToString(), kind: "Deposit");
+        Assert.Equal(HttpStatusCode.OK, initiate.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var payment = await db.Set<Payment>().AsNoTracking().FirstAsync(p => p.BookingId == bookingId);
+            Assert.Equal(PaymentStatus.Initiated, payment.Status); // ön koşul teyidi
+        }
+
+        var detail = await customerClient.GetJson<BookingDetailPaymentResp>($"/v1/bookings/{bookingId}");
+        Assert.Null(detail.PaymentKind);
+        Assert.Null(detail.PaidOnlineMinor);
+        Assert.Equal(0, detail.RemainingAtShopMinor);
+    }
+
     private async Task SeedAsync()
     {
         using var scope = factory.Services.CreateScope();
