@@ -9,6 +9,7 @@ import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
+import { PaymentApi, PaymentKind } from '@/api/payment';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
 import {
@@ -111,6 +112,38 @@ export default function BookingDetailScreen() {
     onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
 
+  const payMutation = useMutation({
+    mutationFn: (kind: PaymentKind) => PaymentApi.initiate(id!, kind),
+    onSuccess: (pay) => {
+      Haptics.success();
+      router.push({
+        pathname: '/booking/payment',
+        params: {
+          paymentId: pay.paymentId,
+          checkoutUrl: pay.checkoutUrl,
+          amountMinor: String(pay.amountMinor),
+          remainingAtShopMinor: String(pay.remainingAtShopMinor),
+          kind: pay.kind,
+          bookingId: id!,
+          expiresAt: pay.expiresAt,
+        },
+      });
+    },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
+  });
+
+  function handleCompletePayment() {
+    Alert.alert(
+      'Ödeme türü',
+      'Bu randevu için nasıl ödeme yapmak istersin?',
+      [
+        { text: 'Kapora (%15)', onPress: () => payMutation.mutate('Deposit') },
+        { text: 'Tamamını öde', onPress: () => payMutation.mutate('FullOnline') },
+        { text: 'Vazgeç', style: 'cancel' },
+      ],
+    );
+  }
+
   function handleCancel() {
     if (!query.data) return;
     // Reason artık backend tarafında aktörün rolünden türetiliyor (customer → CustomerRequested,
@@ -205,6 +238,9 @@ export default function BookingDetailScreen() {
   const ownerCanComplete = isBarber && isBookingInProgress(b.status);
   const ownerCanNoShow = isBarber && isBookingConfirmed(b.status) && new Date(b.scheduledEndsAt).getTime() < Date.now();
   const canReschedule = (isBookingPending(b.status) || isBookingConfirmed(b.status));
+  // Sadece müşteri kendi randevusu için ödeme başlatabilir — backend InitiatePaymentCommandHandler
+  // booking.CustomerId != request.CustomerId ise Forbidden döner, bu yüzden !isBarber şart.
+  const canCompletePayment = !isBarber && isBookingPending(b.status) && b.paymentKind == null;
   const totalDuration = b.items.reduce((s, i) => s + (i.durationMinutes ?? 0), 0);
 
   function startReschedule() {
@@ -274,6 +310,12 @@ export default function BookingDetailScreen() {
           <DetailRow icon="⏱️" label="Bitiş" value={formatDateTime(b.scheduledEndsAt)} />
           <Divider />
           <DetailRow icon="💰" label="Toplam" value={formatTry(b.totalAmountMinor)} />
+          {b.paymentKind === 'Deposit' && b.remainingAtShopMinor ? (
+            <>
+              <Divider />
+              <DetailRow icon="💵" label="Salonda ödenecek" value={formatTry(b.remainingAtShopMinor)} />
+            </>
+          ) : null}
           {b.refundPercentage != null ? (
             <>
               <Divider />
@@ -354,6 +396,13 @@ export default function BookingDetailScreen() {
         ) : null}
 
         <View style={styles.actions}>
+          {canCompletePayment ? (
+            <Button
+              label="💳 Ödemeyi tamamla"
+              onPress={handleCompletePayment}
+              loading={payMutation.isPending}
+            />
+          ) : null}
           {ownerCanConfirm ? (
             <Button
               label="✅ Randevuyu onayla"

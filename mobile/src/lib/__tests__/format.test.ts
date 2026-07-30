@@ -9,6 +9,7 @@ import {
   bookingStatusInfo,
   isBookingCancelled,
   isBookingRevenueCounted,
+  isBookingPending,
 } from '@/lib/format';
 
 describe('formatTry', () => {
@@ -121,4 +122,20 @@ describe('isBookingCancelled / isBookingRevenueCounted', () => {
   it('iptal edilmiş rezervasyon ciroya dahil edilmez', () => {
     expect(isBookingRevenueCounted('Cancelled')).toBe(false);
   });
+});
+
+describe('isBookingPending', () => {
+  it.each([0, '0', 'Pending'])(
+    'beklemedeki statüyü (%p) pending olarak işaretler',
+    (status) => {
+      expect(isBookingPending(status)).toBe(true);
+    },
+  );
+
+  it.each([1, '1', 'Confirmed', 2, 'Started', 3, 'Completed', 4, 'Cancelled', 5, 'NoShow'])(
+    'beklemede olmayan statüyü (%p) pending saymaz',
+    (status) => {
+      expect(isBookingPending(status)).toBe(false);
+    },
+  );
 });

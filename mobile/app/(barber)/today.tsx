@@ -259,6 +259,15 @@ function BookingRow({
         <Text style={styles.amount}>{formatTry(booking.totalAmountMinor)}</Text>
       </View>
 
+      {booking.remainingAtShopMinor ? (
+        <View
+          accessible
+          accessibilityLabel={`Salonda ödenecek tutar: ${formatTry(booking.remainingAtShopMinor)}`}
+        >
+          <Badge label={`Salonda: ${formatTry(booking.remainingAtShopMinor)}`} tone="warning" />
+        </View>
+      ) : null}
+
       {(canStart || canComplete) ? (
         <View style={styles.actions}>
           {canStart ? (

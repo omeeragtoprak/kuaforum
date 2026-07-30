@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import type { PaymentKind } from './payment';
 
 export type OwnerDashboardStats = {
   thisWeekCompletedCount: number;
@@ -39,11 +40,30 @@ export type Booking = {
   customerPhone?: string | null;
   customerNote?: string | null;
   hasReview?: boolean;
+  /** Yalnız GERÇEKTEN ödenmiş (Captured/Settled) payment'larda dolu — Initiated yok sayılır. */
+  paymentKind?: PaymentKind | null;
+  paidOnlineMinor?: number | null;
+  remainingAtShopMinor?: number;
+};
+
+/** Backend InitiateBookingCommand.cs → InitiateBookingResponse record ile birebir (camelCase). */
+export type InitiateBookingResponse = {
+  bookingId: string;
+  scheduledAt: string;
+  scheduledEndsAt: string;
+  totalAmountMinor: number;
+  currency: string;
 };
 
 export const BookingApi = {
-  async initiate(stylistId: string, scheduledAt: string, serviceCatalogIds: string[], customerNote?: string, isWalkIn = false) {
-    const res = await apiClient.post('/v1/bookings', {
+  async initiate(
+    stylistId: string,
+    scheduledAt: string,
+    serviceCatalogIds: string[],
+    customerNote?: string,
+    isWalkIn = false,
+  ): Promise<InitiateBookingResponse> {
+    const res = await apiClient.post<InitiateBookingResponse>('/v1/bookings', {
       stylistId,
       scheduledAt,
       serviceCatalogIds,
