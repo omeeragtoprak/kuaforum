@@ -102,6 +102,7 @@ public sealed class InitiatePaymentCommandHandler(
             var reinit = existingPayment.ReinitiateCheckout(request.Kind, onlineAmountMinor, booking.PlatformCommissionMinor);
             if (reinit.IsFailure) return Result.Failure<InitiatePaymentResponse>(reinit.Error);
             payment = existingPayment; // yeni satır YOK — mevcut satır yeni checkout ile devam eder
+            // Idempotency-key satırda İLK initiate'in key'i olarak kalır (bilinçli: eski isteğin replay'i 409 almaya devam eder; reinitiate outcome-idempotent).
         }
         else
         {
@@ -144,6 +145,12 @@ public sealed class InitiatePaymentCommandHandler(
         try
         {
             await db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            // Eşzamanlı reinitiate yarışı: Version concurrency token'ı kaybedeni yakalar — 500 yerine 409.
+            return Result.Failure<InitiatePaymentResponse>(Error.Conflict(
+                "Bu randevu için zaten bir ödeme işlemi devam ediyor."));
         }
         catch (DbUpdateException ex) when (IsUniqueViolation(ex, out var constraint))
         {

@@ -291,6 +291,34 @@ public class PaymentTests
     }
 
     [Fact]
+    public void ReinitiateCheckout_BumpsVersion()
+    {
+        // Version bump = EF concurrency token değişimi; eşzamanlı reinitiate yarışında kaybedenin
+        // DbUpdateConcurrencyException (handler'da 409) almasının ön koşulu — pin'liyoruz.
+        var p = Initiate(gross: 200_00, commission: 20_00);
+        var versionBefore = p.Version;
+
+        var r = p.ReinitiateCheckout(PaymentKind.Deposit, grossAmountMinor: 30_00, platformCommissionMinor: 20_00);
+
+        Assert.True(r.IsSuccess);
+        Assert.True(p.Version > versionBefore);
+    }
+
+    [Fact]
+    public void ReinitiateCheckout_OnAuthorized_SucceedsAndResetsAuthorization()
+    {
+        var p = Initiate(gross: 200_00, commission: 20_00);
+        p.Authorize("tx-auth"); // Authorized — Fail edilmemiş, 3DS yarıda kalmış senaryo
+
+        var r = p.ReinitiateCheckout(PaymentKind.FullOnline, grossAmountMinor: 200_00, platformCommissionMinor: 20_00);
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(PaymentStatus.Initiated, p.Status);
+        Assert.Null(p.ProviderTransactionId);
+        Assert.Null(p.AuthorizedAt);
+    }
+
+    [Fact]
     public void ReinitiateCheckout_OnCaptured_Fails()
     {
         var p = Initiate(gross: 200_00, commission: 20_00);
