@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, Alert, Linking } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
@@ -47,11 +47,18 @@ export function KycDocumentPicker({ documentType, required, value, onUploaded, o
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const label = KYC_TYPE_LABELS[documentType];
 
+  // Upload async'i unmount sonrası dönerse (kullanıcı ekrandan hızlı çıkarsa)
+  // setState çağırmayı engelleyen guard — "Can't perform a React state update
+  // on an unmounted component" uyarısı ve olası bellek sızıntısı önlenir.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   async function upload(picked: PickedFile) {
     setStatus('uploading');
     setErrorMsg(null);
     try {
       const res = await BarberApi.uploadKycDocument(picked);
+      if (!mountedRef.current) return;
       setStatus('idle');
       Haptics.success();
       onUploaded({
@@ -62,6 +69,7 @@ export function KycDocumentPicker({ documentType, required, value, onUploaded, o
         sizeBytes: res.sizeBytes,
       });
     } catch (err) {
+      if (!mountedRef.current) return;
       Haptics.error();
       setStatus('error');
       setErrorMsg(extractApiError(err));
@@ -69,40 +77,58 @@ export function KycDocumentPicker({ documentType, required, value, onUploaded, o
   }
 
   async function pickFromCamera() {
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (perm.status !== 'granted') return alertPermissionDenied('kamera', perm.canAskAgain);
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    await upload({
-      uri: asset.uri,
-      name: asset.fileName ?? `${documentType.toLowerCase()}-${Date.now()}.jpg`,
-      contentType: asset.mimeType ?? 'image/jpeg',
-    });
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (perm.status !== 'granted') return alertPermissionDenied('kamera', perm.canAskAgain);
+      const result = await ImagePicker.launchCameraAsync({ mediaTypes: ['images'], quality: 0.7 });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      await upload({
+        uri: asset.uri,
+        name: asset.fileName ?? `${documentType.toLowerCase()}-${Date.now()}.jpg`,
+        contentType: asset.mimeType ?? 'image/jpeg',
+      });
+    } catch {
+      if (!mountedRef.current) return;
+      Haptics.error();
+      Alert.alert('Kamera açılamadı', 'Kamera şu anda kullanılamıyor. Lütfen tekrar dene.');
+    }
   }
 
   async function pickFromGallery() {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (perm.status !== 'granted') return alertPermissionDenied('galeri', perm.canAskAgain);
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    await upload({
-      uri: asset.uri,
-      name: asset.fileName ?? `${documentType.toLowerCase()}-${Date.now()}.jpg`,
-      contentType: asset.mimeType ?? 'image/jpeg',
-    });
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (perm.status !== 'granted') return alertPermissionDenied('galeri', perm.canAskAgain);
+      const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 0.7 });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      await upload({
+        uri: asset.uri,
+        name: asset.fileName ?? `${documentType.toLowerCase()}-${Date.now()}.jpg`,
+        contentType: asset.mimeType ?? 'image/jpeg',
+      });
+    } catch {
+      if (!mountedRef.current) return;
+      Haptics.error();
+      Alert.alert('Galeri açılamadı', 'Galeriye şu anda erişilemiyor. Lütfen tekrar dene.');
+    }
   }
 
   async function pickPdf() {
-    const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
-    if (result.canceled || !result.assets?.[0]) return;
-    const asset = result.assets[0];
-    await upload({
-      uri: asset.uri,
-      name: asset.name ?? `${documentType.toLowerCase()}.pdf`,
-      contentType: asset.mimeType ?? 'application/pdf',
-    });
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: 'application/pdf', copyToCacheDirectory: true });
+      if (result.canceled || !result.assets?.[0]) return;
+      const asset = result.assets[0];
+      await upload({
+        uri: asset.uri,
+        name: asset.name ?? `${documentType.toLowerCase()}.pdf`,
+        contentType: asset.mimeType ?? 'application/pdf',
+      });
+    } catch {
+      if (!mountedRef.current) return;
+      Haptics.error();
+      Alert.alert('Dosya seçilemedi', 'PDF seçici açılamadı. Lütfen tekrar dene.');
+    }
   }
 
   const statusText = status === 'uploading' ? 'yükleniyor' : value ? 'yüklendi' : status === 'error' ? 'hata' : 'boş';

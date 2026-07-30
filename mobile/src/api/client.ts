@@ -66,7 +66,13 @@ apiClient.interceptors.response.use(
   },
 );
 
-async function refreshTokens(): Promise<boolean> {
+/**
+ * Refresh access+refresh token çifti. Interceptor 401'de otomatik çağırır;
+ * RFC-007 owner onboarding Adım 1'de de (Customer→BarberOwner rol terfisi
+ * sonrası eski token'ın role claim'i bayat kaldığından) EXPLICIT olarak
+ * dışarıdan çağrılmak üzere export edildi. İmza değişmedi.
+ */
+export async function refreshTokens(): Promise<boolean> {
   try {
     const refreshToken = await TokenStorage.getRefreshToken();
     const deviceFingerprint = await TokenStorage.getDeviceFingerprint();

@@ -121,7 +121,34 @@ export type MyKycStatus = {
   documentCount: number;
 };
 
+export type CreateShopRequest = {
+  name: string;
+  genderType: 'Unisex' | 'FemaleOnly' | 'MaleOnly';
+  description?: string;
+  phone?: string;
+};
+
+export type SetAddressRequest = {
+  cityId: string;
+  districtId: string;
+  neighborhoodId: string;
+  line1: string;
+  line2?: string;
+  postalCode?: string;
+  latitude: number;
+  longitude: number;
+};
+
 export const BarberApi = {
+  // Owner onboarding (RFC-007): Customer token'ıyla da çağrılabilen TEK owner
+  // endpoint'i — handler Customer'ı atomik olarak BarberOwner'a terfi ettirir.
+  async createShop(body: CreateShopRequest): Promise<{ id: string }> {
+    const res = await apiClient.post<{ id: string }>('/v1/owner/barber-shop', body);
+    return res.data;
+  },
+  async setAddress(shopId: string, body: SetAddressRequest): Promise<void> {
+    await apiClient.put(`/v1/owner/barber-shop/${shopId}/address`, body);
+  },
   async search(params: SearchBarbersParams): Promise<SearchBarbersResponse> {
     const res = await apiClient.get<SearchBarbersResponse>('/v1/barber-shops/search', { params });
     return res.data;

@@ -16,6 +16,7 @@ export default function ProfileScreen() {
   const router = useRouter();
   const signOut = useAuthStore((s) => s.signOut);
   const storeUser = useAuthStore((s) => s.user);
+  const isCustomer = useAuthStore((s) => s.isCustomer());
   const role = storeUser?.role;
 
   const profileQuery = useQuery({
@@ -146,6 +147,19 @@ export default function ProfileScreen() {
             <Badge label={displayRole} tone="brand" />
           </View>
         </View>
+
+        {isCustomer ? (
+          <>
+            <Text style={styles.sectionTitle}>İşletme</Text>
+            <Card style={styles.section} padded={false}>
+              <ListRow
+                icon="💈"
+                label="Kuaför müsün? Salonunu ekle"
+                onPress={() => router.push('/onboarding/shop' as never)}
+              />
+            </Card>
+          </>
+        ) : null}
 
         <Text style={styles.sectionTitle}>Hesap</Text>
         <Card style={styles.section} padded={false}>
