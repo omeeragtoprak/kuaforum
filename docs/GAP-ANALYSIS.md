@@ -423,6 +423,8 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - `expo-image-picker` `microphonePermission` prebuild teyidi: config plugin'in iOS Info.plist çıktısı gerçek prebuild ile doğrulanmadı.
 - Gerçek geocoding: adres koordinatı şu an `tr-city-centroids` il merkezi yaklaşımı — salon haritada il merkezinde görünür; V1.5'te Google Maps geocoding (master spec kararı) ile değiştir.
 - Onboarding concurrency-catch mesaj dürüstlüğü (O2 review M-2): create-shop yarış 409'unda kullanıcıya "zaten işletmen var" yerine jenerik hata metni gösterilebiliyor — mesajı duruma özel hâle getir.
+- Promote sonrası refresh-fail + app restart edge'i (final review M-3): bayat access token 15 dk 403 döner, interceptor yalnız 401'de refresh yapar → `getMyShop` null → adım 1 → 409 çıkmazı; getMyShop hata-ayrımıyla birlikte ele al.
+- `documents.tsx` yüklenen belge listesi local state (final review M-4): adım 3'ten çıkıp dönen kullanıcı belgeleri yeniden yükler — orphan upload borcuyla birlikte çöz.
 - Efor: toplam 1-2 gün (parça parça alınabilir; mahalle import'u ayrı, kaynak kararı sonrası)
 
 ---

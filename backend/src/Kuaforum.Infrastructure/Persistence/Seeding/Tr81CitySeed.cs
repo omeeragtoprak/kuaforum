@@ -149,19 +149,22 @@ internal static class Tr81CitySeed
     /// </summary>
     public static readonly IReadOnlyDictionary<string, string[]> ErzurumNeighborhoods = new Dictionary<string, string[]>
     {
+        // Yalnız güncel resmi mahalle olarak DOĞRULANMIŞ adlar (2026-07-30, Vikipedi + nüfus
+        // kaynakları + belediye; final review WebSearch taraması). 2012 (6360) birleştirmeleriyle
+        // kapanan eski mahalleler ve semt adları bilinçli olarak ÇIKARILDI. Tam resmi liste
+        // V1.5'te NVİ/TÜİK verisiyle genişletilecek (GAP P2-12).
         ["Yakutiye"] = new[]
         {
-            "Cumhuriyet", "Lalapaşa", "Muratpaşa", "Aşağı Mumcu", "Yukarı Mumcu",
-            "Gürcükapı", "Gez", "Mahallebaşı", "Şükrüpaşa", "Sanayi",
+            "Lalapaşa", "Muratpaşa", "Şükrüpaşa",
         },
         ["Palandöken"] = new[]
         {
-            "Yunus Emre", "Adnan Menderes", "Osmangazi", "Abdurrahman Gazi",
-            "Hüseyin Avni Ulaş", "Maksut Efendi", "Solakzade", "Palandöken",
+            "Yunusemre", "Adnan Menderes", "Abdurrahman Gazi",
+            "Hüseyin Avni Ulaş", "Müftü Solakzade",
         },
         ["Aziziye"] = new[]
         {
-            "Ilıca", "Dadaşkent", "Selçuklu", "Saltuklu", "Gezköy",
+            "Ilıca", "Selçuklu", "Saltuklu", "Gezköy", // Gezköy [unverified — NVİ teyidi V1.5]
         },
     };
 }

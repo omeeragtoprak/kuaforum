@@ -154,7 +154,7 @@ export const BarberApi = {
     const res = await apiClient.get<SearchBarbersResponse>('/v1/barber-shops/search', { params });
     return res.data;
   },
-  async submitKyc(shopId: string, documents: KycDocumentRequest[]): Promise<{ id: string }> {
+  async submitKyc(shopId: string, documents: KycDocumentRequest[]): Promise<{ submissionId: string }> {
     const res = await apiClient.post(`/v1/owner/barber-shop/${shopId}/kyc/submit`, { documents });
     return res.data;
   },

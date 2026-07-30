@@ -34,7 +34,7 @@
 - **Giriş:** müşteri profilinde "💈 Kuaför müsün? Salonunu ekle" satırı (yalnız `isCustomer`).
 - **Adım 1 Salon:** ad + hizmet segmenti (SalonGenderType) + işletme telefonu. **Adım 2 Adres:** il/ilçe (mevcut geography API) + açık adres — geocoding YOK (V1.5, Maps key founder-bloklu). **Adım 3 Belgeler:** iki zorunlu kart (Vergi Levhası, Kimlik) + "belge ekle" ile opsiyoneller; kart başına kamera / galeri / PDF (`expo-image-picker` + `expo-document-picker`), yükleme durumu + hata/yeniden-dene; `POST /v1/uploads/kyc` mevcut.
 - **Devam edilebilirlik:** adım state'i Zustand'da; adım 1 sonrası shop Draft backend'de olduğundan çıkıp dönen kullanıcı kaldığı adımdan sürer (idempotent devam — mevcut Draft shop'u olan kullanıcı sihirbazın 2. adımından başlar).
-- Submit → rol geçişi + token refresh → kuaför paneli + "Başvurun incelemede" durumu. Mevcut `(barber)/kyc.tsx` manuel storage-key input'u gerçek picker'lı upload'la değiştirilir (re-submit akışı Cycle 9 onarımıyla çalışıyor; onay/red bildirimleri mevcut).
+- Adım 3 submit → kuaför paneli + "Başvurun incelemede" durumu (rol geçişi + token refresh Adım 1'de, yukarıdaki "atomik create-shop" bölümünde gerçekleşir). Mevcut `(barber)/kyc.tsx` manuel storage-key input'u gerçek picker'lı upload'la değiştirilir (re-submit akışı Cycle 9 onarımıyla çalışıyor; onay/red bildirimleri mevcut).
 
 ### Test
 
