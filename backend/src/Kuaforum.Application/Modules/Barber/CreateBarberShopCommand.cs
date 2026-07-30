@@ -39,6 +39,18 @@ public sealed class CreateBarberShopCommandHandler(
         var existing = await ctx.Set<BarberShop>().AnyAsync(s => s.OwnerId == request.OwnerId, cancellationToken);
         if (existing) return Result.Failure<Guid>(Error.Conflict("Bu kullanıcının zaten bir işletmesi var. Çoklu işletme desteği V1.5'te gelecek."));
 
+        // RFC-007: self-serve onboarding — Customer, işletme oluştururken AYNI
+        // SaveChanges içinde BarberOwner'a terfi eder (atomik rol geçişi).
+        if (owner.Role == UserRole.Customer)
+        {
+            var promote = owner.PromoteToBarberOwner();
+            if (promote.IsFailure) return Result.Failure<Guid>(promote.Error);
+        }
+        else if (owner.Role != UserRole.BarberOwner)
+        {
+            return Result.Failure<Guid>(Error.Forbidden("Bu hesap türü işletme oluşturamaz."));
+        }
+
         var createResult = BarberShop.Create(request.OwnerId, request.Name, request.GenderType);
         if (createResult.IsFailure) return Result.Failure<Guid>(createResult.Error);
 
@@ -49,7 +61,7 @@ public sealed class CreateBarberShopCommandHandler(
         ctx.Set<BarberShop>().Add(shop);
 
         await audit.RecordAsync("barber.shop.created", nameof(BarberShop), shop.Id.ToString(),
-            actorUserId: request.OwnerId, payload: new { shop.Name, shop.GenderType }, ct: cancellationToken);
+            actorUserId: request.OwnerId, payload: new { shop.Name, shop.GenderType, RoleAfter = owner.Role.ToString() }, ct: cancellationToken);
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success(shop.Id);

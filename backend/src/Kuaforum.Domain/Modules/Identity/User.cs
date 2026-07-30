@@ -109,6 +109,8 @@ public sealed class User : AggregateRoot
             return Result.Failure(Error.Validation("Aktif olmayan hesap yetkilendirilemez."));
         if (Role == UserRole.Admin)
             return Result.Failure(Error.Validation("Yönetici hesabı kuaför sahipliğine düşürülemez."));
+        if (Role == UserRole.Stylist)
+            return Result.Failure(Error.Validation("Stilist hesabı işletme sahipliğine yükseltilemez — işletme sahibiyle iletişime geçin."));
         Role = UserRole.BarberOwner;
         Touch();
         return Result.Success();

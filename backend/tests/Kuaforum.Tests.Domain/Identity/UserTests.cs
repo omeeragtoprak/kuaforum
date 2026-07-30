@@ -75,6 +75,47 @@ public class UserTests
         Assert.True(result.IsFailure);
     }
 
+    // RFC-007 Task 1: self-serve Customer → BarberOwner geçişi.
+    // NOT: Stylist rolündeki bir User domain'de meşru bir yolla kurulamıyor
+    // (UserRole.Stylist hiçbir factory/metotta atanmıyor; Barber modülündeki Stylist
+    // entity'si User rolünden bağımsız). Bu yüzden "Stylist promote edilemez" guard'ı
+    // burada değil, handler'daki rol dalı üzerinden OwnerOnboardingTests
+    // (integration) içinde Admin rolüyle test ediliyor — reflection ile rol set etmek yasak.
+    [Fact]
+    public void PromoteToBarberOwner_FromCustomer_Succeeds()
+    {
+        var user = User.CreateCustomerByPhone(Phone()).Value;
+
+        var result = user.PromoteToBarberOwner();
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(UserRole.BarberOwner, user.Role);
+    }
+
+    [Fact]
+    public void PromoteToBarberOwner_Admin_Fails()
+    {
+        var email = EmailAddress.TryCreate("admin-promote@kuaforum.test").Value;
+        var admin = User.CreateAdmin(email, "Test Admin").Value;
+
+        var result = admin.PromoteToBarberOwner();
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(UserRole.Admin, admin.Role);
+    }
+
+    [Fact]
+    public void PromoteToBarberOwner_SuspendedUser_Fails()
+    {
+        var user = User.CreateCustomerByPhone(Phone()).Value;
+        user.Suspend();
+
+        var result = user.PromoteToBarberOwner();
+
+        Assert.True(result.IsFailure);
+        Assert.Equal(UserRole.Customer, user.Role);
+    }
+
     [Fact]
     public void AnonymizeForHardDelete_RemovesIdentifyingInfo()
     {

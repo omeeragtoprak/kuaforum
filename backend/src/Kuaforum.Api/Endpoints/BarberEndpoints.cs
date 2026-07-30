@@ -90,7 +90,9 @@ public static class BarberEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new CreateBarberShopCommand(ctx.UserId.Value, body.Name, body.GenderType, body.Description, body.Phone), token);
-            return r.IsSuccess ? Results.Created($"/v1/barber-shops/{r.Value}", new { id = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess
+                ? Results.Created($"/v1/barber-shops/{r.Value}", new { id = r.Value })
+                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "conflict" => 409, "forbidden" => 403, _ => 400 });
         }).WithName("CreateBarberShop");
 
         ownerGroup.MapPatch("/{id:guid}", async (Guid id, [FromBody] UpdateBarberShopRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
