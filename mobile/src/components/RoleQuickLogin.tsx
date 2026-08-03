@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
 import { Colors, Radius, Spacing, FontSize, FontWeight, Shadow } from '@/lib/theme';
 
-export type DemoRole = 'Customer' | 'BarberOwner' | 'BarberOwnerDraft' | 'Admin';
+export type DemoRole = 'Customer' | 'CustomerFresh' | 'BarberOwner' | 'BarberOwnerDraft' | 'Admin';
 
 type RoleQuickLoginProps = {
   role: DemoRole;
@@ -18,6 +18,13 @@ const META: Record<
     title: 'Müşteri olarak gir',
     subtitle: 'Randevu al, kuaför keşfet',
     bg: Colors.primary,
+    fg: Colors.textInverse,
+  },
+  CustomerFresh: {
+    emoji: '🔐',
+    title: 'Müşteri (rıza ekranı)',
+    subtitle: 'Her girişte KVKK rıza akışı yeniden sorulur',
+    bg: '#8B5CF6',
     fg: Colors.textInverse,
   },
   BarberOwner: {

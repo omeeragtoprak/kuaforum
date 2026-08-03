@@ -40,7 +40,7 @@ export const AuthApi = {
     return res.data;
   },
 
-  async devLogin(role: 'Customer' | 'BarberOwner' | 'BarberOwnerDraft' | 'Admin'): Promise<VerifyOtpResponse> {
+  async devLogin(role: 'Customer' | 'CustomerFresh' | 'BarberOwner' | 'BarberOwnerDraft' | 'Admin'): Promise<VerifyOtpResponse> {
     const deviceFingerprint = await TokenStorage.getDeviceFingerprint();
     const res = await apiClient.post<VerifyOtpResponse>('/v1/auth/dev-login', {
       role,

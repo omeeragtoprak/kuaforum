@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { TokenStorage } from '@/lib/secure-storage';
 import { AuthApi } from '@/api/auth';
+import { shouldClearTokensOnHydrateError } from '@/lib/auth-hydrate';
 
 export type AuthRole = 'Customer' | 'BarberOwner' | 'Stylist' | 'Admin';
 
@@ -70,15 +71,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
       });
     } catch (err) {
-      // token expired/invalid — beklenen path (401/403) sessizce geçer;
-      // network/parse hatasında reporter'a düşer.
       const status = (err as { response?: { status?: number } })?.response?.status;
-      if (status !== 401 && status !== 403) {
-        const { ErrorReporter } = await import('@/lib/error-reporter');
-        ErrorReporter.capture(err, { tag: 'auth.hydrate', extra: { status } });
+      if (shouldClearTokensOnHydrateError(status)) {
+        // token expired/invalid (401/403) — beklenen path, sessizce local auth temizlenir.
+        await TokenStorage.clear();
+        set({ isAuthenticated: false, user: null, isLoading: false });
+        return;
       }
-      await TokenStorage.clear();
-      set({ isAuthenticated: false, user: null, isLoading: false });
+      // RFC-008 kapanış: network/timeout/5xx/parse hatasında token'lar KORUNUR —
+      // hydrate artık otp-verify ve consent sonrası kritik yollarda da çağrıldığından
+      // geçici bir hata sessiz logout'a dönüşmemeli. user state mevcut haliyle kalır;
+      // cold start'ta user null kaldıysa caller'lar (otp/consent/login) zaten login'e düşer.
+      const { ErrorReporter } = await import('@/lib/error-reporter');
+      ErrorReporter.capture(err, { tag: 'auth.hydrate', extra: { status } });
+      set({ isLoading: false });
     }
   },
   isCustomer: () => (get().user?.role ?? 'Customer') === 'Customer',

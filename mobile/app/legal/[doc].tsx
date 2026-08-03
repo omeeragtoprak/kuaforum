@@ -23,11 +23,14 @@ type MarkdownBlock =
  * metni gelene kadar founder'ın "canlıya çıkma" launch-checklist sinyali budur), diğer
  * satırlar paragraf. Ardışık aynı tip satırlar (örn. çok satırlı `>` uyarısı) tek bloğa
  * birleştirilir — aksi halde art arda kopuk kutucuklar UX'i bozar.
+ * `**bold**` işaretleri strip edilir (gerçek bold render YOK — literal yıldız görünmesin
+ * yeter). Kalan renderer sınırları (###, liste, gerçek bold/italik) docs/GAP-ANALYSIS.md
+ * P2 backlog'unda — hukukçu metni geldiğinde markdown kapsamı metne göre gözden geçirilir.
  */
 function parseMarkdown(markdown: string): MarkdownBlock[] {
   const lines = markdown
     .split('\n')
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/\*\*(.+?)\*\*/g, '$1'))
     .filter((line) => line.length > 0);
 
   const blocks: MarkdownBlock[] = [];
@@ -66,7 +69,9 @@ export default function LegalDocScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable
-          onPress={() => router.back()}
+          // Deep-link/ilk rota olarak açıldığında history boş olabilir — geri düşecek
+          // yer yoksa login'e dön (RFC-008 K2 review M-3).
+          onPress={() => (router.canGoBack() ? router.back() : router.replace('/(auth)/login' as never))}
           style={styles.backBtn}
           accessibilityRole="button"
           accessibilityLabel="Geri"

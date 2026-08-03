@@ -79,6 +79,11 @@ export default function LoginScreen() {
                   onPress={() => handleQuickLogin('Customer')}
                 />
                 <RoleQuickLogin
+                  role="CustomerFresh"
+                  loading={quickRole === 'CustomerFresh'}
+                  onPress={() => handleQuickLogin('CustomerFresh')}
+                />
+                <RoleQuickLogin
                   role="BarberOwner"
                   loading={quickRole === 'BarberOwner'}
                   onPress={() => handleQuickLogin('BarberOwner')}

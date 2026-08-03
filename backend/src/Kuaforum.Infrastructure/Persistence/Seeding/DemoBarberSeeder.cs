@@ -1,3 +1,4 @@
+using Kuaforum.Application.Common;
 using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Geography;
 using Kuaforum.Domain.Modules.Identity;
@@ -26,6 +27,9 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
         if (hasDemo)
         {
             logger.LogDebug("DemoBarberSeeder: demo data already present, skipping.");
+            // Mevcut dev DB'lerde persona'lar consent'siz doğmuş olabilir (RFC-008 öncesi) —
+            // shop seed'i atlansa da eksik ToS rızaları idempotent şekilde backfill edilir.
+            await SeedMissingTosConsentsAsync(demoPhones, ct);
             return;
         }
 
@@ -112,7 +116,46 @@ public sealed class DemoBarberSeeder(ApplicationDbContext db, ILogger<DemoBarber
         }
 
         await db.SaveChangesAsync(ct);
+        await SeedMissingTosConsentsAsync(demoPhones, ct);
         logger.LogInformation("DemoBarberSeeder: complete.");
+    }
+
+    /// <summary>
+    /// RFC-008 — standart demo personalar güncel ToS rızasıyla doğar; rıza akışı
+    /// consent gate'i her quick-login'de bloklamasın. Rıza akışının elle test kapısı
+    /// consent'siz <c>DevLoginRole.CustomerFresh</c> personasıdır. Versiyon sabiti
+    /// <see cref="LegalDocuments.CurrentTosVersion"/>'dan okunur — hukuki metin
+    /// versiyonu değişince personalar da otomatik yeni rıza turuna girer.
+    /// Idempotent: güncel versiyonla granted ToS'u olan kullanıcı atlanır.
+    /// </summary>
+    private async Task SeedMissingTosConsentsAsync(string[] personaPhones, CancellationToken ct)
+    {
+        var userIds = await db.Users
+            .Where(u => u.PhoneE164 != null && personaPhones.Contains(u.PhoneE164))
+            .Select(u => u.Id)
+            .ToListAsync(ct);
+        if (userIds.Count == 0) return;
+
+        var alreadyConsented = await db.Consents
+            .Where(c => userIds.Contains(c.UserId)
+                && c.Purpose == ConsentPurpose.TermsOfService
+                && c.Granted
+                && c.RevokedAt == null
+                && c.Version == LegalDocuments.CurrentTosVersion)
+            .Select(c => c.UserId)
+            .ToListAsync(ct);
+
+        var missing = userIds.Except(alreadyConsented).ToList();
+        if (missing.Count == 0) return;
+
+        foreach (var userId in missing)
+        {
+            db.Consents.Add(Consent.Grant(
+                userId, ConsentPurpose.TermsOfService, LegalDocuments.CurrentTosVersion, ConsentSource.Registration));
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("DemoBarberSeeder: {Count} demo persona için ToS consent seed edildi.", missing.Count);
     }
 
     private record DemoShop(

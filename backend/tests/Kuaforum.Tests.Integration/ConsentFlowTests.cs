@@ -176,6 +176,53 @@ public sealed class ConsentFlowTests(IntegrationTestFactory factory)
     }
 
     [Fact]
+    public async Task Demo_seeded_barber_owner_is_born_with_current_tos_consent()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.DemoBarberSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("BarberOwner");
+        client.SetBearer(login.AccessToken);
+
+        // RFC-008 kapanış: standart demo personalar consent gate'e takılmadan girebilmeli —
+        // seeder güncel CurrentTosVersion ile ToS rızası seed eder.
+        var profile = await client.GetJson<MyProfileResp>("/v1/users/me");
+        Assert.False(profile.RequiresTosConsent, "Seed edilen demo owner güncel ToS rızasıyla doğmalı");
+    }
+
+    [Fact]
+    public async Task CustomerFresh_dev_login_always_returns_user_without_tos_consent()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+
+        // ilk login: kullanıcı yaratılır, consent yok → gate açık
+        var first = await client.DevLoginAsync("CustomerFresh");
+        client.SetBearer(first.AccessToken);
+        var before = await client.GetJson<MyProfileResp>("/v1/users/me");
+        Assert.True(before.RequiresTosConsent, "CustomerFresh ilk login'de consent'siz olmalı");
+
+        // rıza verilir → gate kapanır
+        var grant = await client.PostJsonAsync("/v1/users/me/consents/initial", new { acceptTos = true, acceptMarketing = false });
+        Assert.Equal(HttpStatusCode.NoContent, grant.StatusCode);
+        var after = await client.GetJson<MyProfileResp>("/v1/users/me");
+        Assert.False(after.RequiresTosConsent);
+
+        // ikinci login: rıza akışının elle test kapısı — granted ToS revoke edilip gate yeniden açılmalı
+        var second = await client.DevLoginAsync("CustomerFresh");
+        Assert.Equal(first.UserId, second.UserId);
+        client.SetBearer(second.AccessToken);
+        var again = await client.GetJson<MyProfileResp>("/v1/users/me");
+        Assert.True(again.RequiresTosConsent, "CustomerFresh her dev-login'de ToS consent'i OLMAYAN kullanıcı dönmeli");
+    }
+
+    [Fact]
     public async Task Initial_grant_supersedes_stale_tos_consent_row()
     {
         await factory.ResetDatabaseAsync();

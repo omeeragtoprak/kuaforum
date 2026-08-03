@@ -156,7 +156,8 @@ function ConsentCheckboxRow({
       style={styles.checkboxRow}
       accessibilityRole="checkbox"
       accessibilityState={{ checked }}
-      accessibilityLabel={label}
+      // Görünen metin değişmeden screen reader'a zorunluluk bilgisi ver (a11y — RFC-008 K2 review M-2).
+      accessibilityLabel={required ? `${label} (zorunlu)` : label}
       testID={testID}
       hitSlop={8}
     >

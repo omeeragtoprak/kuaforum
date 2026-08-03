@@ -1,4 +1,5 @@
 using System.Reflection;
+using Kuaforum.Application.Common;
 using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Booking;
 using Kuaforum.Domain.Modules.Geography;
@@ -38,6 +39,9 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
         if (alreadySeeded)
         {
             logger.LogDebug("ComprehensiveDemoSeeder: already seeded, skipping.");
+            // RFC-008 öncesi seed edilmiş dev DB'lerde personalar consent'siz olabilir —
+            // eksik ToS rızalarını idempotent backfill et.
+            await SeedMissingTosConsentsAsync(ct);
             return;
         }
 
@@ -420,8 +424,52 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
         db.AuditLogs.AddRange(auditLogs);
         await db.SaveChangesAsync(ct);
 
+        // ---- Step 8: RFC-008 — standart personalar (owner + customer) güncel ToS rızasıyla doğar ----
+        await SeedMissingTosConsentsAsync(ct);
+
         logger.LogInformation("ComprehensiveDemoSeeder: complete. shops={Shops} customers={Customers} bookings={Bookings} payments={Payments} reviews={Reviews} notifs={Notifs}",
             newShops.Count, customers.Count, bookings.Count, paymentsToAdd.Count, reviewsToAdd.Count, notifs.Count);
+    }
+
+    /// <summary>
+    /// RFC-008 — bu seeder'ın yarattığı standart personalara (15 shop owner + 50 customer)
+    /// güncel versiyonla ToS rızası seed eder; consent gate demo hesaplarını bloklamasın.
+    /// Rıza akışının elle test kapısı consent'siz <c>DevLoginRole.CustomerFresh</c>'tir.
+    /// Versiyon <see cref="LegalDocuments.CurrentTosVersion"/> sabitinden okunur.
+    /// Idempotent: güncel versiyonla granted ToS'u olan kullanıcı atlanır.
+    /// </summary>
+    private async Task SeedMissingTosConsentsAsync(CancellationToken ct)
+    {
+        var personaPhones = AdditionalShops.Select(s => s.OwnerPhone)
+            .Concat(DemoCustomers.Select(c => c.Phone))
+            .ToArray();
+
+        var userIds = await db.Users
+            .Where(u => u.PhoneE164 != null && personaPhones.Contains(u.PhoneE164))
+            .Select(u => u.Id)
+            .ToListAsync(ct);
+        if (userIds.Count == 0) return;
+
+        var alreadyConsented = await db.Consents
+            .Where(c => userIds.Contains(c.UserId)
+                && c.Purpose == ConsentPurpose.TermsOfService
+                && c.Granted
+                && c.RevokedAt == null
+                && c.Version == LegalDocuments.CurrentTosVersion)
+            .Select(c => c.UserId)
+            .ToListAsync(ct);
+
+        var missing = userIds.Except(alreadyConsented).ToList();
+        if (missing.Count == 0) return;
+
+        foreach (var userId in missing)
+        {
+            db.Consents.Add(Consent.Grant(
+                userId, ConsentPurpose.TermsOfService, LegalDocuments.CurrentTosVersion, ConsentSource.Registration));
+        }
+
+        await db.SaveChangesAsync(ct);
+        logger.LogInformation("ComprehensiveDemoSeeder: {Count} demo persona için ToS consent seed edildi.", missing.Count);
     }
 
     /// <summary>

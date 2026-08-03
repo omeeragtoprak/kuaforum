@@ -24,6 +24,13 @@ public enum DevLoginRole
     BarberOwner = 1,
     Admin = 2,
     BarberOwnerDraft = 3,
+
+    /// <summary>
+    /// RFC-008 — rıza akışının elle test kapısı: her dev-login'de güncel ToS rızası
+    /// OLMAYAN taze bir customer döner (varsa granted ToS rızaları revoke edilir),
+    /// böylece consent ekranı her girişte yeniden açılır.
+    /// </summary>
+    CustomerFresh = 4,
 }
 
 public sealed class DevLoginCommandValidator : AbstractValidator<DevLoginCommand>
@@ -44,6 +51,7 @@ public sealed class DevLoginCommandHandler(
     private static readonly TimeSpan RefreshTokenLifetime = TimeSpan.FromDays(30);
 
     private const string CustomerDemoPhone = "+905551234567";
+    private const string CustomerFreshDemoPhone = "+905551234599";
     private const string BarberOwnerDemoPhone = "+905001000001";
     private const string BarberOwnerDraftDemoPhone = "+905001000099";
 
@@ -68,6 +76,37 @@ public sealed class DevLoginCommandHandler(
                         return Result.Failure<VerifyOtpResponse>(createResult.Error);
                     user = createResult.Value;
                     users.Add(user);
+                }
+                break;
+            }
+
+            case DevLoginRole.CustomerFresh:
+            {
+                // RFC-008 — consent'siz taze customer: kullanıcı yoksa yaratılır; varsa
+                // granted ToS rızaları revoke edilir. Sonuç: requiresTosConsent her
+                // dev-login'de true → rıza ekranı elle test edilebilir.
+                user = await users.FirstOrDefaultAsync(u => u.PhoneE164 == CustomerFreshDemoPhone, cancellationToken);
+                if (user is null)
+                {
+                    var phoneResult = PhoneE164.TryCreate(CustomerFreshDemoPhone);
+                    if (phoneResult.IsFailure)
+                        return Result.Failure<VerifyOtpResponse>(phoneResult.Error);
+                    var createResult = User.CreateCustomerByPhone(phoneResult.Value, "Demo Müşteri (Rıza)");
+                    if (createResult.IsFailure)
+                        return Result.Failure<VerifyOtpResponse>(createResult.Error);
+                    user = createResult.Value;
+                    users.Add(user);
+                }
+                else
+                {
+                    var grantedTosConsents = await ctx.Set<Consent>()
+                        .Where(c => c.UserId == user.Id
+                            && c.Purpose == ConsentPurpose.TermsOfService
+                            && c.Granted
+                            && c.RevokedAt == null)
+                        .ToListAsync(cancellationToken);
+                    foreach (var consent in grantedTosConsents)
+                        consent.Revoke();
                 }
                 break;
             }
