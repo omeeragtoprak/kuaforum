@@ -9,11 +9,11 @@ import { Colors, FontSize, FontWeight, Spacing } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
+import { resolvePostAuthRoute } from '@/lib/consent-gate';
 import { formatPhoneTr, isValidTrMobile, phoneToE164 } from '@/lib/format';
 
 export default function LoginScreen() {
   const router = useRouter();
-  const setUser = useAuthStore((s) => s.setUser);
 
   const [phone, setPhone] = useState('+90 ');
   const [loading, setLoading] = useState(false);
@@ -41,10 +41,12 @@ export default function LoginScreen() {
   async function handleQuickLogin(role: DemoRole) {
     setQuickRole(role);
     try {
-      const res = await AuthApi.devLogin(role);
-      setUser(res.user as any);
-      // AuthGate role'e göre yönlendirir
-      router.replace('/(tabs)');
+      await AuthApi.devLogin(role);
+      // RFC-008 — dev-login response'unda requiresTosConsent yok; hydrate() taze
+      // profili çeker, aynı gate helper (AuthGate'in de kullandığı) hedefi belirler.
+      await useAuthStore.getState().hydrate();
+      const freshUser = useAuthStore.getState().user;
+      if (freshUser) router.replace(resolvePostAuthRoute(freshUser) as never);
     } catch (err) {
       Alert.alert('Hızlı giriş başarısız', extractApiError(err));
     } finally {
@@ -125,8 +127,24 @@ export default function LoginScreen() {
           />
 
           <Text style={styles.legal}>
-            Devam ederek <Text style={styles.legalLink}>Kullanım Koşulları</Text> ve{' '}
-            <Text style={styles.legalLink}>KVKK Aydınlatma Metni</Text>'ni kabul etmiş olursun.
+            <Text
+              style={styles.legalLink}
+              onPress={() => router.push('/legal/kullanim-kosullari' as never)}
+              accessibilityRole="link"
+              accessibilityLabel="Kullanım Koşulları"
+            >
+              Kullanım Koşulları
+            </Text>{' '}
+            ve{' '}
+            <Text
+              style={styles.legalLink}
+              onPress={() => router.push('/legal/aydinlatma' as never)}
+              accessibilityRole="link"
+              accessibilityLabel="KVKK Aydınlatma Metni"
+            >
+              KVKK Aydınlatma Metni
+            </Text>
+            'ni buradan okuyabilirsin. Giriş sonrası onayın alınacak.
           </Text>
         </View>
       </KeyboardAvoidingView>

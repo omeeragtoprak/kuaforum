@@ -180,7 +180,7 @@ export default function ProfileScreen() {
         <Card style={styles.section} padded={false}>
           <ListRow icon="💬" label="Destek" hint="Yakında" disabled />
           <Divider />
-          <ListRow icon="📄" label="Kullanım Koşulları" hint="Yakında" disabled />
+          <ListRow icon="📄" label="Kullanım Koşulları" onPress={() => router.push('/legal/kullanim-kosullari' as never)} />
           <Divider />
           <ListRow icon="🏷️" label="Sürüm" value="0.0.1" disabled />
         </Card>

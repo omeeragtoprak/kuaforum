@@ -185,8 +185,15 @@ export default function ConfirmBookingScreen() {
         />
 
         <Text style={styles.kvkk}>
-          Devam ederek randevuyla ilgili kişisel verilerinin işlenmesine ve KVKK aydınlatma metnine onay
-          vermiş olursun.
+          Kişisel verilerinin işlenmesi hakkında:{' '}
+          <Text
+            style={styles.kvkkLink}
+            onPress={() => router.push('/legal/aydinlatma' as never)}
+            accessibilityRole="link"
+            accessibilityLabel="Aydınlatma Metni"
+          >
+            Aydınlatma Metni
+          </Text>
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -273,6 +280,7 @@ const styles = StyleSheet.create({
   policyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   policyText: { fontSize: FontSize.sm, color: Colors.text },
   kvkk: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', lineHeight: 16, marginTop: Spacing.sm },
+  kvkkLink: { color: Colors.primary, textDecorationLine: 'underline' },
   payOption: {
     flexDirection: 'row',
     alignItems: 'center',

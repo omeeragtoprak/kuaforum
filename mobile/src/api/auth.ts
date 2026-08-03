@@ -66,8 +66,8 @@ export const AuthApi = {
     await TokenStorage.clear();
   },
 
-  async getMyProfile() {
-    const res = await apiClient.get('/v1/users/me');
+  async getMyProfile(): Promise<Profile> {
+    const res = await apiClient.get<Profile>('/v1/users/me');
     return res.data;
   },
 
@@ -114,6 +114,36 @@ export const AuthApi = {
   async updateConsent(purpose: ConsentPurposeKey, grant: boolean): Promise<void> {
     await apiClient.patch('/v1/users/me/consents', { purpose, grant });
   },
+
+  /**
+   * RFC-008 — OTP-sonrası/ilk-açılış tek seferlik rıza ekranı. ToS zorunlu (backend
+   * `acceptTos !== true` → 400), Marketing opsiyonel. Idempotent: güncel ToS rızası
+   * zaten varsa no-op success döner.
+   */
+  async grantInitialConsents(acceptMarketing: boolean): Promise<void> {
+    await apiClient.post('/v1/users/me/consents/initial', { acceptTos: true, acceptMarketing });
+  },
+};
+
+/**
+ * `GET /v1/users/me` response (backend `MyProfileDto`). `requiresTosConsent` — RFC-008
+ * tek doğruluk kaynağı: mobile kendi versiyon karşılaştırması YAPMAZ, sunucudan gelen
+ * bu bool'a güvenir (bkz. `src/lib/consent-gate.ts`).
+ */
+export type Profile = {
+  id: string;
+  phone: string | null;
+  email: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  role: 'Customer' | 'BarberOwner' | 'Stylist' | 'Admin';
+  status: string;
+  locale: string;
+  timeZone: string;
+  createdAt: string;
+  lastLoginAt: string | null;
+  deletedAt: string | null;
+  requiresTosConsent: boolean;
 };
 
 export type Session = {

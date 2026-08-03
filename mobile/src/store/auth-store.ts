@@ -10,6 +10,9 @@ export type AuthUser = {
   displayName?: string | null;
   email?: string | null;
   role: AuthRole;
+  /** RFC-008 — server-derived; sadece `hydrate()` üzerinden (`GET /v1/users/me`) gelir.
+   * OTP-verify/dev-login response'unda YOK — o yüzden login sonrası da hydrate() çağrılır. */
+  requiresTosConsent?: boolean;
 };
 
 type AuthState = {
@@ -61,6 +64,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           displayName: profile.displayName,
           email: profile.email,
           role: profile.role,
+          requiresTosConsent: profile.requiresTosConsent,
         },
         isAuthenticated: true,
         isLoading: false,

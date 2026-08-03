@@ -8,13 +8,13 @@ import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { maskPhone } from '@/lib/format';
 import { useAuthStore } from '@/store/auth-store';
+import { resolvePostAuthRoute } from '@/lib/consent-gate';
 
 const CODE_LEN = 6;
 
 export default function OtpScreen() {
   const params = useLocalSearchParams<{ otpId: string; phone: string }>();
   const router = useRouter();
-  const setUser = useAuthStore((s) => s.setUser);
   const inputRef = useRef<TextInput>(null);
 
   const [code, setCode] = useState('');
@@ -39,9 +39,13 @@ export default function OtpScreen() {
     if (submittedCode.length !== CODE_LEN) return;
     setLoading(true);
     try {
-      const res = await AuthApi.verifyOtp(params.otpId!, submittedCode);
-      setUser(res.user as any);
-      router.replace('/(tabs)');
+      await AuthApi.verifyOtp(params.otpId!, submittedCode);
+      // RFC-008 — verify response'unda requiresTosConsent yok; tek doğruluk kaynağı
+      // GET /v1/users/me olduğu için hydrate() ile taze profil çekilir, sonra AynI
+      // gate helper (AuthGate'in de kullandığı) hedefi belirler.
+      await useAuthStore.getState().hydrate();
+      const freshUser = useAuthStore.getState().user;
+      if (freshUser) router.replace(resolvePostAuthRoute(freshUser) as never);
     } catch (err) {
       Alert.alert('Hata', extractApiError(err));
       setCode('');
