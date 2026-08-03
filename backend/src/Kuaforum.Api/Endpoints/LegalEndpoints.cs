@@ -29,7 +29,7 @@ public static class LegalEndpoints
         return app;
     }
 
-    private static async Task<IResult> GetLegalDocument(string doc, CancellationToken ct)
+    private static async Task<IResult> GetLegalDocument(string doc, ILoggerFactory lf, CancellationToken ct)
     {
         if (!Documents.TryGetValue(doc, out var meta))
             return Results.NotFound();
@@ -37,7 +37,18 @@ public static class LegalEndpoints
         var assembly = typeof(LegalEndpoints).Assembly;
         await using var stream = assembly.GetManifestResourceStream(meta.ResourceName);
         if (stream is null)
-            return Results.NotFound();
+        {
+            // Allowlist'te var ama resource yok → kullanıcı hatası (bilinmeyen doc) DEĞİL,
+            // packaging/deploy hatası. 404 ile maskelenirse prod'da sessizce fark edilmez.
+            var log = lf.CreateLogger("LegalEndpoints");
+            log.LogError(
+                "Legal doc '{Doc}' allowlist'te var ama embedded resource '{ResourceName}' bulunamadı — packaging hatası.",
+                doc, meta.ResourceName);
+            return Results.Problem(
+                detail: "Legal metin yüklenemedi.",
+                statusCode: StatusCodes.Status500InternalServerError,
+                title: "legal_resource_missing");
+        }
 
         using var reader = new StreamReader(stream);
         var markdown = await reader.ReadToEndAsync(ct);

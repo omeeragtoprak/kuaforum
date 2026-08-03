@@ -174,4 +174,51 @@ public sealed class ConsentFlowTests(IntegrationTestFactory factory)
         var profile = await client.GetJson<MyProfileResp>("/v1/users/me");
         Assert.True(profile.RequiresTosConsent, "Eski versiyon ToS rızası güncel sayılmamalı");
     }
+
+    [Fact]
+    public async Task Initial_grant_supersedes_stale_tos_consent_row()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("Customer");
+        client.SetBearer(login.AccessToken);
+
+        // en riskli dal: kullanıcının ELİNDE zaten GRANTED ama eski versiyon (v0) ToS satırı var
+        // (ör. hukuk metni v1'e güncellendi). Initial-grant çağrısı bu satırı revoke edip yerine
+        // güncel v1 satırı yazmalı — hem eski satırın hem yeni satırın state'i doğru olmalı.
+        Guid staleConsentId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+            var staleConsent = Consent.Grant(login.UserId, ConsentPurpose.TermsOfService, "v0", ConsentSource.Registration);
+            db.Set<Consent>().Add(staleConsent);
+            await db.SaveChangesAsync();
+            staleConsentId = staleConsent.Id;
+        }
+
+        var grant = await client.PostJsonAsync("/v1/users/me/consents/initial", new { acceptTos = true, acceptMarketing = false });
+        Assert.Equal(HttpStatusCode.NoContent, grant.StatusCode);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.ApplicationDbContext>();
+
+            var staleRow = await db.Set<Consent>().SingleAsync(c => c.Id == staleConsentId);
+            Assert.False(staleRow.Granted, "Eski v0 satırı supersede sonrası Granted=false olmalı");
+            Assert.NotNull(staleRow.RevokedAt);
+            Assert.Equal("v0", staleRow.Version);
+
+            var activeRow = await db.Set<Consent>()
+                .SingleAsync(c => c.UserId == login.UserId
+                    && c.Purpose == ConsentPurpose.TermsOfService
+                    && c.Id != staleConsentId);
+            Assert.True(activeRow.Granted);
+            Assert.Null(activeRow.RevokedAt);
+            Assert.Equal("v1", activeRow.Version);
+        }
+
+        var profile = await client.GetJson<MyProfileResp>("/v1/users/me");
+        Assert.False(profile.RequiresTosConsent, "Supersede sonrası güncel v1 rızası granted olmalı");
+    }
 }
