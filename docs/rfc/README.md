@@ -15,6 +15,7 @@
 | [RFC-005](RFC-005-otp-only-launch.md) | MVP Launch'ta Yalnız Telefon+OTP Girişi | ✅ Accepted (founder onayı 2026-07-23) | 2026-07-23 |
 | [RFC-006](RFC-006-kapora-checkout.md) | Ödeme Modeli: Kapora %15 + Tam Ödeme + Salonda Kalan | ✅ Accepted (founder onayı 2026-07-24) | 2026-07-29 |
 | [RFC-007](RFC-007-owner-onboarding.md) | Owner Onboarding: Self-Serve Rol Geçişi + Mobile Sihirbaz | ✅ Accepted (founder onayı 2026-07-30) | 2026-07-30 |
+| [RFC-008](RFC-008-kvkk-consent-flow.md) | KVKK Aydınlatma + Parçalı Rıza Akışı | ✅ Accepted (founder onayı 2026-07-31) | 2026-08-03 |
 
 ---
 
