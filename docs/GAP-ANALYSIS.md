@@ -250,6 +250,8 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - Kanıt: `mobile/app/(auth)/login.tsx:123-126` legalLink Text'lerinin onPress'i yok (salt görsel); `(tabs)/profile.tsx:169` "Kullanım Koşulları" disabled+"Yakında"; kayıt akışında parçalı rıza ekranı yok — consents ekranı yalnız sonradan yönetim. Master spec "KVKK aydınlatma + parçalı açık rıza her kayıt akışında" der; mevcut "devam ederek kabul" bundled consent'in geçersiz rıza sayılma riski `[unverified 2026-07-23 — hukukçu teyidi gerek]`.
 - Öneri: Statik aydınlatma + ToS ekranları (markdown/WebView) + ilk kayıtta ToS zorunlu / Marketing-Location opsiyonel checkbox akışı; metinlerin kendisi founder/hukukçu deliverable'ı — teknik iskeleti metin beklemeden kur.
 - Efor: 1-2 gün (metinler hariç)
+- **Güncelleme 2026-08-03 (RFC-008): ✅ KAPANDI.** (Not: RFC-008 metninde bu gap "P0-11" olarak anılıyordu — doğru numara P0-10; P0-11 KYC kör onaydır ve RFC-008 kapsamı dışıdır.) Üç bacak da canlı: (1) **Aydınlatma + ToS ekranları** — `mobile/app/legal/[doc].tsx`, versiyonlu legal servisten besleniyor (`GET /v1/legal/{doc}`, AllowAnonymous; login/profil linkleri artık tıklanabilir, bundled consent cümleleri kaldırıldı); (2) **OTP-sonrası VE mevcut kullanıcının ilk açılışında parçalı rıza gate'i** — `app/consent.tsx` + AuthGate `requiresTosConsent` (server-side türetim, tek doğruluk kaynağı `GET /v1/users/me`); ToS zorunlu, Marketing opsiyonel; `POST /v1/users/me/consents/initial` idempotent + eski versiyon satırını supersede eder + audit; (3) **versiyonlu tek-kaynak** — `LegalDocuments.CurrentTosVersion` sabiti; hukuki metin güncellenince versiyon bump'ı tüm kullanıcılara rıza turunu otomatik yeniden açar. Demo personalar güncel ToS rızasıyla seed'li; rıza akışının elle test kapısı consent'siz `DevLoginRole.CustomerFresh` ("Müşteri (rıza ekranı)" quick-login). Kalan ilgili borçlar: P2-13 (renderer sınırları, Marketing re-ask, `Supersede()` intent metodu), İYS (P1-15), hukukçu metin teyidi (§6 `[unverified]`).
+- **LAUNCH-CHECKLIST kalemi:** placeholder legal metinlerle canlıya **ÇIKILMAZ** — (a) hukukçu metinleri founder deliverable'ı olarak gelmeli, (b) legal render'ın markdown kapsamı gerçek metne göre gözden geçirilmeli (renderer bilinçli minimal: `#`/`##` başlık + `> ` uyarı + paragraf + `**bold**` strip; `###`/liste/gerçek bold YOK — bkz. P2-13). Placeholder `> PLACEHOLDER` uyarı kutuları bilinçli olarak kullanıcıya görünür bırakıldı — canlıda görünürlerse launch hatasıdır.
 
 **P0-11. KYC onayı kör: admin yüklenen belgeleri hiç göremeden onaylıyor**
 - Kanıt: Kuyruk DTO'su sadece `DocumentCount` taşıyor (`AdminQueries.cs:63-71`); belge listeleme/görüntüleme endpoint'i yok (`UploadsEndpoints`'te sadece POST, `AdminEndpoints`'te KYC belge GET'i yok); web-admin `kyc/page.tsx:79` sadece "{documentCount} belge" yazıyor. PayTR pazaryeri sub-merchant onboarding'inde belge doğrulaması yapılmadığı ortaya çıkarsa platform sorumluluğu.
@@ -353,7 +355,7 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 
 ---
 
-## 5. P2 — Backlog / Kalite Borcu (12 madde)
+## 5. P2 — Backlog / Kalite Borcu (13 madde)
 
 **P2-1. Komisyon oranı hard-coded 0.10m — `CommissionTier` alanı ölü**
 - Kanıt: `InitiateBookingCommand.cs:44` `private const DefaultCommissionRate=0.10m`; `BarberShop.CommissionTier` "standard" set ediliyor ama hiçbir yerde okunmuyor.
@@ -426,6 +428,12 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - Promote sonrası refresh-fail + app restart edge'i (final review M-3): bayat access token 15 dk 403 döner, interceptor yalnız 401'de refresh yapar → `getMyShop` null → adım 1 → 409 çıkmazı; getMyShop hata-ayrımıyla birlikte ele al.
 - `documents.tsx` yüklenen belge listesi local state (final review M-4): adım 3'ten çıkıp dönen kullanıcı belgeleri yeniden yükler — orphan upload borcuyla birlikte çöz.
 - Efor: toplam 1-2 gün (parça parça alınabilir; mahalle import'u ayrı, kaynak kararı sonrası)
+
+**P2-13 (2026-08-03). RFC-008 KVKK rıza kalıntıları — küçük kalite borçları (review zincirinden)**
+- **Legal renderer sınırları:** satır-bazlı minimal parser yalnız `#`/`##` başlık + `> ` uyarı kutusu + paragraf tanır; `###` ve daha derin başlıklar paragraf gibi render edilir, liste işaretleri (`- `, `1. `) ayrıştırılmaz, `**bold**` yalnız strip edilir (gerçek bold/italik render yok). Hukukçu metni geldiğinde markdown kapsamı metne göre gözden geçirilmeli (launch-checklist kalemi, bkz. P0-10 güncellemesi); gerekirse V1.5'te kütüphane kararı.
+- **Marketing re-ask akışı yok:** `requiresTosConsent` yalnız ToS versiyonuna bakar; `CurrentAydinlatmaVersion` bump'ında eski versiyonla granted Marketing rızası kullanıcıya otomatik yeniden sorulmaz (yalnız kullanıcı bir şekilde consent ekranına dönerse tazelenir). Aydınlatma versiyon değişiminde Marketing'i yeniden sorma akışı tasarlanmalı — İYS işiyle (P1-15) birlikte ele alınabilir.
+- **Consent supersede domain intent metodu:** eski-versiyon rızasını kapatıp yenisini yazma iş kuralı şu an handler içinde `existingTos?.Revoke()` + `Consent.Grant(...)` ikilisiyle örtük; domain'e `Supersede(newVersion)` intent metodu eklenip event/audit semantiği tek yerde toplanmalı.
+- Efor: toplam 0.5-1 gün (parça parça alınabilir; Marketing re-ask İYS kararına bağlı)
 
 ---
 

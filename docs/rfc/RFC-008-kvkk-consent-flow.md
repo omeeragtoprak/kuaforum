@@ -1,9 +1,10 @@
 # RFC-008 — KVKK Aydınlatma + Parçalı Rıza Akışı
 
 **Status:** ✅ Accepted — founder onayı 2026-07-31 (brainstorming: 2 karar + tasarım onayı)
+**İmplementasyon:** tamamlandı 2026-08-03 (K1 backend + K2 mobile + K3 kapanış paketi; kapanış durumu GAP-ANALYSIS P0-10 güncellemesinde)
 **Tarih:** 2026-08-03
 **Kapsam:** `Kuaforum.Api` (legal endpoint), `Kuaforum.Application/Modules/Identity` (initial-consent, profil DTO), `mobile/app/legal/` + `app/consent.tsx` + AuthGate, login/profil metin düzeltmeleri
-**İlgili:** GAP P0-11 (KVKK aydınlatma/ToS görüntülenemiyor, parçalı rıza yok); mevcut Consent entity (Version alanlı) + rıza yönetim UI'ı (revoke) hazır altyapı; İYS (GAP P1-16) AYRI iş
+**İlgili:** GAP **P0-10** (KVKK aydınlatma/ToS görüntülenemiyor, parçalı rıza yok — bu RFC'nin ilk taslağında yanlışlıkla "P0-11" yazılmıştı; P0-11 KYC kör onaydır); mevcut Consent entity (Version alanlı) + rıza yönetim UI'ı (revoke) hazır altyapı; İYS (GAP P1-16) AYRI iş
 
 ---
 
@@ -11,6 +12,11 @@
 
 1. **Rıza toplama yeri:** Yeni kullanıcıda **OTP doğrulama sonrası tek seferlik rıza ekranı** — Aydınlatma metni linki + ToS zorunlu onay + Marketing opsiyonel checkbox. Login'de checkbox ve "sadece metin linkleri" seçenekleri reddedildi (bundled consent riski / login kalabalığı).
 2. **Mevcut kullanıcılar:** ToS rızası (güncel versiyonla) olmayan HERKESE ilk açılışta aynı ekran bir kez gösterilir; onaylamadan uygulamaya geçilemez (KVKK m.5 açık rıza). Version değişince otomatik yeniden sorulur.
+
+**İmplementasyon sırasında netleşen teknik kararlar (2026-08-03):**
+
+3. **Marketing rızasının versiyonu:** Marketing consent satırı `LegalDocuments.CurrentAydinlatmaVersion` ile yazılır (ToS satırı `CurrentTosVersion` ile) — Marketing rızasının hukuki dayanağı aydınlatma metnidir; aydınlatma versiyonu bump'ında consent ekranına gelen kullanıcının Marketing rızası da yeni versiyonla supersede edilir. Bilinen sınır: `requiresTosConsent` gate'i yalnız ToS versiyonuna bakar, aydınlatma bump'ı tek başına re-ask tetiklemez (GAP P2-13 — Marketing re-ask akışı, İYS/P1-15 ile birlikte).
+4. **Idempotent no-op audit yazmaz:** `POST /v1/users/me/consents/initial` güncel versiyonla granted rıza zaten varken tekrar çağrılırsa (çift tıklama / retry) hiçbir consent satırı değişmez ve `consent.initial_granted` audit kaydı TEKRAR yazılmaz — audit yalnız gerçek state değişikliğinde üretilir (integration testi: `Initial_grant_is_idempotent_on_repeated_call`).
 
 ## Tasarım
 
