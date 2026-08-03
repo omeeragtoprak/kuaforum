@@ -41,7 +41,7 @@ export default function OtpScreen() {
     try {
       await AuthApi.verifyOtp(params.otpId!, submittedCode);
       // RFC-008 — verify response'unda requiresTosConsent yok; tek doğruluk kaynağı
-      // GET /v1/users/me olduğu için hydrate() ile taze profil çekilir, sonra AynI
+      // GET /v1/users/me olduğu için hydrate() ile taze profil çekilir, sonra aynı
       // gate helper (AuthGate'in de kullandığı) hedefi belirler.
       await useAuthStore.getState().hydrate();
       const freshUser = useAuthStore.getState().user;
