@@ -26,6 +26,7 @@ public static class UserEndpoints
 
         group.MapGet("/consents", GetMyConsents).WithName("GetMyConsents");
         group.MapPatch("/consents", UpdateConsent).WithName("UpdateConsent");
+        group.MapPost("/consents/initial", GrantInitialConsents).WithName("GrantInitialConsents");
 
         group.MapPost("/phone-change/initiate", InitiatePhoneChange).WithName("InitiatePhoneChange");
         group.MapPost("/phone-change/confirm", ConfirmPhoneChange).WithName("ConfirmPhoneChange");
@@ -148,8 +149,22 @@ public static class UserEndpoints
             : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
     }
 
+    private static async Task<IResult> GrantInitialConsents(
+        [FromBody] GrantInitialConsentsRequest body,
+        IMediator m,
+        IRequestContext ctx,
+        CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var result = await m.Send(new GrantInitialConsentsCommand(ctx.UserId.Value, body.AcceptTos, body.AcceptMarketing), token);
+        return result.IsSuccess
+            ? Results.NoContent()
+            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+    }
+
     public sealed record UpdateMyProfileRequest(string? DisplayName, string? AvatarUrl);
     public sealed record UpdateConsentRequest(ConsentPurpose Purpose, bool Grant, string Version);
+    public sealed record GrantInitialConsentsRequest(bool AcceptTos, bool AcceptMarketing);
     public sealed record PhoneChangeInitiateRequest(string NewPhone);
     public sealed record PhoneChangeConfirmRequest(Guid OtpId, string Code);
 }

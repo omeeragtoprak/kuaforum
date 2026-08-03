@@ -26,4 +26,17 @@
     <ProjectReference Include="..\Kuaforum.Infrastructure\Kuaforum.Infrastructure.csproj" />
   </ItemGroup>
 
+  <!-- Legal metinler EmbeddedResource olarak paketlenir: publish/Docker çıktısında
+       çalışma dizini varsayımına (CopyToOutputDirectory content-file kaybı riski) bağlı
+       kalmadan assembly içinden okunur. LogicalName sabitlenir ki resource adı
+       MSBuild'in otomatik isimlendirme kurallarına (RootNamespace + klasör yolu) bağımlı olmasın. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Legal\aydinlatma-v1.md">
+      <LogicalName>Kuaforum.Api.Legal.aydinlatma-v1.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Legal\kullanim-kosullari-v1.md">
+      <LogicalName>Kuaforum.Api.Legal.kullanim-kosullari-v1.md</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

@@ -163,6 +163,7 @@ app.MapGet("/", () => Results.Redirect("/health"))
 
 app.MapAuthEndpoints(app.Environment);
 app.MapUserEndpoints();
+app.MapLegalEndpoints();
 app.MapGeographyEndpoints();
 app.MapBarberEndpoints();
 app.MapAvailabilityEndpoints();
