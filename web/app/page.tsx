@@ -30,7 +30,7 @@ const STEPS = [
     no: '02',
     icon: CalendarCheck,
     title: 'Seç ve onayla',
-    text: 'Sana uyan saati ve stilisti seç. Randevun anında onaylanır, telefonuna hatırlatma gelir.',
+    text: 'Sana uyan saati ve stilisti seç. Kuaförün onayladığı anda telefonuna bildirim ve hatırlatma gelir.',
   },
   {
     no: '03',
@@ -49,7 +49,7 @@ const OWNER_BENEFITS = [
   {
     icon: HandCoins,
     title: 'Gelmeyen müşteriye çözüm',
-    text: 'Kapora seçeneğiyle randevusuna gelmeyen müşteri kaybını azalt.',
+    text: 'Her talebi sen onaylarsın; takvimin senin kontrolünde. Kapora seçeneği de yakında.',
   },
   {
     icon: Share2,

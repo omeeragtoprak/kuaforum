@@ -18,6 +18,13 @@ interface SearchParams {
   page?: string;
 }
 
+function buildQuery(params: Record<string, string | undefined>): string {
+  const parts = Object.entries(params)
+    .filter(([, v]) => v !== undefined && v !== '')
+    .map(([k, v]) => `${k}=${encodeURIComponent(v as string)}`);
+  return parts.length ? `?${parts.join('&')}` : '';
+}
+
 function parseParams(sp: SearchParams): { cityId: string | undefined; page: number } {
   const cityId = sp.city && GUID_RE.test(sp.city) ? sp.city : undefined;
   const parsed = Number.parseInt(sp.page ?? '1', 10);
@@ -28,7 +35,7 @@ function parseParams(sp: SearchParams): { cityId: string | undefined; page: numb
 export async function generateMetadata(props: {
   searchParams: Promise<SearchParams>;
 }): Promise<Metadata> {
-  const { cityId } = parseParams(await props.searchParams);
+  const { cityId, page } = parseParams(await props.searchParams);
   let cityName: string | undefined;
   if (cityId) {
     const cities = await getCities();
@@ -41,7 +48,8 @@ export async function generateMetadata(props: {
       ? `${cityName} şehrindeki kuaför ve berber salonları: hizmetler, fiyatlar, puanlar. Randevunu Kuaforum ile al.`
       : 'Türkiye genelindeki kuaför ve berber salonları: hizmetler, fiyatlar, puanlar. Randevunu Kuaforum ile al.',
     alternates: {
-      canonical: cityId ? `/kuaforler?city=${cityId}` : '/kuaforler',
+      // Sayfa 2+ self-canonical olmalı (Google paginated içerik önerisi) — page paramı korunur.
+      canonical: `/kuaforler${buildQuery({ city: cityId, page: page > 1 ? String(page) : undefined })}`,
     },
   };
 }
