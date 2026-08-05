@@ -14,6 +14,8 @@ import { formatDateTime, formatDuration, formatTry } from '@/lib/format';
 import { estimateDepositMinor, remainingAtShopMinor } from '@/lib/deposit';
 import { Haptics } from '@/lib/haptics';
 import { ErrorReporter } from '@/lib/error-reporter';
+import { useAuthStore } from '@/store/auth-store';
+import { resolveBookingConfirmMode } from '@/lib/booking-confirm';
 
 export default function ConfirmBookingScreen() {
   const params = useLocalSearchParams<{
@@ -31,6 +33,9 @@ export default function ConfirmBookingScreen() {
   const [note, setNote] = useState('');
   const [payKind, setPayKind] = useState<PaymentKind>('Deposit');
 
+  const onlinePaymentsEnabled = useAuthStore((s) => s.user?.onlinePaymentsEnabled);
+  const confirmMode = resolveBookingConfirmMode(onlinePaymentsEnabled);
+
   const serviceIds = params.services?.split(',').filter(Boolean) ?? [];
   const total = params.totalAmount ? parseInt(params.totalAmount, 10) : undefined;
 
@@ -44,6 +49,20 @@ export default function ConfirmBookingScreen() {
         note || undefined,
         false,
       );
+
+      // RFC-009 ücretsiz büyüme modu: flag kapalıyken ödeme adımı hiç başlatılmaz — randevu
+      // Pending kalır, kuaför OwnerConfirm ile onaylar. PaymentApi.initiate çağrılmadığı için
+      // "ödeme başlatılamadı" hata dalı bu senaryoda hiç devreye girmez.
+      if (confirmMode === 'salon-payment') {
+        Haptics.success();
+        Alert.alert(
+          '✅ Randevu talebin alındı',
+          'Kuaför onaylayınca bildirim alacaksın.',
+          [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
+        );
+        return;
+      }
+
       let pay: InitiatePaymentResponse;
       try {
         pay = await PaymentApi.initiate(booking.bookingId, payKind);
@@ -152,30 +171,41 @@ export default function ConfirmBookingScreen() {
           </View>
         </Card>
 
-        <Card style={{ gap: Spacing.sm }}>
-          <Text style={styles.policyTitle}>💳 Ödeme</Text>
-          <View accessibilityRole="radiogroup" style={{ gap: Spacing.sm }}>
-            <PayOption
-              selected={payKind === 'Deposit'}
-              onPress={() => setPayKind('Deposit')}
-              title="Kapora ile ayırt (önerilen)"
-              detail={
-                total
-                  ? `Şimdi ${formatTry(estimateDepositMinor(total))} · Salonda ${formatTry(remainingAtShopMinor(total, estimateDepositMinor(total)))}`
-                  : 'Hizmet bedelinin %15’i şimdi, kalanı salonda'
-              }
-            />
-            <PayOption
-              selected={payKind === 'FullOnline'}
-              onPress={() => setPayKind('FullOnline')}
-              title="Tamamını şimdi öde"
-              detail={total ? `${formatTry(total)} — salonda ödeme kalmaz` : 'Tamamı online'}
-            />
-          </View>
-          <Text style={styles.policySub}>
-            Kesin tutar ödeme adımında gösterilir. 30 dk içinde ödenmeyen randevu otomatik iptal olur.
-          </Text>
-        </Card>
+        {confirmMode === 'online-payment' ? (
+          <Card style={{ gap: Spacing.sm }}>
+            <Text style={styles.policyTitle}>💳 Ödeme</Text>
+            <View accessibilityRole="radiogroup" style={{ gap: Spacing.sm }}>
+              <PayOption
+                selected={payKind === 'Deposit'}
+                onPress={() => setPayKind('Deposit')}
+                title="Kapora ile ayırt (önerilen)"
+                detail={
+                  total
+                    ? `Şimdi ${formatTry(estimateDepositMinor(total))} · Salonda ${formatTry(remainingAtShopMinor(total, estimateDepositMinor(total)))}`
+                    : 'Hizmet bedelinin %15’i şimdi, kalanı salonda'
+                }
+              />
+              <PayOption
+                selected={payKind === 'FullOnline'}
+                onPress={() => setPayKind('FullOnline')}
+                title="Tamamını şimdi öde"
+                detail={total ? `${formatTry(total)} — salonda ödeme kalmaz` : 'Tamamı online'}
+              />
+            </View>
+            <Text style={styles.policySub}>
+              Kesin tutar ödeme adımında gösterilir. 30 dk içinde ödenmeyen randevu otomatik iptal olur.
+            </Text>
+          </Card>
+        ) : (
+          <Card style={{ gap: 4 }}>
+            <View accessible accessibilityLabel="Randevu kuaför onayına gönderilecek, ödeme salonda yapılır">
+              <Text style={styles.policyTitle}>💈 Randevu kuaför onayına gönderilecek</Text>
+              <Text style={styles.policySub}>
+                Ödeme salonda yapılır. Kuaför onaylayınca bildirim alacaksın.
+              </Text>
+            </View>
+          </Card>
+        )}
 
         <Button
           label="Randevuyu oluştur"

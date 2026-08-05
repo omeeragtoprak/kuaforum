@@ -19,6 +19,7 @@ import {
 } from '@/lib/format';
 import { useAuthStore } from '@/store/auth-store';
 import { estimateDepositMinor } from '@/lib/deposit';
+import { resolveBookingConfirmMode } from '@/lib/booking-confirm';
 
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -32,6 +33,7 @@ export default function BookingDetailScreen() {
   });
 
   const isBarber = useAuthStore((s) => s.isBarber());
+  const onlinePaymentsEnabled = useAuthStore((s) => s.user?.onlinePaymentsEnabled);
 
   const [showRescheduleForm, setShowRescheduleForm] = useState(false);
   const [newDateInput, setNewDateInput] = useState('');
@@ -250,9 +252,13 @@ export default function BookingDetailScreen() {
   const ownerCanComplete = isBarber && isBookingInProgress(b.status);
   const ownerCanNoShow = isBarber && isBookingConfirmed(b.status) && new Date(b.scheduledEndsAt).getTime() < Date.now();
   const canReschedule = (isBookingPending(b.status) || isBookingConfirmed(b.status));
-  // Sadece müşteri kendi randevusu için ödeme başlatabilir — backend InitiatePaymentCommandHandler
-  // booking.CustomerId != request.CustomerId ise Forbidden döner, bu yüzden !isBarber şart.
-  const canCompletePayment = !isBarber && isBookingPending(b.status) && b.paymentKind == null;
+  // RFC-009 ücretsiz büyüme modu: flag kapalıyken online ödeme kritik yoldan çıkarılır — "Ödemeyi
+  // tamamla" CTA'sı yalnızca flag açıkken gösterilir. Sadece müşteri kendi randevusu için ödeme
+  // başlatabilir — backend InitiatePaymentCommandHandler booking.CustomerId != request.CustomerId
+  // ise Forbidden döner, bu yüzden !isBarber şart.
+  const confirmMode = resolveBookingConfirmMode(onlinePaymentsEnabled);
+  const canCompletePayment = !isBarber && confirmMode === 'online-payment' && isBookingPending(b.status) && b.paymentKind == null;
+  const showOwnerApprovalPending = !isBarber && confirmMode === 'salon-payment' && isBookingPending(b.status);
   const totalDuration = b.items.reduce((s, i) => s + (i.durationMinutes ?? 0), 0);
 
   function startReschedule() {
@@ -414,6 +420,11 @@ export default function BookingDetailScreen() {
               onPress={handleCompletePayment}
               loading={payMutation.isPending}
             />
+          ) : null}
+          {showOwnerApprovalPending ? (
+            <View style={styles.pendingApprovalBox} accessible accessibilityLabel="Kuaför onayı bekleniyor">
+              <Text style={styles.pendingApprovalText}>⏳ Kuaför onayı bekleniyor</Text>
+            </View>
           ) : null}
           {ownerCanConfirm ? (
             <Button
@@ -580,6 +591,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   reviewDoneText: { fontSize: FontSize.sm, color: Colors.success, fontWeight: FontWeight.semibold },
+  pendingApprovalBox: {
+    backgroundColor: Colors.infoSoft,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    alignItems: 'center',
+  },
+  pendingApprovalText: { fontSize: FontSize.sm, color: Colors.info, fontWeight: FontWeight.semibold },
   countdownText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.info },
   countdownSoon: { backgroundColor: Colors.warningSoft },
   countdownTextSoon: { color: Colors.warning },

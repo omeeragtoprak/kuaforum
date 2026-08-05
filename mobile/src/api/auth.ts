@@ -128,7 +128,9 @@ export const AuthApi = {
 /**
  * `GET /v1/users/me` response (backend `MyProfileDto`). `requiresTosConsent` — RFC-008
  * tek doğruluk kaynağı: mobile kendi versiyon karşılaştırması YAPMAZ, sunucudan gelen
- * bu bool'a güvenir (bkz. `src/lib/consent-gate.ts`).
+ * bu bool'a güvenir (bkz. `src/lib/consent-gate.ts`). `onlinePaymentsEnabled` — RFC-009
+ * ücretsiz büyüme modu: aynı desen, mobile kendi flag kararını vermez, sunucudan gelen
+ * bu bool'a güvenir (bkz. `src/lib/booking-confirm.ts`).
  */
 export type Profile = {
   id: string;
@@ -144,6 +146,7 @@ export type Profile = {
   lastLoginAt: string | null;
   deletedAt: string | null;
   requiresTosConsent: boolean;
+  onlinePaymentsEnabled: boolean;
 };
 
 export type Session = {

@@ -14,6 +14,10 @@ export type AuthUser = {
   /** RFC-008 — server-derived; sadece `hydrate()` üzerinden (`GET /v1/users/me`) gelir.
    * OTP-verify/dev-login response'unda YOK — o yüzden login sonrası da hydrate() çağrılır. */
   requiresTosConsent?: boolean;
+  /** RFC-009 ücretsiz büyüme modu — server-derived, aynı `requiresTosConsent` deseni:
+   * yalnızca `hydrate()` üzerinden gelir. `undefined` = henüz hydrate edilmedi (flag'siz
+   * varsay: `resolveBookingConfirmMode` bunu 'salon-payment'a düşürür — fail-closed). */
+  onlinePaymentsEnabled?: boolean;
 };
 
 type AuthState = {
@@ -66,6 +70,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           email: profile.email,
           role: profile.role,
           requiresTosConsent: profile.requiresTosConsent,
+          onlinePaymentsEnabled: profile.onlinePaymentsEnabled,
         },
         isAuthenticated: true,
         isLoading: false,
