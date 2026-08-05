@@ -64,7 +64,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     // mevcut kullanıcının ilk açılışı) HERHANGİ bir rotadan /consent'e yönlendirilir;
     // onaylamadan (ya da çıkış yapmadan) uygulamaya geçilemez (KVKK m.5).
     if (user.requiresTosConsent) {
-      if (!inConsentRoute && !inLegalRoute) router.replace('/consent' as never);
+      // M-1 (review) — resolvePostAuthRoute üzerinden gidilir ki bu reactive fallback,
+      // otp.tsx'in explicit navigasyonuyla yarışsa bile (hangisi önce çalışırsa çalışsın)
+      // aynı `redirectTo`'yu /consent'in query'sine taşısın, kaybolmasın.
+      if (!inConsentRoute && !inLegalRoute) router.replace(resolvePostAuthRoute(user, redirectTo) as never);
       return;
     }
 

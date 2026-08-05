@@ -8,7 +8,7 @@ import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/the
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
-import { resolvePostAuthRoute } from '@/lib/consent-gate';
+import { resolvePostAuthRoute, sanitizeRedirectTo } from '@/lib/consent-gate';
 import { Haptics } from '@/lib/haptics';
 
 /**
@@ -37,7 +37,11 @@ export default function ConsentScreen() {
     onSuccess: () => {
       Haptics.success();
       const user = useAuthStore.getState().user;
-      router.replace((user ? resolvePostAuthRoute(user, redirectTo) : (redirectTo ?? '/(tabs)')) as never);
+      // I-1 (güvenlik review) — `user` null fallback dalı resolvePostAuthRoute'tan
+      // GEÇMİYOR, o yüzden open-redirect sanitizer'ı burada ayrıca uygulanır.
+      router.replace(
+        (user ? resolvePostAuthRoute(user, redirectTo) : (sanitizeRedirectTo(redirectTo) ?? '/(tabs)')) as never,
+      );
     },
     onError: () => {
       Haptics.error();

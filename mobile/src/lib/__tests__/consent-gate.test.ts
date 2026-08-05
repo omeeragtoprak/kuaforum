@@ -1,4 +1,9 @@
-import { resolvePostAuthRoute, isGuestAccessibleRoute, buildRedirectPath } from '@/lib/consent-gate';
+import {
+  resolvePostAuthRoute,
+  isGuestAccessibleRoute,
+  buildRedirectPath,
+  sanitizeRedirectTo,
+} from '@/lib/consent-gate';
 
 describe('resolvePostAuthRoute', () => {
   it('requiresTosConsent true → /consent, rol fark etmez (customer)', () => {
@@ -82,7 +87,7 @@ describe('isGuestAccessibleRoute — RFC-010 misafir gezinme allow-list', () => 
     expect(isGuestAccessibleRoute(['legal', 'kullanim-kosullari'])).toBe(true);
   });
 
-  it('consent route saf mantıkta da guest-accessible sayılır (AuthGate zaten unauthenticated iken bu dala hiç girmez, redirect etmemesi tutarlılık için)', () => {
+  it('consent route misafire açık — /consent deep-link\'i unauthenticated iken de render olur (submit zaten 401 alır, kabul edilen davranış)', () => {
     expect(isGuestAccessibleRoute(['consent'])).toBe(true);
   });
 
@@ -139,5 +144,26 @@ describe('buildRedirectPath', () => {
     expect(buildRedirectPath('/booking/confirm', { shopName: 'Ahmet & Oğulları Kuaför' })).toBe(
       '/booking/confirm?shopName=Ahmet%20%26%20O%C4%9Fullar%C4%B1%20Kuaf%C3%B6r',
     );
+  });
+});
+
+// I-1 (review, güvenlik) — open-redirect: `redirectTo` deep-link'ten (kuaforum://login?
+// redirectTo=https%3A%2F%2Fevil.example) gelen, kullanıcı kontrolündeki bir string.
+// `router.replace`/`push`'a mutlak bir URL/scheme verilirse expo-router bunu
+// `Linking.openURL`'e yönlendirip harici bir sayfa/uygulama açabiliyor.
+describe('sanitizeRedirectTo — I-1 open-redirect guard', () => {
+  it('mutlak https:// URL reddedilir → null, resolvePostAuthRoute varsayılan rotaya düşer', () => {
+    expect(sanitizeRedirectTo('https://evil.example')).toBeNull();
+    expect(
+      resolvePostAuthRoute({ role: 'Customer', requiresTosConsent: false }, 'https://evil.example'),
+    ).toBe('/(tabs)');
+  });
+
+  it('protocol-relative //host reddedilir → null (tarayıcı/Linking bunu da mutlak URL sayar)', () => {
+    expect(sanitizeRedirectTo('//evil.example')).toBeNull();
+  });
+
+  it('uygulama-içi path (/ ile başlayan, // ile başlamayan) kabul edilir, aynen döner', () => {
+    expect(sanitizeRedirectTo('/booking/confirm?x=1')).toBe('/booking/confirm?x=1');
   });
 });

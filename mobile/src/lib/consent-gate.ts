@@ -19,14 +19,33 @@ export type ConsentGateUser = {
  * `/consent`'tir, `redirectTo` kaybolmaz ama query'de taşınır (consent ekranı onayladıktan
  * sonra kendi `useLocalSearchParams`'ından okuyup bu fonksiyonu tekrar çağırır). Consent
  * gerekmiyorsa `redirectTo` varsa doğrudan oraya gidilir, yoksa eski rol-bazlı davranış.
+ * `redirectTo` girişte `sanitizeRedirectTo` ile temizlenir (open-redirect — bkz. aşağıda).
  */
 export function resolvePostAuthRoute(user: ConsentGateUser, redirectTo?: string | null): string {
+  const safeRedirect = sanitizeRedirectTo(redirectTo);
   if (user.requiresTosConsent) {
-    return redirectTo ? `/consent?redirectTo=${encodeURIComponent(redirectTo)}` : '/consent';
+    return safeRedirect ? `/consent?redirectTo=${encodeURIComponent(safeRedirect)}` : '/consent';
   }
-  if (redirectTo) return redirectTo;
+  if (safeRedirect) return safeRedirect;
   const isBarber = user.role === 'BarberOwner' || user.role === 'Stylist';
   return isBarber ? '/(barber)/today' : '/(tabs)';
+}
+
+/**
+ * RFC-010 review (I-1, güvenlik) — `redirectTo` bir deep-link query param'ı olarak
+ * dışarıdan (kullanıcı kontrolündeki bir URL'den) geliyor: `kuaforum://login?redirectTo=
+ * https%3A%2F%2Fevil.example`. expo-router `router.replace`/`push`'a `https://`, `//host`
+ * veya herhangi bir `scheme://` şeklinde bir href verilirse bunu `Linking.openURL`'e
+ * yönlendirip harici bir sayfa/uygulama açabiliyor — open-redirect. Bu yüzden
+ * `resolvePostAuthRoute` (ve onu çağırmayan tek istisna: `consent.tsx`'in `user` null
+ * fallback dalı) `redirectTo`'yu HER ZAMAN buradan geçirmeli: yalnızca uygulama-içi,
+ * mutlak-olmayan path'ler (`/` ile başlayan, `//` ile başlamayan) kabul edilir; aksi
+ * halde `null` — çağıran taraf varsayılan rotaya düşer.
+ */
+export function sanitizeRedirectTo(value?: string | null): string | null {
+  if (!value) return null;
+  if (!value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
 }
 
 /**
