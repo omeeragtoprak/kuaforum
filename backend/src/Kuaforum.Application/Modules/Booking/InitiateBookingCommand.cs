@@ -63,7 +63,7 @@ public sealed class InitiateBookingCommandHandler(
             .CountAsync(b => b.CustomerId == request.CustomerId && b.Status == BookingStatus.Pending, cancellationToken);
         if (activePendingCount >= MaxActivePendingBookingsPerCustomer)
             return Result.Failure<InitiateBookingResponse>(Error.Validation(
-                $"En fazla {MaxActivePendingBookingsPerCustomer} bekleyen (ödemesi tamamlanmamış) randevunuz olabilir. " +
+                $"En fazla {MaxActivePendingBookingsPerCustomer} bekleyen (henüz onaylanmamış) randevunuz olabilir. " +
                 "Devam etmek için bunlardan birini tamamlayın veya iptal edin."));
 
         var stylist = await ctx.Set<Stylist>().AsNoTracking().FirstOrDefaultAsync(s => s.Id == request.StylistId, cancellationToken);

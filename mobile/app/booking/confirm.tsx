@@ -155,6 +155,7 @@ export default function ConfirmBookingScreen() {
           />
         </View>
 
+        {confirmMode === 'online-payment' ? (
         <Card style={{ gap: 8 }}>
           <Text style={styles.policyTitle}>📋 İptal politikası</Text>
           <View style={styles.policyRow}>
@@ -170,6 +171,7 @@ export default function ConfirmBookingScreen() {
             <Text style={styles.policyText}>İade yok</Text>
           </View>
         </Card>
+        ) : null}
 
         {confirmMode === 'online-payment' ? (
           <Card style={{ gap: Spacing.sm }}>
