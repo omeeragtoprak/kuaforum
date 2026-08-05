@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    /* Sabit header + çapa linkleri (#nasil-calisir, #indir) için */
+    scroll-padding-top: 5rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    html {
+      scroll-behavior: smooth;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  body {
+    @apply bg-paper text-ink-900 font-sans antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: #f3d3bc;
+    color: #211a15;
+  }
+
+  /* Erişilebilirlik: tutarlı, görünür focus halkası */
+  :focus-visible {
+    outline: 2px solid #b4551f;
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+@layer components {
+  /* Berber direğine gönderme: koyu zeminde %4 opaklıkta diyagonal ince şerit */
+  .pinstripe-dark {
+    background-image: repeating-linear-gradient(
+      135deg,
+      rgba(250, 246, 239, 0.045) 0px,
+      rgba(250, 246, 239, 0.045) 1px,
+      transparent 1px,
+      transparent 12px
+    );
+  }
+
+  /* Sıcak kağıt dokusu — açık bölümlerde çok hafif noktalı ızgara */
+  .dotgrid-light {
+    background-image: radial-gradient(rgba(33, 26, 21, 0.055) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .copper-glow {
+    background:
+      radial-gradient(56rem 30rem at 85% -10%, rgba(201, 106, 49, 0.28), transparent 60%),
+      radial-gradient(40rem 26rem at -10% 110%, rgba(217, 164, 65, 0.14), transparent 55%);
+  }
+
+  .card-lift {
+    @apply shadow-card transition-all duration-300 ease-out;
+  }
+
+  .card-lift:hover {
+    @apply shadow-card-hover -translate-y-0.5;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
