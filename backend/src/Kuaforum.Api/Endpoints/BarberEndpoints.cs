@@ -57,6 +57,34 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).AllowAnonymous().WithName("GetServicesByShop");
 
+        // RFC-011 — web landing + kuaför public profil. `owned` grubundaki
+        // /{id:guid} vb. rotalar zaten AllowAnonymous ama BarberShopDto'yu
+        // (OwnerId + CommissionTier dahil) OLDUĞU GİBİ dönüyor — o rotalar mobile
+        // app'in kendi iç kullanımı içindir. Web landing farklı bir origin'den
+        // (kuaforum.com) ve farklı bir güven sınırından çağıracağından dar
+        // PublicBarberShopDto + ayrı /v1/public/barber-shops kök path'i şart.
+        var publicGroup = app.MapGroup("/v1/public/barber-shops").WithTags("PublicBarberShops").AllowAnonymous();
+
+        publicGroup.MapGet("/{slug}", async (string slug, IMediator m, CancellationToken ct) =>
+        {
+            var r = await m.Send(new GetPublicBarberShopBySlugQuery(slug), ct);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.NotFound();
+        }).WithName("GetPublicBarberShopBySlug");
+
+        publicGroup.MapGet("", async (
+            [FromQuery] Guid? cityId,
+            [FromQuery] int? page,
+            [FromQuery] int? pageSize,
+            IMediator m,
+            CancellationToken ct) =>
+        {
+            var r = await m.Send(new GetPublicBarberShopsQuery(
+                CityId: cityId,
+                Page: page is null or <= 0 ? 1 : page.Value,
+                PageSize: pageSize is null or <= 0 ? 20 : Math.Min(pageSize.Value, 50)), ct);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+        }).WithName("GetPublicBarberShops");
+
         // Owner-protected (GAP P1-4): rol policy'si grup seviyesinde — Customer token'ı 403 alır.
         var ownerGroup = app.MapGroup("/v1/owner/barber-shop").WithTags("BarberShops").RequireAuthorization("BarberOwner");
 
