@@ -45,16 +45,19 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.Ok(r.Value) : Results.NotFound();
         }).AllowAnonymous().WithName("GetBarberShop");
 
-        owned.MapGet("/{id:guid}/stylists", async (Guid id, IMediator m, CancellationToken ct) =>
+        // AllowAnonymous ama authenticated ise IRequestContext.UserId dolu gelir (auth
+        // middleware her istekte çalışır, AllowAnonymous yalnızca 401'i atlatır) — bu,
+        // owner'ın kendi Draft/Suspended shop'unu görebilmesi için gereken sinyal.
+        owned.MapGet("/{id:guid}/stylists", async (Guid id, IMediator m, IRequestContext reqCtx, CancellationToken ct) =>
         {
-            var r = await m.Send(new GetStylistsByShopQuery(id), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            var r = await m.Send(new GetStylistsByShopQuery(id, reqCtx.UserId), ct);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.NotFound();
         }).AllowAnonymous().WithName("GetStylistsByShop");
 
-        owned.MapGet("/{id:guid}/services", async (Guid id, IMediator m, CancellationToken ct) =>
+        owned.MapGet("/{id:guid}/services", async (Guid id, IMediator m, IRequestContext reqCtx, CancellationToken ct) =>
         {
-            var r = await m.Send(new GetServicesByShopQuery(id), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            var r = await m.Send(new GetServicesByShopQuery(id, reqCtx.UserId), ct);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.NotFound();
         }).AllowAnonymous().WithName("GetServicesByShop");
 
         // RFC-011 — web landing + kuaför public profil. `owned` grubundaki

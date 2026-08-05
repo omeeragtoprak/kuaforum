@@ -81,13 +81,25 @@ public sealed class GetBarberShopByIdQueryHandler(IApplicationDbContext db) : IR
     }
 }
 
-public sealed record GetStylistsByShopQuery(Guid BarberShopId) : IQuery<IReadOnlyList<StylistDto>>;
+// RequesterUserId: bu GET hem anonim/public (müşteri app, web landing) hem de owner'ın
+// KENDİ panelinden (mobile (barber)/stylists.tsx, services.tsx) çağrılıyor — ayrı bir
+// owner-only liste endpoint'i yok. Draft/PendingKyc/Suspended bir shop'un listesini
+// yalnızca sahibi görebilmeli; başka herkese (anonim dahil, GAP fix) 404 — bilinmeyen
+// shop ile aynı muamele, hangi shop'un hangi statüde olduğunu sızdırmıyoruz.
+public sealed record GetStylistsByShopQuery(Guid BarberShopId, Guid? RequesterUserId = null) : IQuery<IReadOnlyList<StylistDto>>;
 
 public sealed class GetStylistsByShopQueryHandler(IApplicationDbContext db) : IRequestHandler<GetStylistsByShopQuery, Result<IReadOnlyList<StylistDto>>>
 {
     public async Task<Result<IReadOnlyList<StylistDto>>> Handle(GetStylistsByShopQuery request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
+        var shop = await ctx.Set<BarberShop>().AsNoTracking()
+            .Where(s => s.Id == request.BarberShopId)
+            .Select(s => new { s.Status, s.OwnerId })
+            .FirstOrDefaultAsync(ct);
+        if (shop is null || (shop.Status != BarberShopStatus.Active && shop.OwnerId != request.RequesterUserId))
+            return Result.Failure<IReadOnlyList<StylistDto>>(Error.NotFound("BarberShop"));
+
         var list = await ctx.Set<Stylist>().AsNoTracking()
             .Where(s => s.BarberShopId == request.BarberShopId && s.IsActive)
             .Select(s => new StylistDto(s.Id, s.BarberShopId, s.DisplayName, s.PhotoUrl, s.Bio, s.IsActive, s.WalkInAvailable))
@@ -96,13 +108,20 @@ public sealed class GetStylistsByShopQueryHandler(IApplicationDbContext db) : IR
     }
 }
 
-public sealed record GetServicesByShopQuery(Guid BarberShopId) : IQuery<IReadOnlyList<ServiceDto>>;
+public sealed record GetServicesByShopQuery(Guid BarberShopId, Guid? RequesterUserId = null) : IQuery<IReadOnlyList<ServiceDto>>;
 
 public sealed class GetServicesByShopQueryHandler(IApplicationDbContext db) : IRequestHandler<GetServicesByShopQuery, Result<IReadOnlyList<ServiceDto>>>
 {
     public async Task<Result<IReadOnlyList<ServiceDto>>> Handle(GetServicesByShopQuery request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
+        var shop = await ctx.Set<BarberShop>().AsNoTracking()
+            .Where(s => s.Id == request.BarberShopId)
+            .Select(s => new { s.Status, s.OwnerId })
+            .FirstOrDefaultAsync(ct);
+        if (shop is null || (shop.Status != BarberShopStatus.Active && shop.OwnerId != request.RequesterUserId))
+            return Result.Failure<IReadOnlyList<ServiceDto>>(Error.NotFound("BarberShop"));
+
         var list = await ctx.Set<ServiceCatalog>().AsNoTracking()
             .Where(s => s.BarberShopId == request.BarberShopId && s.IsActive)
             .OrderBy(s => s.Name)

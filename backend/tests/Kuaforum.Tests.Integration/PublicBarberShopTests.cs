@@ -44,6 +44,11 @@ public sealed class PublicBarberShopTests(IntegrationTestFactory factory)
     public sealed record PublicListItemRow(Guid Id, string Name, string Slug, string? CityName, string? DistrictName, double? RatingAverage, int RatingCount, int ServiceCount);
     public sealed record PublicListResponseRow(IReadOnlyList<PublicListItemRow> Items, int Page, int PageSize, int TotalCount);
 
+    // GetStylistsByShopQuery/GetServicesByShopQuery'nin (owner panel + eski public liste)
+    // DTO'larının bir alt kümesi — yalnızca bu testlerde ihtiyaç duyulanlar.
+    public sealed record StylistRow(Guid Id, string DisplayName);
+    public sealed record ServiceRow(Guid Id, string Name);
+
     private async Task SeedDemoAsync()
     {
         using var scope = factory.Services.CreateScope();
@@ -103,6 +108,101 @@ public sealed class PublicBarberShopTests(IntegrationTestFactory factory)
         using var anonClient = factory.CreateClient();
         var resp = await anonClient.GetAsync($"/v1/public/barber-shops/{draftShop.Slug}");
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    /// <summary>
+    /// GAP fix (kapsam-dışı bulgu, bu iş kapsamına alındı): <c>GET /v1/barber-shops/{id}/stylists</c>
+    /// ve <c>/services</c> — mevcut, RFC-011'den ÖNCE de public/AllowAnonymous olan iki
+    /// endpoint — shop Status'unu hiç kontrol etmiyordu; Draft/Suspended bir shop'un
+    /// GUID'ini bilen herkes listesini görebiliyordu. Aynı zamanda owner'ın KENDİ
+    /// panelinin (mobile (barber)/stylists.tsx, services.tsx) AYNI GET'i kullandığı
+    /// doğrulandı — ayrı bir owner-only liste endpoint'i yok. Bu yüzden fix requester-aware:
+    /// anonim/başkası → 404, shop sahibinin kendisi (Bearer token) → 200.
+    /// </summary>
+    [Fact]
+    public async Task Draft_shop_stylists_and_services_hidden_from_anonymous_but_owner_still_manages()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedDemoAsync();
+
+        using var draftClient = factory.CreateClient();
+        var draftLogin = await draftClient.DevLoginAsync("BarberOwnerDraft");
+        draftClient.SetBearer(draftLogin.AccessToken);
+        var draftShop = await draftClient.GetJson<OwnerShopRow>("/v1/owner/barber-shop");
+
+        // Owner kendi Draft shop'una stilist + servis ekleyebiliyor (mevcut davranış,
+        // bu fix'le kırılmamalı) — AddStylistCommand/CreateServiceCommand shop status
+        // kontrolü yapmıyor, onboarding sihirbazı zaten Draft aşamasında bunları kurduruyor.
+        var addStylist = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{draftShop.Id}/stylists",
+            new { displayName = "Taslak Stilist", userId = (Guid?)null });
+        Assert.Equal(HttpStatusCode.Created, addStylist.StatusCode);
+
+        var addService = await draftClient.PostAsJsonAsync($"/v1/owner/barber-shop/{draftShop.Id}/services", new
+        {
+            name = "Taslak Hizmet",
+            gender = "Any",
+            durationMinutes = 30,
+            priceMinor = 20000L,
+            bufferMinutes = 5,
+            description = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.Created, addService.StatusCode);
+
+        // Anonim: 404 — Draft shop'un varlığı bile sızdırılmıyor.
+        using var anonClient = factory.CreateClient();
+        var anonStylists = await anonClient.GetAsync($"/v1/barber-shops/{draftShop.Id}/stylists");
+        var anonServices = await anonClient.GetAsync($"/v1/barber-shops/{draftShop.Id}/services");
+        Assert.Equal(HttpStatusCode.NotFound, anonStylists.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, anonServices.StatusCode);
+
+        // Owner: kendi Draft shop'unu yönetmeye devam edebiliyor — 200 + az önce eklenenler görünür.
+        var ownerStylists = await draftClient.GetJson<IReadOnlyList<StylistRow>>($"/v1/barber-shops/{draftShop.Id}/stylists");
+        var ownerServices = await draftClient.GetJson<IReadOnlyList<ServiceRow>>($"/v1/barber-shops/{draftShop.Id}/services");
+        Assert.Contains(ownerStylists, s => s.DisplayName == "Taslak Stilist");
+        Assert.Contains(ownerServices, s => s.Name == "Taslak Hizmet");
+
+        // Başka bir yetkisiz kullanıcı (Customer token'ı, shop sahibi DEĞİL) da 404 almalı —
+        // salt "authenticated" olmak yetmez, tam da O shop'un sahibi olmak gerekiyor.
+        using var otherCustomer = factory.CreateClient();
+        var customerLogin = await otherCustomer.DevLoginAsync("Customer");
+        otherCustomer.SetBearer(customerLogin.AccessToken);
+        var otherStylists = await otherCustomer.GetAsync($"/v1/barber-shops/{draftShop.Id}/stylists");
+        Assert.Equal(HttpStatusCode.NotFound, otherStylists.StatusCode);
+    }
+
+    [Fact]
+    public async Task Suspended_shop_stylists_and_services_hidden_from_anonymous_but_owner_still_sees_them()
+    {
+        await factory.ResetDatabaseAsync();
+        await SeedDemoAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var email = EmailAddress.TryCreate("admin-suspend-subresource@kuaforum.test").Value;
+            db.Users.Add(User.CreateAdmin(email, "Suspend Subresource Admin").Value);
+            await db.SaveChangesAsync(default);
+        }
+
+        var ownerShop = await GetShopViaOwnerLoginAsync("BarberOwner"); // Active demo shop, önceden stilist+servis dolu
+
+        using var adminClient = factory.CreateClient();
+        adminClient.SetBearer((await adminClient.DevLoginAsync("Admin")).AccessToken);
+        var suspend = await adminClient.PostAsJsonAsync($"/v1/admin/barber-shops/{ownerShop.Id}/suspend",
+            new { reason = "GAP fix testi — askıdaki shop'un alt-kaynakları anonime kapalı olmalı." });
+        Assert.Equal(HttpStatusCode.NoContent, suspend.StatusCode);
+
+        using var anonClient = factory.CreateClient();
+        var anonStylists = await anonClient.GetAsync($"/v1/barber-shops/{ownerShop.Id}/stylists");
+        var anonServices = await anonClient.GetAsync($"/v1/barber-shops/{ownerShop.Id}/services");
+        Assert.Equal(HttpStatusCode.NotFound, anonStylists.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, anonServices.StatusCode);
+
+        using var ownerClient = factory.CreateClient();
+        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+        var ownerStylistsResp = await ownerClient.GetAsync($"/v1/barber-shops/{ownerShop.Id}/stylists");
+        var ownerServicesResp = await ownerClient.GetAsync($"/v1/barber-shops/{ownerShop.Id}/services");
+        Assert.Equal(HttpStatusCode.OK, ownerStylistsResp.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, ownerServicesResp.StatusCode);
     }
 
     [Fact]
