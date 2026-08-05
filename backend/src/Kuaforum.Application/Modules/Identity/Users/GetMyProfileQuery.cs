@@ -4,6 +4,7 @@ using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Identity;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Kuaforum.Application.Modules.Identity.Users;
 
@@ -22,9 +23,16 @@ public sealed record MyProfileDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastLoginAt,
     DateTimeOffset? DeletedAt,
-    bool RequiresTosConsent);
+    bool RequiresTosConsent,
+    /// <summary>
+    /// RFC-009 ücretsiz büyüme modu: <see cref="PaymentOptions.OnlinePaymentsEnabled"/>'in
+    /// mobile'a taşınma yolu — ayrı authsuz "public config" endpoint'i yerine zaten
+    /// server-türetilmiş bool alanlar taşıyan bu DTO'ya eklendi (RFC-008 `RequiresTosConsent`
+    /// emsali). Mobile bu bool'a göre booking/confirm ekranında ödeme adımını gösterir/gizler.
+    /// </summary>
+    bool OnlinePaymentsEnabled);
 
-public sealed class GetMyProfileQueryHandler(IApplicationDbContext db)
+public sealed class GetMyProfileQueryHandler(IApplicationDbContext db, IOptions<PaymentOptions> paymentOptions)
     : IRequestHandler<GetMyProfileQuery, Result<MyProfileDto>>
 {
     public async Task<Result<MyProfileDto>> Handle(GetMyProfileQuery request, CancellationToken cancellationToken)
@@ -57,6 +65,7 @@ public sealed class GetMyProfileQueryHandler(IApplicationDbContext db)
             user.CreatedAt,
             user.LastLoginAt,
             user.DeletedAt,
-            RequiresTosConsent: !hasCurrentTos));
+            RequiresTosConsent: !hasCurrentTos,
+            OnlinePaymentsEnabled: paymentOptions.Value.OnlinePaymentsEnabled));
     }
 }

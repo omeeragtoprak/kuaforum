@@ -473,11 +473,24 @@ public sealed class BookingSlotSafetyTests(IntegrationTestFactory factory)
         return sqlState == "23P01";
     }
 
-    /// <summary>Next non-Sunday day at 14:00 UTC (17:00 Istanbul) — inside the demo seed's Mon-Sat 09:00-19:00 hours.</summary>
+    /// <summary>
+    /// The minDaysAhead-th non-Sunday day at 14:00 UTC (17:00 Istanbul) — inside the demo seed's
+    /// Mon-Sat 09:00-19:00 hours. Walks forward day-by-day and only decrements the counter on
+    /// non-Sunday days, so consecutive callers (e.g. minDaysAhead=60 and 61 in the same test) are
+    /// guaranteed distinct, monotonically increasing dates. A naive "AddDays(minDaysAhead) then
+    /// nudge off Sunday" implementation collides whenever minDaysAhead lands on a Sunday — e.g.
+    /// AddDays(60) landing on Sunday nudges to Monday, but AddDays(61) computed independently is
+    /// already that same Monday — an intermittent, today's-date-dependent test failure this fixes.
+    /// </summary>
     private static DateTimeOffset FutureWeekdayUtc(int minDaysAhead)
     {
-        var candidate = DateTime.UtcNow.Date.AddDays(minDaysAhead);
-        while (candidate.DayOfWeek == DayOfWeek.Sunday) candidate = candidate.AddDays(1);
-        return new DateTimeOffset(candidate.Year, candidate.Month, candidate.Day, 14, 0, 0, TimeSpan.Zero);
+        var date = DateTime.UtcNow.Date;
+        var remaining = minDaysAhead;
+        while (remaining > 0)
+        {
+            date = date.AddDays(1);
+            if (date.DayOfWeek != DayOfWeek.Sunday) remaining--;
+        }
+        return new DateTimeOffset(date.Year, date.Month, date.Day, 14, 0, 0, TimeSpan.Zero);
     }
 }

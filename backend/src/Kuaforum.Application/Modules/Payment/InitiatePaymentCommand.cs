@@ -51,6 +51,15 @@ public sealed class InitiatePaymentCommandHandler(
     {
         var ctx = (DbContext)db;
 
+        // RFC-009 ücretsiz büyüme modu: flag kapalıyken online ödeme kritik yoldan çıkarılır —
+        // randevu salonda ödenir, komisyon tahsil edilmez. Mobile zaten bu durumda bu endpoint'i
+        // çağırmaz (booking/confirm.tsx flag'e göre dallanır); bu guard ikinci savunma hattı
+        // (eski client sürümü / doğrudan API çağrısı). Webhook (CompletePaymentCommand) bilerek
+        // etkilenmiyor — imza korumalı ve stale-session güvenliği zaten var, flag kapalıyken hiç
+        // payment satırı oluşmayacağı için pratikte tetiklenmeyecek.
+        if (!paymentOptions.Value.OnlinePaymentsEnabled)
+            return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Online ödeme şu an aktif değil."));
+
         // Idempotency check
         if (!string.IsNullOrEmpty(request.IdempotencyKey))
         {
