@@ -81,6 +81,8 @@ Min 32 byte önerilir (`openssl rand -base64 32`) — `Jwt__SigningKey`, `Otp__P
 | `NetGsm__UserCode`, `NetGsm__Password`, `NetGsm__Originator` | OTP SMS gönderimi `false` döner + **Error log** (kod loglanmaz — bkz. § 5). NetGSM hesabı açılana kadar beklenen durum. |
 | `Resend__ApiKey` | Email gönderimi mock/log-only kanala düşer (crash yok). |
 | `PayTr__MerchantId`, `PayTr__MerchantKey`, `PayTr__MerchantSalt` | Ödeme denemesi runtime'da başarısız olur, boot etkilenmez. PayTR hesabı açılana kadar beklenen durum. |
+| `ObjectStorage__Provider` | Boş/`Local` → KYC belgeleri container diskinde (re-deploy'da kaybolur, GAP P1-6), boot etkilenmez. `S3` set edilip `ObjectStorage__S3__*` eksikse **boot ÇÖKER** (fail-fast — bkz § 3.1'e benzer, ama koşullu: yalnız Provider=S3 seçiliyken). |
+| `ObjectStorage__S3__ServiceUrl/Bucket/AccessKeyId/SecretAccessKey/DisablePayloadSigning` | `ObjectStorage__Provider=S3` DEĞİLSE tamamen yok sayılır. R2 bucket formatı ve adımlar `.env.prod.example` içinde yorumlu. |
 | `Fcm__ServiceAccountJsonPath` (veya `Fcm__ServiceAccountJson`) | Push mock kanala düşer. Dosya mount edilmemişse (bkz. `docker-compose.prod.yml` backend.volumes, comment'li) `File.Exists` false döner. |
 | `OAuth__Google__ClientId`, `OAuth__Apple__ClientId` | O login yöntemi reddeder (`logger.LogWarning` + `null`), diğer login yöntemleri etkilenmez. |
 | `Sentry__Dsn` | Sentry SDK disabled (zaten intentional — boş DSN = no overhead). |
@@ -122,6 +124,7 @@ Min 32 byte önerilir (`openssl rand -base64 32`) — `Jwt__SigningKey`, `Otp__P
 | NetGSM hesabı açıldığında | `NetGsm__UserCode/Password/Originator` `.env.prod`'a. Gerçek HTTP client hâlâ YAZILMADI (`NetGsmSmsService.SendOtpAsync` STUB — `TODO(M11-impl)` yorumu kodda duruyor) — ayrı bir iş. |
 | PayTR hesabı açıldığında | `PayTr__MerchantId/Key/Salt` `.env.prod`'a. |
 | Firebase (FCM) service account alındığında | `infra/secrets/firebase-sa.json` sunucuya konur, `docker-compose.prod.yml` backend servisindeki comment'li `volumes:` bloğu açılır. |
+| Cloudflare R2 bucket'ı açıldığında | R2 dashboard'da bucket + "Object Read & Write" API token oluştur, `ObjectStorage__Provider=S3` + `ObjectStorage__S3__*` `.env.prod`'a (bkz § 3.2 + `.env.prod.example`). Uygulama bucket'ı runtime'da OLUŞTURMAZ — elle açılmış olması gerekir. GAP P1-6. |
 
 ---
 

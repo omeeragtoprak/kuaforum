@@ -6,20 +6,12 @@ namespace Kuaforum.Infrastructure.Storage;
 
 /// Dev/CI implementation of <see cref="IObjectStorage"/>. Writes uploads under
 /// <c>{Storage:LocalRoot}</c> (default <c>./uploads</c>) and exposes them via the
-/// <c>{Storage:PublicBaseUrl}</c> static-file mount. Production swap-out point:
-/// register <c>R2ObjectStorage</c> in DI when R2 credentials are configured.
+/// <c>{Storage:PublicBaseUrl}</c> static-file mount. Not durable across container
+/// redeploys — GAP P1-6. Selected when <c>ObjectStorage:Provider=Local</c> (default);
+/// set it to <c>S3</c> to use <see cref="S3ObjectStorage"/> (Cloudflare R2 / MinIO)
+/// instead — see DependencyInjection.AddInfrastructure.
 public sealed class LocalFileObjectStorage : IObjectStorage
 {
-    private static readonly HashSet<string> AllowedContentTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "application/pdf",
-        "image/jpeg",
-        "image/png",
-        "image/webp",
-    };
-
-    private const long MaxSizeBytes = 10 * 1024 * 1024; // 10 MB
-
     private readonly string _localRoot;
     private readonly string _publicBaseUrl;
     private readonly ILogger<LocalFileObjectStorage> _logger;
@@ -40,15 +32,11 @@ public sealed class LocalFileObjectStorage : IObjectStorage
         string? originalFileName,
         CancellationToken ct = default)
     {
-        if (sizeBytes > MaxSizeBytes)
-            throw new InvalidOperationException($"Yüklenen dosya 10 MB'tan büyük olamaz (boyut: {sizeBytes}).");
-        if (!AllowedContentTypes.Contains(contentType))
-            throw new InvalidOperationException($"Desteklenmeyen dosya tipi: {contentType}. PDF veya görüntü dosyası gerekli.");
+        ObjectStorageRules.Validate(contentType, sizeBytes);
 
-        var safeFolder = SafeSegment(folder);
-        var ext = ResolveExtension(contentType, originalFileName);
-        var fileName = $"{Guid.NewGuid():N}{ext}";
-        var storageKey = $"{safeFolder}/{fileName}";
+        var storageKey = ObjectStorageRules.BuildStorageKey(folder, contentType, originalFileName);
+        var safeFolder = storageKey[..storageKey.LastIndexOf('/')];
+        var fileName = storageKey[(storageKey.LastIndexOf('/') + 1)..];
 
         var folderPath = Path.Combine(_localRoot, safeFolder);
         Directory.CreateDirectory(folderPath);
@@ -85,30 +73,5 @@ public sealed class LocalFileObjectStorage : IObjectStorage
             resolvedFull, FileMode.Open, FileAccess.Read, FileShare.Read,
             bufferSize: 64 * 1024, useAsync: true);
         return Task.FromResult(stream);
-    }
-
-    private static string SafeSegment(string segment)
-    {
-        if (string.IsNullOrWhiteSpace(segment)) return "misc";
-        var trimmed = segment.Trim('/').ToLowerInvariant();
-        var safe = new string(trimmed.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '/').ToArray());
-        return string.IsNullOrEmpty(safe) ? "misc" : safe;
-    }
-
-    private static string ResolveExtension(string contentType, string? originalFileName)
-    {
-        if (!string.IsNullOrEmpty(originalFileName))
-        {
-            var ext = Path.GetExtension(originalFileName);
-            if (!string.IsNullOrEmpty(ext) && ext.Length <= 8) return ext.ToLowerInvariant();
-        }
-        return contentType.ToLowerInvariant() switch
-        {
-            "application/pdf" => ".pdf",
-            "image/jpeg" => ".jpg",
-            "image/png" => ".png",
-            "image/webp" => ".webp",
-            _ => string.Empty,
-        };
     }
 }

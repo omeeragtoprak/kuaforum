@@ -1,3 +1,4 @@
+using Amazon.S3;
 using Hangfire;
 using Hangfire.PostgreSql;
 using Kuaforum.Application.Common;
@@ -16,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using StackExchange.Redis;
 
 namespace Kuaforum.Infrastructure;
@@ -175,7 +177,45 @@ public static class DependencyInjection
         services.AddScoped<ProcessBookingRefundJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<IStylistScheduleChecker, StylistScheduleChecker>();
-        services.AddSingleton<IObjectStorage, LocalFileObjectStorage>();
+
+        // Object storage: Local (dev/CI disk, default — prod boot stays safe until the
+        // founder provisions an R2 bucket) or S3 (Cloudflare R2 in prod / MinIO in tests).
+        // Fail-fast mirrors the PaymentOptions pattern above: only enforced when S3 is
+        // actually selected, so flipping the switch without keys crashes at startup
+        // instead of failing confusingly on the first KYC upload. GAP P1-6.
+        services.AddOptions<ObjectStorageOptions>()
+            .Bind(configuration.GetSection(ObjectStorageOptions.SectionName))
+            .Validate(
+                o => !string.Equals(o.Provider, "S3", StringComparison.OrdinalIgnoreCase)
+                    || (!string.IsNullOrWhiteSpace(o.S3.ServiceUrl)
+                        && !string.IsNullOrWhiteSpace(o.S3.Bucket)
+                        && !string.IsNullOrWhiteSpace(o.S3.AccessKeyId)
+                        && !string.IsNullOrWhiteSpace(o.S3.SecretAccessKey)),
+                "ObjectStorage:Provider=S3 seçiliyken ObjectStorage:S3:ServiceUrl/Bucket/AccessKeyId/SecretAccessKey zorunlu " +
+                    "(env: ObjectStorage__S3__ServiceUrl vb.). Bkz infra/README.md 'ObjectStorage'.")
+            .ValidateOnStart();
+
+        var objectStorageProvider = configuration.GetValue<string>($"{ObjectStorageOptions.SectionName}:Provider") ?? "Local";
+        if (string.Equals(objectStorageProvider, "S3", StringComparison.OrdinalIgnoreCase))
+        {
+            services.AddSingleton<IAmazonS3>(sp =>
+            {
+                var s3Opts = sp.GetRequiredService<IOptions<ObjectStorageOptions>>().Value.S3;
+                var config = new AmazonS3Config
+                {
+                    ServiceURL = s3Opts.ServiceUrl,
+                    ForcePathStyle = true, // MinIO/R2 need path-style addressing, not virtual-hosted-style
+                    AuthenticationRegion = s3Opts.Region,
+                };
+                return new AmazonS3Client(s3Opts.AccessKeyId, s3Opts.SecretAccessKey, config);
+            });
+            services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+        }
+        else
+        {
+            services.AddSingleton<IObjectStorage, LocalFileObjectStorage>();
+        }
+
         services.AddScoped<GeographySeeder>();
         services.AddScoped<DemoBarberSeeder>();
         services.AddScoped<ComprehensiveDemoSeeder>();
