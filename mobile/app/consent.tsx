@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/Button';
 import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
@@ -19,6 +19,10 @@ import { Haptics } from '@/lib/haptics';
  */
 export default function ConsentScreen() {
   const router = useRouter();
+  // RFC-010 — misafir randevu kapısı: requiresTosConsent true olan kullanıcı önce
+  // buraya düşer (bkz. resolvePostAuthRoute); redirectTo query'de taşınmış olabilir,
+  // onaylayınca oraya (seçimler korunarak) devam edilir.
+  const { redirectTo } = useLocalSearchParams<{ redirectTo?: string }>();
   const signOut = useAuthStore((s) => s.signOut);
 
   const [tosAccepted, setTosAccepted] = useState(false);
@@ -33,7 +37,7 @@ export default function ConsentScreen() {
     onSuccess: () => {
       Haptics.success();
       const user = useAuthStore.getState().user;
-      router.replace((user ? resolvePostAuthRoute(user) : '/(tabs)') as never);
+      router.replace((user ? resolvePostAuthRoute(user, redirectTo) : (redirectTo ?? '/(tabs)')) as never);
     },
     onError: () => {
       Haptics.error();

@@ -6,6 +6,7 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
+import { AuthPrompt } from '@/components/AuthPrompt';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
 import { PaymentApi, PaymentKind, InitiatePaymentResponse } from '@/api/payment';
@@ -16,6 +17,7 @@ import { Haptics } from '@/lib/haptics';
 import { ErrorReporter } from '@/lib/error-reporter';
 import { useAuthStore } from '@/store/auth-store';
 import { resolveBookingConfirmMode } from '@/lib/booking-confirm';
+import { buildRedirectPath } from '@/lib/consent-gate';
 
 export default function ConfirmBookingScreen() {
   const params = useLocalSearchParams<{
@@ -33,11 +35,37 @@ export default function ConfirmBookingScreen() {
   const [note, setNote] = useState('');
   const [payKind, setPayKind] = useState<PaymentKind>('Deposit');
 
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const onlinePaymentsEnabled = useAuthStore((s) => s.user?.onlinePaymentsEnabled);
   const confirmMode = resolveBookingConfirmMode(onlinePaymentsEnabled);
 
   const serviceIds = params.services?.split(',').filter(Boolean) ?? [];
   const total = params.totalAmount ? parseInt(params.totalAmount, 10) : undefined;
+
+  // RFC-010 karar 2 — randevu anında kayıt zorunlu: misafir buraya (barber/[id]'den
+  // slot seçip "Devam et"e basarak) ulaştığında randevu formu yerine AuthPrompt
+  // gösterilir. Tüm seçimler (stylist/slot/hizmetler/tutar) `redirectTo` query'sinde
+  // taşınır — login → OTP → (varsa) consent zincirinin sonunda kullanıcı BU EKRANA,
+  // aynı seçimlerle geri döner (yeni bir state mekanizması icat edilmedi, mevcut
+  // route param şeması yeniden serileştirildi).
+  if (!isAuthenticated) {
+    const redirectTo = buildRedirectPath('/booking/confirm', {
+      stylistId: params.stylistId,
+      stylistName: params.stylistName,
+      scheduledAt: params.scheduledAt,
+      services: params.services,
+      serviceLabels: params.serviceLabels,
+      totalAmount: params.totalAmount,
+      totalDuration: params.totalDuration,
+      shopName: params.shopName,
+    });
+    return (
+      <AuthPrompt
+        description="Randevu almak için giriş yapman veya kayıt olman gerekiyor."
+        redirectTo={redirectTo}
+      />
+    );
+  }
 
   async function handleConfirm() {
     setLoading(true);

@@ -7,9 +7,11 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
+import { AuthPrompt } from '@/components/AuthPrompt';
 import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
+import { useAuthStore } from '@/store/auth-store';
 import {
   formatDateTime, formatTry, bookingStatusInfo,
   isBookingUpcoming, isBookingCompleted, isBookingCancelled,
@@ -19,10 +21,12 @@ type FilterKey = 'all' | 'upcoming' | 'completed' | 'cancelled';
 
 export default function BookingsScreen() {
   const router = useRouter();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const [filter, setFilter] = useState<FilterKey>('all');
   const query = useQuery({
     queryKey: ['my-bookings'],
     queryFn: () => BookingApi.getMine(),
+    enabled: isAuthenticated,
   });
 
   const all = query.data ?? [];
@@ -41,6 +45,17 @@ export default function BookingsScreen() {
       default: return all;
     }
   }, [all, filter]);
+
+  // RFC-010 — misafir "randevularım" sekmesine geldiğinde global redirect yerine
+  // burada AuthPrompt gösterilir; girişten sonra aynı sekmeye döner.
+  if (!isAuthenticated) {
+    return (
+      <AuthPrompt
+        description="Randevularını görmek için giriş yapman gerekiyor."
+        redirectTo="/(tabs)/bookings"
+      />
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>

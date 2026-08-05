@@ -13,7 +13,7 @@ import { resolvePostAuthRoute } from '@/lib/consent-gate';
 const CODE_LEN = 6;
 
 export default function OtpScreen() {
-  const params = useLocalSearchParams<{ otpId: string; phone: string }>();
+  const params = useLocalSearchParams<{ otpId: string; phone: string; redirectTo?: string }>();
   const router = useRouter();
   const inputRef = useRef<TextInput>(null);
 
@@ -45,7 +45,9 @@ export default function OtpScreen() {
       // gate helper (AuthGate'in de kullandığı) hedefi belirler.
       await useAuthStore.getState().hydrate();
       const freshUser = useAuthStore.getState().user;
-      if (freshUser) router.replace(resolvePostAuthRoute(freshUser) as never);
+      // RFC-010 — misafir randevu kapısı: login.tsx'ten taşınan redirectTo varsa (ve
+      // consent gerekmiyorsa) kullanıcı seçimlerini koruyarak oraya döner.
+      if (freshUser) router.replace(resolvePostAuthRoute(freshUser, params.redirectTo) as never);
     } catch (err) {
       Alert.alert('Hata', extractApiError(err));
       setCode('');

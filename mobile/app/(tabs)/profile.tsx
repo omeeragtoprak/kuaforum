@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { AuthPrompt } from '@/components/AuthPrompt';
 import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
@@ -16,12 +17,14 @@ export default function ProfileScreen() {
   const router = useRouter();
   const signOut = useAuthStore((s) => s.signOut);
   const storeUser = useAuthStore((s) => s.user);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const isCustomer = useAuthStore((s) => s.isCustomer());
   const role = storeUser?.role;
 
   const profileQuery = useQuery({
     queryKey: ['my-profile'],
     queryFn: () => AuthApi.getMyProfile(),
+    enabled: isAuthenticated,
   });
 
   const displayName = profileQuery.data?.displayName ?? storeUser?.displayName ?? 'Misafir';
@@ -118,6 +121,18 @@ export default function ProfileScreen() {
       Haptics.error();
       Alert.alert('Hata', extractApiError(err));
     }
+  }
+
+  // RFC-010 — misafir "profil" sekmesine geldiğinde global redirect yerine burada
+  // AuthPrompt gösterilir; girişten sonra aynı sekmeye döner. Onboarding/owner
+  // akışları da bu sekmedeki linklerden başladığı için doğal olarak korunuyor.
+  if (!isAuthenticated) {
+    return (
+      <AuthPrompt
+        description="Profilini görmek ve hesap ayarlarını yönetmek için giriş yapman gerekiyor."
+        redirectTo="/(tabs)/profile"
+      />
+    );
   }
 
   const initial = displayName.slice(0, 1).toUpperCase();

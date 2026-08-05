@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert, Pressable } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Screen } from '@/components/Screen';
 import { RoleQuickLogin, DemoRole } from '@/components/RoleQuickLogin';
-import { Colors, FontSize, FontWeight, Spacing } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Layout, Spacing } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
@@ -14,6 +14,9 @@ import { formatPhoneTr, isValidTrMobile, phoneToE164 } from '@/lib/format';
 
 export default function LoginScreen() {
   const router = useRouter();
+  // RFC-010 — misafir randevu kapısı: AuthPrompt buraya `redirectTo` ile push eder
+  // (örn. `/booking/confirm?stylistId=...`); OTP doğrulama sonrası aynen taşınır.
+  const { redirectTo } = useLocalSearchParams<{ redirectTo?: string }>();
 
   const [phone, setPhone] = useState('+90 ');
   const [loading, setLoading] = useState(false);
@@ -30,7 +33,10 @@ export default function LoginScreen() {
     try {
       const e164 = phoneToE164(phone);
       const res = await AuthApi.sendOtp(e164, 'Login');
-      router.push({ pathname: '/(auth)/otp', params: { otpId: res.otpId, phone: e164 } });
+      router.push({
+        pathname: '/(auth)/otp',
+        params: { otpId: res.otpId, phone: e164, ...(redirectTo ? { redirectTo } : {}) },
+      });
     } catch (err) {
       Alert.alert('Hata', extractApiError(err));
     } finally {
@@ -46,12 +52,19 @@ export default function LoginScreen() {
       // profili çeker, aynı gate helper (AuthGate'in de kullandığı) hedefi belirler.
       await useAuthStore.getState().hydrate();
       const freshUser = useAuthStore.getState().user;
-      if (freshUser) router.replace(resolvePostAuthRoute(freshUser) as never);
+      if (freshUser) router.replace(resolvePostAuthRoute(freshUser, redirectTo) as never);
     } catch (err) {
       Alert.alert('Hızlı giriş başarısız', extractApiError(err));
     } finally {
       setQuickRole(null);
     }
+  }
+
+  // RFC-010 karar 1 — misafir gezinme: login zorunlu değil, "şimdilik gez" ile
+  // keşfete (root) dönülebilir. `redirectTo` burada BİLİNÇLİ olarak yok sayılır —
+  // kullanıcı girişi erteliyor, randevu seçimini de erteliyor demektir.
+  function handleContinueAsGuest() {
+    router.replace('/(tabs)' as never);
   }
 
   return (
@@ -151,6 +164,15 @@ export default function LoginScreen() {
             </Text>
             'ni buradan okuyabilirsin. Giriş sonrası onayın alınacak.
           </Text>
+
+          <Pressable
+            onPress={handleContinueAsGuest}
+            style={styles.guestLink}
+            accessibilityRole="button"
+            accessibilityLabel="Misafir olarak devam et, keşfet sekmesine dön"
+          >
+            <Text style={styles.guestLinkText}>Şimdilik gez</Text>
+          </Pressable>
         </View>
       </KeyboardAvoidingView>
     </Screen>
@@ -187,4 +209,18 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   legalLink: { color: Colors.primary, textDecorationLine: 'underline' },
+  guestLink: {
+    marginTop: Spacing.lg,
+    alignSelf: 'center',
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    minHeight: Layout.tapTargetMin,
+    justifyContent: 'center',
+  },
+  guestLinkText: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    fontWeight: FontWeight.semibold,
+    textDecorationLine: 'underline',
+  },
 });
