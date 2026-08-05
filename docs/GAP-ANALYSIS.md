@@ -534,6 +534,7 @@ Kod tarafı bu cycle'da ilerlerken paralel başlaması gereken 🟣 işler — l
 | 11 | **Resend hesabı** + kuaforum.com domain doğrulama | API key kod tarafında hazır bekliyor. |
 | 12 | **Google Maps API key** (geocoding — adres girişinde kullanılacak) | M3/M10 geocoding şu an tamamen boş. |
 | 13 | **Better Stack veya UptimeRobot hesabı** | Deploy sonrası `/health/ready` izleme — 15 dakikalık iş, ücretsiz tier yeter (P2-10). |
+| 14 | **Erken ücretsiz İYS kaydı** | İYS dışı alınan Marketing onayları 3 iş günü içinde İYS'ye işlenmezse geçersiz sayılıyor — ilk gerçek kullanıcı onayı üretime düşmeden temel İYS kaydını aç (ücretsiz; detay: `docs/01-research/iys-etk-arastirma.md` §5) `[hukukçu teyidi gerek]`. |
 
 ---
 
