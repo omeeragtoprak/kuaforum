@@ -1,6 +1,7 @@
 # RFC-005 — MVP Launch'ta Yalnız Telefon+OTP Girişi (Apple/Google OAuth V1.5'e Erteleme)
 
 **Status:** ✅ **Accepted — founder onayı 2026-07-23.** MVP launch girişi yalnız telefon+OTP; Apple/Google OAuth mobile bağlantısı V1.5'a ertelendi (backend OAuth kodu zararsız şekilde bekler).
+**Superseded by [RFC-010](RFC-010-guest-browsing-social-login.md)** (2026-08-05) — kayıt yöntemleri Google/Apple OAuth ile genişledi (V1.5 beklenmeden, launch'ta); **OTP korunuyor**, üç yöntemden biri olarak kalıyor. Bu RFC'nin Guideline 4.8 bulgusu ve alternatif analizi geçerliliğini koruyor, RFC-010 doğrudan bu bulguya dayanıyor.
 **Tarih:** 2026-07-23
 **Kapsam:** Mobile auth akışı (`mobile/app/(auth)/login.tsx`), backend OAuth endpoint'i (kod değişikliği önerilmiyor — mevcut haliyle kalması öneriliyor)
 
