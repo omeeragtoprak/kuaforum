@@ -27,6 +27,13 @@ public sealed class BarberShop : AggregateRoot
     public string? SubMerchantKey { get; private set; }
     public string? CommissionTier { get; private set; }
 
+    /// <summary>
+    /// RFC-012: null = global PlatformSettings.CommissionRateGlobal oranını miras alır.
+    /// Admin-only (SetBarberShopCommissionRateOverrideCommand). CommissionTier alanına
+    /// (RFC-009 yer tutucusu) dokunulmuyor — bu, gerçek bir oran mekanizması.
+    /// </summary>
+    public decimal? CommissionRateOverride { get; private set; }
+
     public static Result<BarberShop> Create(Guid ownerId, string name, SalonGenderType genderType)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 120)
@@ -121,6 +128,17 @@ public sealed class BarberShop : AggregateRoot
         if (Status != BarberShopStatus.Suspended)
             return Result.Failure(Error.Validation("İşletme askıya alınmış durumda değil."));
         Status = BarberShopStatus.Active;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>RFC-012 admin aksiyonu — null geçirmek override'ı kaldırıp global orana döner.</summary>
+    public Result SetCommissionRateOverride(decimal? rate)
+    {
+        if (rate is <= 0 or > 0.5m)
+            return Result.Failure(Error.Validation("Komisyon oranı %0 ile %50 arasında olmalı."));
+
+        CommissionRateOverride = rate;
         Touch();
         return Result.Success();
     }

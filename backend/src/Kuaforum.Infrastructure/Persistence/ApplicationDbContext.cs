@@ -1,6 +1,7 @@
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Billing;
 using Kuaforum.Domain.Modules.Booking;
 using Kuaforum.Domain.Modules.Geography;
 using Kuaforum.Domain.Modules.Identity;
@@ -51,6 +52,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<BarberReply> BarberReplies => Set<BarberReply>();
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
+    public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
+    public DbSet<CommissionStatement> CommissionStatements => Set<CommissionStatement>();
+    public DbSet<CommissionPayment> CommissionPayments => Set<CommissionPayment>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

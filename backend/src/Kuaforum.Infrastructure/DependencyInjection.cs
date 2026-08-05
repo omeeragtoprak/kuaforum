@@ -175,6 +175,8 @@ public static class DependencyInjection
         services.AddScoped<BookingReminderJob>();
         services.AddScoped<ExpirePendingBookingsJob>();
         services.AddScoped<ProcessBookingRefundJob>();
+        services.AddScoped<CloseMonthlyCommissionStatementsJob>();
+        services.AddScoped<SuspendOverdueCommissionAccountsJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<IStylistScheduleChecker, StylistScheduleChecker>();
 
@@ -220,6 +222,7 @@ public static class DependencyInjection
         services.AddScoped<DemoBarberSeeder>();
         services.AddScoped<ComprehensiveDemoSeeder>();
         services.AddScoped<AdminSeeder>();
+        services.AddScoped<Persistence.Seeding.PlatformSettingsSeeder>();
 
         return services;
     }
@@ -243,6 +246,9 @@ public static class DependencyInjection
 
         var adminSeeder = scope.ServiceProvider.GetRequiredService<AdminSeeder>();
         await adminSeeder.SeedAsync(ct);
+
+        var platformSettingsSeeder = scope.ServiceProvider.GetRequiredService<Persistence.Seeding.PlatformSettingsSeeder>();
+        await platformSettingsSeeder.SeedAsync(ct);
 
         if (seedDemoBarbers)
         {
@@ -288,6 +294,18 @@ public static class DependencyInjection
             recurringJobId: ExpirePendingBookingsJob.JobId,
             methodCall: job => job.RunAsync(CancellationToken.None),
             cronExpression: ExpirePendingBookingsJob.CronExpression,
+            options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        manager.AddOrUpdate<CloseMonthlyCommissionStatementsJob>(
+            recurringJobId: CloseMonthlyCommissionStatementsJob.JobId,
+            methodCall: job => job.RunAsync(CancellationToken.None),
+            cronExpression: CloseMonthlyCommissionStatementsJob.CronExpression,
+            options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
+
+        manager.AddOrUpdate<SuspendOverdueCommissionAccountsJob>(
+            recurringJobId: SuspendOverdueCommissionAccountsJob.JobId,
+            methodCall: job => job.RunAsync(CancellationToken.None),
+            cronExpression: SuspendOverdueCommissionAccountsJob.CronExpression,
             options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 }

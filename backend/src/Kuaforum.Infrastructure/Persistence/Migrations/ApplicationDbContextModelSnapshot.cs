@@ -59,6 +59,11 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(8)")
                         .HasColumnName("address_postal_code");
 
+                    b.Property<decimal?>("CommissionRateOverride")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasColumnName("commission_rate_override");
+
                     b.Property<string>("CommissionTier")
                         .HasMaxLength(20)
                         .HasColumnType("character varying(20)")
@@ -508,6 +513,218 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ux_working_hours_stylist_day");
 
                     b.ToTable("working_hours", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.CommissionPayment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<long>("AmountMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_minor");
+
+                    b.Property<Guid>("BarberShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("barber_shop_id");
+
+                    b.Property<DateTimeOffset?>("CapturedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("captured_at");
+
+                    b.Property<Guid>("CommissionStatementId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("commission_statement_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("failure_reason");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<int>("Provider")
+                        .HasColumnType("integer")
+                        .HasColumnName("provider");
+
+                    b.Property<string>("ProviderTransactionId")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("provider_transaction_id");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BarberShopId")
+                        .HasDatabaseName("ix_commission_payments_shop");
+
+                    b.HasIndex("CommissionStatementId")
+                        .HasDatabaseName("ix_commission_payments_statement");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique()
+                        .HasDatabaseName("ux_commission_payments_idempotency")
+                        .HasFilter("idempotency_key IS NOT NULL");
+
+                    b.ToTable("commission_payments", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.CommissionStatement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("AdminAdjustmentNote")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("admin_adjustment_note");
+
+                    b.Property<long>("AmountDueMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_due_minor");
+
+                    b.Property<Guid>("BarberShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("barber_shop_id");
+
+                    b.Property<long>("BasisAmountMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("basis_amount_minor");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DisputeNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("dispute_note");
+
+                    b.Property<DateTimeOffset?>("DisputedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("disputed_at");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date")
+                        .HasColumnName("due_date");
+
+                    b.Property<bool>("IsDisputed")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_disputed");
+
+                    b.Property<DateOnly>("PeriodEnd")
+                        .HasColumnType("date")
+                        .HasColumnName("period_end");
+
+                    b.Property<DateOnly>("PeriodStart")
+                        .HasColumnType("date")
+                        .HasColumnName("period_start");
+
+                    b.Property<decimal>("RateApplied")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasColumnName("rate_applied");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DueDate")
+                        .HasDatabaseName("ix_commission_statements_due_date");
+
+                    b.HasIndex("Status")
+                        .HasDatabaseName("ix_commission_statements_status");
+
+                    b.HasIndex("BarberShopId", "PeriodStart")
+                        .IsUnique()
+                        .HasDatabaseName("ux_commission_statements_shop_period");
+
+                    b.ToTable("commission_statements", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.PlatformSettings", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CommissionPaymentAccountHolderName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("commission_payment_account_holder_name");
+
+                    b.Property<string>("CommissionPaymentBankName")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("commission_payment_bank_name");
+
+                    b.Property<string>("CommissionPaymentIban")
+                        .HasMaxLength(34)
+                        .HasColumnType("character varying(34)")
+                        .HasColumnName("commission_payment_iban");
+
+                    b.Property<decimal>("CommissionRateGlobal")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasColumnName("commission_rate_global");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("platform_settings", (string)null);
                 });
 
             modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.Booking", b =>

@@ -109,6 +109,7 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
             TRUNCATE TABLE
               notification_logs,
               audit_logs,
+              commission_payments, commission_statements,
               barber_replies, reviews,
               refunds, payments,
               booking_items, bookings,

@@ -28,6 +28,7 @@ internal sealed class BarberShopConfiguration : IEntityTypeConfiguration<BarberS
         builder.Property(x => x.Longitude).HasColumnName("longitude");
         builder.Property(x => x.SubMerchantKey).HasColumnName("sub_merchant_key").HasMaxLength(120);
         builder.Property(x => x.CommissionTier).HasColumnName("commission_tier").HasMaxLength(20);
+        builder.Property(x => x.CommissionRateOverride).HasColumnName("commission_rate_override").HasPrecision(5, 4);
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");

@@ -174,6 +174,7 @@ app.MapReviewEndpoints();
 app.MapNotificationEndpoints();
 app.MapDeviceTokenEndpoints();
 app.MapAdminEndpoints();
+app.MapBillingEndpoints(app.Environment);
 app.MapWebhookEndpoints();
 
 // Hangfire dashboard + recurring jobs ancak Hangfire DI'a register edildiyse
