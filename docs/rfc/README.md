@@ -19,6 +19,8 @@
 | [RFC-009](RFC-009-free-growth-mode.md) | Ücretsiz Büyüme Modu: Online Ödeme Feature-Flag'i | ✅ Accepted (founder onayı 2026-08-05) | 2026-08-05 |
 | [RFC-010](RFC-010-guest-browsing-social-login.md) | Misafir Gezinme + Sosyal Giriş (Google/Apple) Genişlemesi | ✅ Accepted (founder onayı 2026-08-05) | 2026-08-05 |
 | [RFC-011](RFC-011-web-landing-barber-profiles.md) | Web Landing + Kuaför Public Profil Sayfaları | ✅ Accepted (founder onayı 2026-08-05) | 2026-08-05 |
+| [RFC-012](RFC-012-monthly-commission-billing.md) | Aylık Ciro Komisyonu: Ücretsiz Kayıt + Ay Sonu Statement + Otomatik Yaptırım | ✅ Accepted (founder onayı 2026-08-05) | 2026-08-05 |
+| [RFC-013](RFC-013-per-shop-deposit-and-booking-rules.md) | Per-Shop Kapora Ayarı + Dinamik Randevu Kuralları: Önce Kapora, Sonra Onay | ✅ Accepted (founder onayı 2026-08-05) | 2026-08-05 |
 
 ---
 
@@ -29,6 +31,8 @@ RFC-001 ila RFC-004, `docs/GAP-ANALYSIS.md`'nin tespit ettiği ve zaten kod taba
 RFC-005, 2026-07-23'te onaylanıp uygulanmıştı (yalnız telefon+OTP); 2026-08-05'te RFC-010 ile **superseded** oldu — kayıt yöntemi tekeli kalktı, OTP üç yöntemden biri olarak korundu. RFC-005'in Guideline 4.8 bulgusu RFC-010'un doğrudan dayanağı, ayrıca geçerli.
 
 RFC-006'nın kapora+komisyon+webhook mimarisi 2026-08-05'te RFC-009 ile **askıya alındı** (süperseden değil) — launch'ta `Payment:OnlinePaymentsEnabled=false` flag'iyle kapalı, kod aynen duruyor, aktivasyonu flag'e bağlı.
+
+RFC-012 + RFC-013 (2026-08-05, aynı gün — founder iş modeli revizyonu) RFC-006'nın komisyon mantığını **kısmen değiştiriyor** (süpersede değil, uyarlama): RFC-012 komisyonu ödeme anından ay sonu statement'a taşıyor, RFC-013 kapora oranını global'den per-shop'a indiriyor ve "ödeme → otomatik onay" davranışını "ödeme → owner onayı" olarak ayrıştırıyor. Her iki RFC de RFC-006/RFC-009'a çapraz not düşüldü (RFC-006 başlığın hemen altında, RFC-009 başlığın hemen altında) — RFC-006/RFC-009'un kendi metinleri **retrospektif olarak güncellenmedi**, güncel gerçeği çapraz notlar taşıyor.
 
 ---
 

@@ -6,6 +6,13 @@
 **Kapsam:** `Kuaforum.Domain/Modules/Payment`, `Kuaforum.Application/Modules/Payment`, `Kuaforum.Api` (checkout + webhook), `mobile/app/booking/` (confirm + payment ekranları), owner Bugün ekranı
 **İlgili:** [RFC-005](RFC-005-otp-only-launch.md) (launch scope), `docs/04-modules/07-payment.md` (as-built temel), GAP-ANALYSIS P0-5 (gerçek ödeme zinciri)
 
+> **2026-08-05 güncelleme — [RFC-012](RFC-012-monthly-commission-billing.md) + [RFC-013](RFC-013-per-shop-deposit-and-booking-rules.md):** Bu RFC'nin iki temel varsayımı artık geçerli değil, kod hâlâ burada anlatıldığı gibi çalışıyorsa **implementasyon güncellenmeli**:
+> 1. **Komisyon artık kaporadan kesilmez** — kapora tamamen kuaföre akar (`NetToBarberMinor` hesabında `PlatformCommissionMinor = 0` geçilir); komisyon RFC-012'nin ay sonu `CommissionStatement` tahsilatına taşındı. Aşağıdaki "Komisyon (%10) her iki modda da... online tahsil edilen tutardan karşılanır" cümlesi ve `DepositRate ≥ CommissionRate` invariant'ı **artık bu RFC'nin orijinal amacıyla geçerli değil** (invariant kod düzeyinde kalabilir ama anlamsızlaşır — RFC-013'te ele alınıyor).
+> 2. **"Ödeme → otomatik Confirm" davranışı kalkıyor** (RFC-013) — kapora/tam ödeme artık booking'i doğrudan `Confirmed`'e geçirmiyor, yalnızca "ödendi" işaretliyor; `Confirmed`'e geçiş her zaman kuaför onayıyla (`OwnerConfirm`). Aşağıdaki mobile/owner akış açıklamaları bu değişiklikle güncellenmeli.
+> 3. **Kapora oranı artık global değil, per-shop** (`BookingPolicy.DepositEnabled`/`DepositPercent`, RFC-013) — `PaymentOptions.DepositRate` yalnızca fallback/varsayılan anlamına geliyor.
+>
+> Bu RFC'nin PayTR checkout/webhook altyapısı (HMAC doğrulama, idempotency, `IPaymentProvider` arayüzü) **aynen geçerli** — yalnızca komisyon kesintisi ve onay tetikleme mantığı değişiyor.
+
 ---
 
 ## Karar

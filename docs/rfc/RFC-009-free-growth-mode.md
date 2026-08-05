@@ -5,6 +5,8 @@
 **Kapsam:** `Kuaforum.Application/Common/PaymentOptions.cs`, `Kuaforum.Infrastructure/DependencyInjection.cs`, `Kuaforum.Application/Modules/Payment/InitiatePaymentCommand.cs`, `Kuaforum.Infrastructure/BackgroundJobs/ExpirePendingBookingsJob.cs`, `Kuaforum.Application/Modules/Identity/Users/GetMyProfileQuery.cs`, `mobile/app/booking/confirm.tsx`, `Kuaforum.Api/appsettings*.json`
 **İlgili:** [RFC-006](RFC-006-kapora-checkout.md) (kapora checkout — süperseden EDİLMİYOR, aktivasyonu bu RFC'nin flag'ine bağlanıyor), [`docs/GAP-ANALYSIS.md`](../GAP-ANALYSIS.md) P0-5 (referans, bu RFC'de değiştirilmiyor)
 
+> **2026-08-05 güncelleme — [RFC-012](RFC-012-monthly-commission-billing.md):** Bu RFC'nin "ücretsiz büyüme modu" fikri **süperseden edilmiyor** — `Payment:OnlinePaymentsEnabled` flag'i launch master-switch'i olarak aynen kalıyor (kapora/PSP hâlâ bu flag'e bağlı, RFC-013 de aynı flag'i per-shop kapora için master-switch olarak kullanıyor). RFC-012 bu flag'den **bağımsız** bir monetizasyon mekanizması ekliyor: kuaför kaydı ücretsiz kalmaya devam ediyor, ama artık PSP aktif olmasa bile (flag kapalıyken de) platform ay sonunda `Completed` randevular üzerinden komisyon tahsil ediyor (havale/EFT + admin onayı). Özetle: **bu RFC "PSP açık mı kapalı mı"yı**, **RFC-012 "komisyon NASIL tahsil ediliyor"yu** tanımlıyor — ikisi ortogonal, biri diğerini geçersiz kılmıyor.
+
 ---
 
 ## Kararlar (founder, 2026-08-05)
