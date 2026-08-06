@@ -2,10 +2,15 @@
  * RFC-013 C5b — kuaför paneli "Randevu ayarları" ekranı için saf mantık.
  * Backend kaynağı: Kuaforum.Domain.Modules.Barber.BookingPolicy.Create() +
  * Kuaforum.Application.Modules.Barber.BookingPolicyCommands (GetBookingPolicyQuery /
- * UpdateBookingPolicyCommand). Sınır sabitleri (ceiling'ler) backend'le pin'lenmiş —
- * biri değişip diğeri unutulursa bu dosyadaki testler yakalamaz, backend'deki
- * PolicyConstantsPinTests yakalar; burada yalnız UI-tarafı doğrulamayı erken göstermek
- * için kopyalandı. Sunucu her zaman son sözü söyler (400 mesajı ekrana aynen basılır).
+ * UpdateBookingPolicyCommand). Sınır sabitleri (ceiling'ler) aşağıda backend'le ELLE
+ * senkron tutuluyor — OTOMATİK PIN YOK. Backend'deki PolicyConstantsPinTests yalnız iki
+ * backend sabitini (BookingPolicy.MaxPendingPerCustomerCeiling ↔
+ * InitiateBookingCommandHandler.MaxActivePendingBookingsPerCustomer) birbirine pin'liyor;
+ * bu dosyadaki mobile kopyalarını hiçbir test backend'e karşı doğrulamıyor. Backend'de
+ * aralık değişirse (ör. MinDaysBetweenBookingsCeiling) buradaki sabit de elle güncellenmeli
+ * — unutulursa kullanıcı istemci tarafında yanlış aralıkla erken reddedilir/kabul edilir,
+ * sunucu 400'ü yine de son sözü söyler ama UX kötüleşir. Sunucu her zaman son sözü söyler
+ * (400 mesajı ekrana aynen basılır) — bu dosya yalnız erken/inline geri bildirim içindir.
  */
 
 /** Backend GET/PUT /v1/owner/barber-shop/booking-policy response şekli (alan adları koddan doğrulandı). */
@@ -88,6 +93,35 @@ export function formatPercent(fraction: number): string {
 }
 
 /**
+ * Ondalık sayı TextInput'u için canlı-yazarken maske (review I1/I2 bulguları).
+ * - TR klavyede ondalık ayırıcı VİRGÜLDÜR ("12,5") — sessizce noktaya çevrilir, aksi halde
+ *   parseFloat("12,5") NaN döner ve kullanıcı "aralık dışı" sanılan anlaşılmaz bir hata görür.
+ * - İkinci (ve sonraki) ondalık ayırıcılar METİNDEN atılır ("1.2.3" -> "1.23") — yalnız
+ *   parseFloat'ta değil, EKRANDA GÖRÜNEN metinde de düzeltilir ki gösterilen değerle
+ *   kaydedilecek değer arasında sessiz bir fark oluşmasın.
+ * - Ondalık basamak sayısı `maxDecimals` ile KIRPILIR (yuvarlanmaz) — backend'in
+ *   decimal(5,4) kapora alanı yüzde cinsinden 2 basamağa karşılık gelir.
+ */
+export function sanitizeDecimalText(raw: string, maxDecimals: number): string {
+  let s = raw.replace(/,/g, '.').replace(/[^\d.]/g, '');
+  const firstDot = s.indexOf('.');
+  if (firstDot !== -1) {
+    // İlk noktadan sonraki her ek nokta silinir (yeni bir ondalık ayırıcı değil, yazım hatası sayılır).
+    s = s.slice(0, firstDot + 1) + s.slice(firstDot + 1).replace(/\./g, '');
+    const [intPart, decPart] = s.split('.');
+    if (decPart.length > maxDecimals) s = `${intPart}.${decPart.slice(0, maxDecimals)}`;
+  }
+  return s;
+}
+
+/** sanitizeDecimalText çıktısını sayıya çevirir; boş/yalnız-nokta/parse edilemeyen -> null. */
+export function parseDecimalOrNull(sanitized: string): number | null {
+  if (sanitized.length === 0 || sanitized === '.') return null;
+  const n = parseFloat(sanitized);
+  return Number.isNaN(n) ? null : n;
+}
+
+/**
  * Backend BookingPolicy.Create() ile aynı kurallar, alan bazlı hata mesajıyla (inline validation —
  * "errors near field", tek bir toplu mesaj yerine). Kapalı bir toggle'ın altındaki alan hiç
  * denetlenmez (kapora kapalıyken yüzde yok sayılır; opsiyonel limitler kapalıyken yok sayılır).
@@ -138,9 +172,22 @@ export function isBookingPolicyValid(draft: BookingPolicyDraft, bounds: DepositP
   return Object.keys(validateBookingPolicy(draft, bounds)).length === 0;
 }
 
-/** Kaydet butonunun disabled/enabled durumu için: sunucudaki son bilinen halle karşılaştırır. */
+/**
+ * Kaydet butonunun disabled/enabled durumu için: sunucudaki son bilinen halle karşılaştırır.
+ *
+ * M12 review bulgusu: yalnız draftToPayload çıktısını karşılaştırmak YETMEZ. Opsiyonel bir
+ * limit toggle'ı AÇILIP altındaki sayı henüz girilmediyse (değer hâlâ null), payload'da o alan
+ * yine null kalır — toggle açık/kapalı farkı payload'da "görünmez" olur, Kaydet gri kalır ve
+ * kullanıcı "neden kaydedemiyorum" der. Bu yüzden toggle bayrakları (minDaysBetweenBookingsEnabled,
+ * maxBookingsPerMonthEnabled) payload'dan BAĞIMSIZ olarak da karşılaştırılır. depositEnabled zaten
+ * payload'da normalize edilmeden taşınıyor (null'a düşmüyor) — o yüzden ayrı kontrol gerekmiyor.
+ */
 export function hasPolicyChanges(original: BookingPolicyDto, draft: BookingPolicyDraft): boolean {
-  const a = draftToPayload(draftFromDto(original));
+  const originalDraft = draftFromDto(original);
+  if (originalDraft.minDaysBetweenBookingsEnabled !== draft.minDaysBetweenBookingsEnabled) return true;
+  if (originalDraft.maxBookingsPerMonthEnabled !== draft.maxBookingsPerMonthEnabled) return true;
+
+  const a = draftToPayload(originalDraft);
   const b = draftToPayload(draft);
   return (
     a.depositEnabled !== b.depositEnabled ||

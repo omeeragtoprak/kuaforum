@@ -6,9 +6,16 @@ type ChipProps = {
   selected?: boolean;
   onPress?: () => void;
   style?: ViewStyle;
+  /** Varsayılan 'button' — mevcut ekranlardaki davranışı korur. Tek-seçim grupları (ör.
+   *  "1/2/3 seç" segmented control) 'radio' geçmeli; o zaman accessibilityState 'checked'
+   *  kullanır ('selected' yerine), TalkBack/VoiceOver'ın radio-group semantiğiyle eşleşsin diye. */
+  accessibilityRole?: 'button' | 'radio';
+  /** Varsayılan `label` — bağlamsız tek karakter/sayı etiketler (ör. "2") screen reader'da
+   *  anlamsız kalır; çağıran taraf "Bekleyen talep limiti: 2" gibi bağlamlı bir metin geçebilir. */
+  accessibilityLabel?: string;
 };
 
-export function Chip({ label, selected, onPress, style }: ChipProps) {
+export function Chip({ label, selected, onPress, style, accessibilityRole = 'button', accessibilityLabel }: ChipProps) {
   return (
     <Pressable
       onPress={onPress}
@@ -18,8 +25,9 @@ export function Chip({ label, selected, onPress, style }: ChipProps) {
         pressed && styles.pressed,
         style,
       ]}
-      accessibilityRole="button"
-      accessibilityState={{ selected: !!selected }}
+      accessibilityRole={accessibilityRole}
+      accessibilityLabel={accessibilityLabel ?? label}
+      accessibilityState={accessibilityRole === 'radio' ? { checked: !!selected } : { selected: !!selected }}
     >
       <Text style={[styles.label, selected && styles.labelSelected]}>{label}</Text>
     </Pressable>

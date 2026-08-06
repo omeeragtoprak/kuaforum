@@ -3,6 +3,8 @@ import {
   BookingPolicyDto,
   draftFromDto,
   hasPolicyChanges,
+  parseDecimalOrNull,
+  sanitizeDecimalText,
   validateBookingPolicy,
 } from '@/lib/booking-policy';
 
@@ -116,5 +118,63 @@ describe('hasPolicyChanges', () => {
     const draft = draftFromDto(dto);
     draft.depositPercent = 15 / 100;
     expect(hasPolicyChanges(dto, draft)).toBe(false);
+  });
+
+  it('M12: opsiyonel toggle açılıp altındaki değer henüz girilmemişse (null) bile değişiklik sayılır', () => {
+    // Payload karşılaştırması tek başına bunu KAÇIRIR çünkü draftToPayload kapalı/boş
+    // toggle'ı zaten null'a normalize ediyor — iki taraf da null görünür.
+    const draft = draftFromDto(BASE_DTO);
+    draft.minDaysBetweenBookingsEnabled = true;
+    draft.minDaysBetweenBookings = null;
+    expect(hasPolicyChanges(BASE_DTO, draft)).toBe(true);
+  });
+
+  it('M12: aylık limit toggle açılıp değer boşken de değişiklik sayılır', () => {
+    const draft = draftFromDto(BASE_DTO);
+    draft.maxBookingsPerMonthEnabled = true;
+    draft.maxBookingsPerMonth = null;
+    expect(hasPolicyChanges(BASE_DTO, draft)).toBe(true);
+  });
+});
+
+describe('sanitizeDecimalText', () => {
+  it('TR ondalık virgülünü noktaya çevirir: "12,5" -> "12.5"', () => {
+    expect(sanitizeDecimalText('12,5', 2)).toBe('12.5');
+  });
+
+  it('ikinci noktayı metinden atar: "1.2.3" -> "1.23"', () => {
+    expect(sanitizeDecimalText('1.2.3', 2)).toBe('1.23');
+  });
+
+  it('ondalık basamağı kırpar (yuvarlamaz): "12.345" -> "12.34"', () => {
+    expect(sanitizeDecimalText('12.345', 2)).toBe('12.34');
+  });
+
+  it('harf ve boşluk gibi geçersiz karakterleri atar', () => {
+    expect(sanitizeDecimalText('1a2 b.5x', 2)).toBe('12.5');
+  });
+
+  it('tek başına nokta veya virgül metinde nokta olarak kalabilir (henüz sayı değil)', () => {
+    expect(sanitizeDecimalText(',', 2)).toBe('.');
+  });
+});
+
+describe('parseDecimalOrNull', () => {
+  it('"12,5" TR virgülüyle yazılıp sanitize edildikten sonra 0.125 fraction\'a karşılık gelen 12.5\'i verir', () => {
+    const sanitized = sanitizeDecimalText('12,5', 2);
+    expect(parseDecimalOrNull(sanitized)).toBe(12.5);
+    expect((parseDecimalOrNull(sanitized) ?? 0) / 100).toBeCloseTo(0.125, 10);
+  });
+
+  it('boş metin null döner', () => {
+    expect(parseDecimalOrNull('')).toBeNull();
+  });
+
+  it('tek başına nokta null döner', () => {
+    expect(parseDecimalOrNull('.')).toBeNull();
+  });
+
+  it('"12.34" -> 12.34', () => {
+    expect(parseDecimalOrNull('12.34')).toBe(12.34);
   });
 });

@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert, Switch, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Alert, Platform, KeyboardAvoidingView, Pressable, ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { AxiosError } from 'axios';
-import { Card } from '@/components/Card';
-import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
-import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
+import { DepositSection } from '@/components/booking-policy/DepositSection';
+import { BookingRulesSection } from '@/components/booking-policy/BookingRulesSection';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
 import { extractApiError } from '@/api/client';
@@ -16,25 +16,25 @@ import { Haptics } from '@/lib/haptics';
 import {
   BookingPolicyDraft,
   DepositPercentBounds,
-  MAX_BOOKINGS_PER_MONTH_CEILING,
-  MAX_PENDING_PER_CUSTOMER_CEILING,
-  MIN_DAYS_BETWEEN_BOOKINGS_CEILING,
   draftFromDto,
   draftToPayload,
   formatPercent,
   hasPolicyChanges,
+  parseDecimalOrNull,
+  sanitizeDecimalText,
   validateBookingPolicy,
 } from '@/lib/booking-policy';
 
 type TouchedField = 'depositPercent' | 'maxPendingPerCustomer' | 'minDaysBetweenBookings' | 'maxBookingsPerMonth';
-
-const PENDING_OPTIONS = Array.from({ length: MAX_PENDING_PER_CUSTOMER_CEILING }, (_, i) => i + 1);
+const ALL_FIELDS: TouchedField[] = ['depositPercent', 'maxPendingPerCustomer', 'minDaysBetweenBookings', 'maxBookingsPerMonth'];
+const QUERY_KEY = ['my-booking-policy'];
 
 export default function BookingSettingsScreen() {
+  const router = useRouter();
   const qc = useQueryClient();
 
   const policyQuery = useQuery({
-    queryKey: ['my-booking-policy'],
+    queryKey: QUERY_KEY,
     queryFn: () => BarberApi.getBookingPolicy(),
     retry: false,
   });
@@ -78,12 +78,15 @@ export default function BookingSettingsScreen() {
     mutationFn: () => BarberApi.updateBookingPolicy(draftToPayload(draft!)),
     onSuccess: (data) => {
       Haptics.success();
-      qc.setQueryData(['my-booking-policy'], data);
+      qc.setQueryData(QUERY_KEY, data);
       syncFromDto(data);
       Alert.alert('Kaydedildi', 'Randevu ayarların güncellendi.');
     },
     onError: (err) => {
       Haptics.error();
+      // Admin aralığı (depositPercentMin/Max) bu arada değişmiş olabilir — ekrandaki
+      // "izin verilen aralık" ipucu bayat kalmasın diye sunucudan taze veriyi çek (M11).
+      qc.invalidateQueries({ queryKey: QUERY_KEY });
       Alert.alert('Kaydedilemedi', extractApiError(err));
     },
   });
@@ -92,7 +95,7 @@ export default function BookingSettingsScreen() {
     if (!draft) return;
     const currentErrors = validateBookingPolicy(draft, bounds);
     if (Object.keys(currentErrors).length > 0) {
-      setTouched(new Set(['depositPercent', 'maxPendingPerCustomer', 'minDaysBetweenBookings', 'maxBookingsPerMonth']));
+      setTouched(new Set(ALL_FIELDS));
       Haptics.error();
       return;
     }
@@ -116,14 +119,33 @@ export default function BookingSettingsScreen() {
     setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
   }
 
+  function handlePercentChange(t: string) {
+    const cleaned = sanitizeDecimalText(t, 2);
+    setPercentText(cleaned);
+    const n = parseDecimalOrNull(cleaned);
+    updateDraft({ depositPercent: n !== null ? n / 100 : null });
+  }
+
+  function handleMinDaysChange(t: string) {
+    const cleaned = t.replace(/\D/g, '').slice(0, 3);
+    setMinDaysText(cleaned);
+    const n = parseInt(cleaned, 10);
+    updateDraft({ minDaysBetweenBookings: cleaned.length > 0 && !Number.isNaN(n) ? n : null });
+  }
+
+  function handleMaxMonthlyChange(t: string) {
+    const cleaned = t.replace(/\D/g, '').slice(0, 3);
+    setMaxMonthlyText(cleaned);
+    const n = parseInt(cleaned, 10);
+    updateDraft({ maxBookingsPerMonth: cleaned.length > 0 && !Number.isNaN(n) ? n : null });
+  }
+
   const notFound = isNotFoundError(policyQuery.error);
 
   if (policyQuery.isLoading) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Randevu Ayarları</Text>
-        </View>
+        <ScreenHeader onBack={() => router.back()} style={styles.headerPadX} />
         <View style={styles.scroll}>
           <Skeleton height={120} radius={Radius.lg} style={{ marginBottom: Spacing.md }} />
           <Skeleton height={220} radius={Radius.lg} />
@@ -135,6 +157,7 @@ export default function BookingSettingsScreen() {
   if (notFound) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <ScreenHeader onBack={() => router.back()} style={styles.headerPadX} />
         <EmptyState
           emoji="🏪"
           title="Salon yok"
@@ -147,6 +170,7 @@ export default function BookingSettingsScreen() {
   if (policyQuery.isError || !draft || !policyQuery.data) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
+        <ScreenHeader onBack={() => router.back()} style={styles.headerPadX} />
         <EmptyState
           emoji="⚠️"
           title="Bağlantı hatası"
@@ -168,165 +192,45 @@ export default function BookingSettingsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.header}>
-            <Text style={styles.title}>Randevu Ayarları</Text>
-            <Text style={styles.subtitle}>Kapora ve spam koruma kurallarını buradan yönet.</Text>
-          </View>
+          <ScreenHeader onBack={() => router.back()} subtitle="Kapora ve spam koruma kurallarını buradan yönet." />
 
-          <Text style={styles.sectionTitle}>Kapora</Text>
-          <Card style={{ gap: Spacing.md }}>
-            <View style={styles.switchRow}>
-              <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                <Text style={styles.rowLabel}>Kapora ödemesi</Text>
-                <Text style={styles.rowHint}>
-                  Müşteri randevu alırken belirlediğin yüzdeyi online öder, kalanını salonda ödersiniz.
-                </Text>
-              </View>
-              <Switch
-                value={draft.depositEnabled}
-                onValueChange={(value) => updateDraft({ depositEnabled: value })}
-                trackColor={{ true: Colors.success, false: '#E5E7EB' }}
-                accessibilityRole="switch"
-                accessibilityLabel="Kapora ödemesi"
-                accessibilityState={{ checked: draft.depositEnabled }}
-              />
-            </View>
+          <DepositSection
+            depositEnabled={draft.depositEnabled}
+            onToggleDeposit={(value) => updateDraft({ depositEnabled: value })}
+            percentText={percentText}
+            onChangePercentText={handlePercentChange}
+            onBlurPercent={() => touch('depositPercent')}
+            percentError={touched.has('depositPercent') ? errors.depositPercent : undefined}
+            bounds={bounds}
+            showMasterSwitchNotice={showMasterSwitchNotice}
+          />
 
-            {draft.depositEnabled ? (
-              <Input
-                label="Kapora oranı"
-                required
-                value={percentText}
-                onChangeText={(t) => {
-                  const cleaned = t.replace(/[^\d.]/g, '');
-                  setPercentText(cleaned);
-                  const n = parseFloat(cleaned);
-                  updateDraft({ depositPercent: cleaned.length > 0 && !Number.isNaN(n) ? n / 100 : null });
-                }}
-                onBlur={() => touch('depositPercent')}
-                keyboardType="decimal-pad"
-                rightSlot={<Text style={styles.unitText}>%</Text>}
-                hint={`İzin verilen aralık: %${formatPercent(bounds.depositPercentMin)} – %${formatPercent(bounds.depositPercentMax)}`}
-                error={touched.has('depositPercent') ? errors.depositPercent : undefined}
-              />
-            ) : null}
-
-            {showMasterSwitchNotice ? (
-              <View style={styles.noticeBox} accessibilityRole="text">
-                <Text style={styles.noticeText}>
-                  ℹ️ Online ödeme platform genelinde henüz kapalı — ayarın kaydedildi, ödeme açıldığında otomatik devreye girecek.
-                </Text>
-              </View>
-            ) : null}
-          </Card>
-
-          <Text style={styles.sectionTitle}>Randevu kuralları</Text>
-          <Card style={{ gap: Spacing.lg }}>
-            <View>
-              <Text style={styles.rowLabel}>Bekleyen talep limiti</Text>
-              <Text style={styles.rowHint}>
-                Bir müşterinin aynı anda kaç tane onay bekleyen randevusu olabilir? Düşük tutmak spam rezervasyonu önler.
-              </Text>
-              <View style={styles.chipsRow}>
-                {PENDING_OPTIONS.map((n) => (
-                  <Chip
-                    key={n}
-                    label={String(n)}
-                    selected={draft.maxPendingPerCustomer === n}
-                    onPress={() => {
-                      updateDraft({ maxPendingPerCustomer: n });
-                      touch('maxPendingPerCustomer');
-                    }}
-                  />
-                ))}
-              </View>
-              {touched.has('maxPendingPerCustomer') && errors.maxPendingPerCustomer ? (
-                <Text style={styles.errorText}>{errors.maxPendingPerCustomer}</Text>
-              ) : null}
-            </View>
-
-            <View style={styles.divider} />
-
-            <View>
-              <View style={styles.switchRow}>
-                <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                  <Text style={styles.rowLabel}>Randevular arası minimum gün</Text>
-                  <Text style={styles.rowHint}>
-                    Aynı müşteri, önceki randevusundan en az bu kadar gün geçmeden yeni randevu alamaz.
-                  </Text>
-                </View>
-                <Switch
-                  value={draft.minDaysBetweenBookingsEnabled}
-                  onValueChange={(value) => {
-                    updateDraft({ minDaysBetweenBookingsEnabled: value });
-                    if (!value) untouch('minDaysBetweenBookings');
-                  }}
-                  trackColor={{ true: Colors.success, false: '#E5E7EB' }}
-                  accessibilityRole="switch"
-                  accessibilityLabel="Randevular arası minimum gün sınırı"
-                  accessibilityState={{ checked: draft.minDaysBetweenBookingsEnabled }}
-                />
-              </View>
-              {draft.minDaysBetweenBookingsEnabled ? (
-                <Input
-                  label="Minimum gün"
-                  value={minDaysText}
-                  onChangeText={(t) => {
-                    const cleaned = t.replace(/\D/g, '').slice(0, 3);
-                    setMinDaysText(cleaned);
-                    const n = parseInt(cleaned, 10);
-                    updateDraft({ minDaysBetweenBookings: cleaned.length > 0 && !Number.isNaN(n) ? n : null });
-                  }}
-                  onBlur={() => touch('minDaysBetweenBookings')}
-                  keyboardType="number-pad"
-                  rightSlot={<Text style={styles.unitText}>gün</Text>}
-                  hint={`1 ile ${MIN_DAYS_BETWEEN_BOOKINGS_CEILING} arasında bir değer gir`}
-                  error={touched.has('minDaysBetweenBookings') ? errors.minDaysBetweenBookings : undefined}
-                />
-              ) : null}
-            </View>
-
-            <View style={styles.divider} />
-
-            <View>
-              <View style={styles.switchRow}>
-                <View style={{ flex: 1, paddingRight: Spacing.md }}>
-                  <Text style={styles.rowLabel}>Müşteri başına aylık limit</Text>
-                  <Text style={styles.rowHint}>
-                    Bir müşteri bu salondan bir ayda en fazla bu kadar randevu alabilir.
-                  </Text>
-                </View>
-                <Switch
-                  value={draft.maxBookingsPerMonthEnabled}
-                  onValueChange={(value) => {
-                    updateDraft({ maxBookingsPerMonthEnabled: value });
-                    if (!value) untouch('maxBookingsPerMonth');
-                  }}
-                  trackColor={{ true: Colors.success, false: '#E5E7EB' }}
-                  accessibilityRole="switch"
-                  accessibilityLabel="Müşteri başına aylık randevu limiti"
-                  accessibilityState={{ checked: draft.maxBookingsPerMonthEnabled }}
-                />
-              </View>
-              {draft.maxBookingsPerMonthEnabled ? (
-                <Input
-                  label="Aylık limit"
-                  value={maxMonthlyText}
-                  onChangeText={(t) => {
-                    const cleaned = t.replace(/\D/g, '').slice(0, 3);
-                    setMaxMonthlyText(cleaned);
-                    const n = parseInt(cleaned, 10);
-                    updateDraft({ maxBookingsPerMonth: cleaned.length > 0 && !Number.isNaN(n) ? n : null });
-                  }}
-                  onBlur={() => touch('maxBookingsPerMonth')}
-                  keyboardType="number-pad"
-                  rightSlot={<Text style={styles.unitText}>randevu</Text>}
-                  hint={`1 ile ${MAX_BOOKINGS_PER_MONTH_CEILING} arasında bir değer gir`}
-                  error={touched.has('maxBookingsPerMonth') ? errors.maxBookingsPerMonth : undefined}
-                />
-              ) : null}
-            </View>
-          </Card>
+          <BookingRulesSection
+            maxPendingPerCustomer={draft.maxPendingPerCustomer}
+            onSelectPending={(n) => {
+              updateDraft({ maxPendingPerCustomer: n });
+              touch('maxPendingPerCustomer');
+            }}
+            pendingError={touched.has('maxPendingPerCustomer') ? errors.maxPendingPerCustomer : undefined}
+            minDaysEnabled={draft.minDaysBetweenBookingsEnabled}
+            onToggleMinDays={(value) => {
+              updateDraft({ minDaysBetweenBookingsEnabled: value });
+              if (!value) untouch('minDaysBetweenBookings');
+            }}
+            minDaysText={minDaysText}
+            onChangeMinDaysText={handleMinDaysChange}
+            onBlurMinDays={() => touch('minDaysBetweenBookings')}
+            minDaysError={touched.has('minDaysBetweenBookings') ? errors.minDaysBetweenBookings : undefined}
+            maxMonthlyEnabled={draft.maxBookingsPerMonthEnabled}
+            onToggleMaxMonthly={(value) => {
+              updateDraft({ maxBookingsPerMonthEnabled: value });
+              if (!value) untouch('maxBookingsPerMonth');
+            }}
+            maxMonthlyText={maxMonthlyText}
+            onChangeMaxMonthlyText={handleMaxMonthlyChange}
+            onBlurMaxMonthly={() => touch('maxBookingsPerMonth')}
+            maxMonthlyError={touched.has('maxBookingsPerMonth') ? errors.maxBookingsPerMonth : undefined}
+          />
 
           <View style={styles.saveRow}>
             <Button
@@ -339,6 +243,20 @@ export default function BookingSettingsScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
+  );
+}
+
+/** reviews.tsx'teki "← Geri" kalıbıyla aynı — push ile gelinen bu ekranda tab bar yok,
+ *  headerShown:false olduğundan geri butonu olmazsa kullanıcı sıkışır (review I3). */
+function ScreenHeader({ onBack, subtitle, style }: { onBack: () => void; subtitle?: string; style?: ViewStyle }) {
+  return (
+    <View style={[styles.header, style]}>
+      <Pressable onPress={onBack} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Geri">
+        <Text style={styles.back}>← Geri</Text>
+      </Pressable>
+      <Text style={styles.title}>Randevu Ayarları</Text>
+      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+    </View>
   );
 }
 
@@ -356,33 +274,16 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
+  // NOT: bu View, hem ScrollView içeriğinde (contentContainerStyle zaten paddingHorizontal
+  // veriyor) HEM DE erken dönüş (loading/404/hata) dallarında SafeAreaView'a doğrudan çocuk
+  // olarak kullanılıyor. Kendi paddingHorizontal'ı olmadığı için erken dönüş dallarında
+  // `headerPadX` ile ayrıca padlenmesi gerekiyor — aksi halde çift padding (scroll içinde)
+  // ya da hiç padding (standalone'da) olurdu.
   header: { paddingTop: Spacing.lg, paddingBottom: Spacing.md },
+  headerPadX: { paddingHorizontal: Layout.screenPaddingX },
+  backBtn: { paddingVertical: 6, marginBottom: Spacing.sm, minHeight: Layout.tapTargetMin, justifyContent: 'center', alignSelf: 'flex-start' },
+  back: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.semibold },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
-  sectionTitle: {
-    fontSize: FontSize.xs,
-    color: Colors.textMuted,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: Spacing.lg,
-    marginBottom: Spacing.sm,
-    paddingHorizontal: Spacing.xs,
-    fontWeight: FontWeight.semibold,
-  },
-  switchRow: { flexDirection: 'row', alignItems: 'center' },
-  rowLabel: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
-  rowHint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4, lineHeight: 16 },
-  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: Spacing.sm },
-  errorText: { color: Colors.error, fontSize: FontSize.xs, marginTop: 6, fontWeight: FontWeight.medium },
-  unitText: { fontSize: FontSize.md, color: Colors.textMuted, fontWeight: FontWeight.semibold, paddingHorizontal: 4 },
-  divider: { height: 1, backgroundColor: Colors.divider },
-  noticeBox: {
-    backgroundColor: Colors.warningSoft,
-    borderRadius: Radius.md,
-    padding: Spacing.md,
-    borderWidth: 1,
-    borderColor: Colors.warning,
-  },
-  noticeText: { fontSize: FontSize.xs, color: Colors.text, lineHeight: 18 },
   saveRow: { marginTop: Spacing.xl },
 });
