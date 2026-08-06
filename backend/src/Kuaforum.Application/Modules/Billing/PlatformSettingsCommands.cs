@@ -1,9 +1,11 @@
 using FluentValidation;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
+using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Billing;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Kuaforum.Application.Modules.Billing;
 
@@ -35,6 +37,16 @@ public sealed class GetPlatformSettingsQueryHandler(IApplicationDbContext db)
     }
 }
 
+/// <summary>
+/// RFC-013 review I1: admin DepositPercentMin/Max'i daraltınca, o anki aralığın dışında
+/// kalan (ör. DepositPercent=0.60 iken üst sınır 0.50'ye çekilen) shop'lar OTOMATİK
+/// CLAMP EDİLMEZ — owner'ın ayarını admin'in sessizce değiştirmesi yanlış olurdu; bir
+/// sonraki PUT /booking-policy'de owner zaten yeni aralığa uymak zorunda kalacak
+/// (BookingPolicy.Create domain guard'ı). Bu response alanı yalnızca admin'e görünürlük
+/// sağlar.
+/// </summary>
+public sealed record UpdatePlatformSettingsResponse(int OutOfRangeShopCount);
+
 public sealed record UpdatePlatformSettingsCommand(
     Guid AdminUserId,
     decimal CommissionRateGlobal,
@@ -42,7 +54,7 @@ public sealed record UpdatePlatformSettingsCommand(
     string? CommissionPaymentBankName,
     string? CommissionPaymentAccountHolderName,
     decimal DepositPercentMin,
-    decimal DepositPercentMax) : ICommand;
+    decimal DepositPercentMax) : ICommand<UpdatePlatformSettingsResponse>;
 
 public sealed class UpdatePlatformSettingsCommandValidator : AbstractValidator<UpdatePlatformSettingsCommand>
 {
@@ -57,24 +69,40 @@ public sealed class UpdatePlatformSettingsCommandValidator : AbstractValidator<U
     }
 }
 
-public sealed class UpdatePlatformSettingsCommandHandler(IApplicationDbContext db, IAuditLogger audit)
-    : IRequestHandler<UpdatePlatformSettingsCommand, Result>
+public sealed class UpdatePlatformSettingsCommandHandler(
+    IApplicationDbContext db, IAuditLogger audit, ILogger<UpdatePlatformSettingsCommandHandler> logger)
+    : IRequestHandler<UpdatePlatformSettingsCommand, Result<UpdatePlatformSettingsResponse>>
 {
-    public async Task<Result> Handle(UpdatePlatformSettingsCommand request, CancellationToken ct)
+    public async Task<Result<UpdatePlatformSettingsResponse>> Handle(UpdatePlatformSettingsCommand request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
         var settings = await ctx.Set<PlatformSettings>().FirstOrDefaultAsync(ct);
-        if (settings is null) return Result.Failure(Error.NotFound("PlatformSettings"));
+        if (settings is null) return Result.Failure<UpdatePlatformSettingsResponse>(Error.NotFound("PlatformSettings"));
 
         var rateResult = settings.UpdateCommissionRateGlobal(request.CommissionRateGlobal);
-        if (rateResult.IsFailure) return rateResult;
+        if (rateResult.IsFailure) return Result.Failure<UpdatePlatformSettingsResponse>(rateResult.Error);
 
         var bankingResult = settings.UpdateBankingInfo(
             request.CommissionPaymentIban, request.CommissionPaymentBankName, request.CommissionPaymentAccountHolderName);
-        if (bankingResult.IsFailure) return bankingResult;
+        if (bankingResult.IsFailure) return Result.Failure<UpdatePlatformSettingsResponse>(bankingResult.Error);
 
         var depositBoundsResult = settings.UpdateDepositPercentBounds(request.DepositPercentMin, request.DepositPercentMax);
-        if (depositBoundsResult.IsFailure) return depositBoundsResult;
+        if (depositBoundsResult.IsFailure) return Result.Failure<UpdatePlatformSettingsResponse>(depositBoundsResult.Error);
+
+        // RFC-013 review I1: yeni aralık daralınca aralık dışında kalan (DepositEnabled=true
+        // VE DepositPercent yeni [min,max] dışında) shop'ları SESSİZCE değiştirmeyiz —
+        // yalnız say + audit'e yaz + logla, admin görünürlük kazansın.
+        var outOfRangeShopCount = await ctx.Set<BarberShop>().AsNoTracking()
+            .CountAsync(s => s.BookingPolicyDepositEnabled
+                && s.BookingPolicyDepositPercent != null
+                && (s.BookingPolicyDepositPercent < request.DepositPercentMin || s.BookingPolicyDepositPercent > request.DepositPercentMax), ct);
+
+        if (outOfRangeShopCount > 0)
+        {
+            logger.LogWarning(
+                "UpdatePlatformSettings: {Count} shop'un DepositPercent'i yeni [{Min},{Max}] aralığı dışında kaldı (otomatik clamp YOK, owner bir sonraki PUT'ta uymak zorunda).",
+                outOfRangeShopCount, request.DepositPercentMin, request.DepositPercentMax);
+        }
 
         await audit.RecordAsync(
             "admin.platform_settings.updated",
@@ -87,11 +115,12 @@ public sealed class UpdatePlatformSettingsCommandHandler(IApplicationDbContext d
                 hasIban = !string.IsNullOrWhiteSpace(request.CommissionPaymentIban),
                 request.DepositPercentMin,
                 request.DepositPercentMax,
+                outOfRangeShopCount,
             },
             ct: ct);
 
         await db.SaveChangesAsync(ct);
-        return Result.Success();
+        return Result.Success(new UpdatePlatformSettingsResponse(outOfRangeShopCount));
     }
 }
 

@@ -46,14 +46,19 @@ public sealed class InitiateBookingCommandHandler(
 {
     private static readonly TimeSpan SlotLockDuration = TimeSpan.FromMinutes(2);
 
+    /// <summary>RFC-013 review I2: MaxBookingsPerMonth ay sınırı client'ın gönderdiği DateTimeOffset.Offset'e göre DEĞİL, sabit Europe/Istanbul takvimine göre hesaplanır (bkz. StylistScheduleChecker'daki aynı desen — Türkiye 2016'dan beri DST uygulamıyor, ama doğru API kullanımı önemli).</summary>
+    private static readonly TimeZoneInfo IstanbulTz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
+
     /// <summary>
     /// Caps concurrent unpaid Pending bookings per customer. Without this, a single logged-in
     /// customer can open unlimited Pending bookings — each blocks a stylist's calendar via
     /// BookingBusyRangeQuery — without ever paying. ExpirePendingBookingsJob eventually frees
     /// stale ones (30 min), but this bounds the damage in the meantime instead of relying only
-    /// on the sweep.
+    /// on the sweep. `public` (was `internal`) — RFC-013 review M4: pinned against
+    /// <see cref="Kuaforum.Domain.Modules.Barber.BookingPolicy.MaxPendingPerCustomerCeiling"/>
+    /// by PolicyConstantsPinTests so the two can't silently drift apart.
     /// </summary>
-    internal const int MaxActivePendingBookingsPerCustomer = 3;
+    public const int MaxActivePendingBookingsPerCustomer = 3;
 
     public async Task<Result<InitiateBookingResponse>> Handle(InitiateBookingCommand request, CancellationToken cancellationToken)
     {
@@ -176,35 +181,44 @@ public sealed class InitiateBookingCommandHandler(
                 "Devam etmek için bunlardan birini tamamlayın veya iptal edin."));
         }
 
-        // (b) MinDaysBetweenBookings — müşterinin bu shop'taki EN SON (ScheduledAt'i en
-        // büyük) iptal edilmemiş randevusuyla yeni talep arasındaki gün farkı. Instant-bazlı
-        // fark (DateTimeOffset çıkarma) kullanılıyor — offset'ten bağımsız, her zaman doğru.
+        // (b) MinDaysBetweenBookings — PENCERE sorgusu, "en son booking" DEĞİL. İlk
+        // implementasyon yalnız ScheduledAt'i EN BÜYÜK olan randevuya bakıyordu; bu, bir
+        // müşterinin ÖNCE uzak bir tarihe (örn. +30 gün) randevu alıp sonra aradaki HER
+        // günü doldurabilmesi anlamına geliyordu (o "en son" hep uzaktaki randevu olarak
+        // kalıyor, aradaki günlerin hiçbiri onun penceresine girmiyordu — kural fiilen
+        // atlanabiliyordu). Doğru kural: yeni talebin ±minDays penceresinde iptal edilmemiş
+        // HERHANGİ bir randevu var mı (RFC-013 review, C1). ix_bookings_customer_scheduled
+        // (CustomerId, ScheduledAt) bu sorguyu tek indexle karşılıyor.
         if (shop.BookingPolicyMinDaysBetweenBookings is int minDays)
         {
-            var lastScheduledAt = await ctx.Set<BookingAggregate>().AsNoTracking()
-                .Where(b => b.CustomerId == customerId && b.BarberShopId == shop.Id && b.Status != BookingStatus.Cancelled)
-                .OrderByDescending(b => b.ScheduledAt)
-                .Select(b => (DateTimeOffset?)b.ScheduledAt)
-                .FirstOrDefaultAsync(ct);
-
-            if (lastScheduledAt is DateTimeOffset last)
+            var windowStart = scheduledAt.AddDays(-minDays);
+            var windowEnd = scheduledAt.AddDays(minDays);
+            var hasNearbyBooking = await ctx.Set<BookingAggregate>().AsNoTracking()
+                .AnyAsync(b => b.CustomerId == customerId && b.BarberShopId == shop.Id && b.Status != BookingStatus.Cancelled
+                    && b.ScheduledAt > windowStart && b.ScheduledAt < windowEnd, ct);
+            if (hasNearbyBooking)
             {
-                var gapDays = Math.Abs((scheduledAt - last).TotalDays);
-                if (gapDays < minDays)
-                {
-                    return Result.Failure(Error.Validation(
-                        $"Bu işletmede randevularınız arasında en az {minDays} gün olmalı."));
-                }
+                return Result.Failure(Error.Validation(
+                    $"Bu işletmede randevularınız arasında en az {minDays} gün olmalı."));
             }
         }
 
         // (c) MaxBookingsPerMonth — yeni talebin takvim ayı içinde, aynı shop'ta, iptal
-        // edilmemiş (NoShow dahil) kaç randevusu var. DateTimeOffset karşılaştırması instant
-        // bazlı olduğundan offset farkı sonucu etkilemez.
+        // edilmemiş (NoShow dahil) kaç randevusu var. Ay sınırı Europe/Istanbul takvimine
+        // göre sabitlenir (RFC-013 review I2) — önceki `scheduledAt.Offset` kullanımı
+        // client'ın gönderdiği offset'e göre keyfi ay sınırları üretiyordu (aynı anı farklı
+        // offset'le gönderen iki client farklı "ay" görebilirdi).
         if (shop.BookingPolicyMaxBookingsPerMonth is int maxPerMonth)
         {
-            var monthStart = new DateTimeOffset(scheduledAt.Year, scheduledAt.Month, 1, 0, 0, 0, scheduledAt.Offset);
-            var monthEnd = monthStart.AddMonths(1);
+            var scheduledLocal = TimeZoneInfo.ConvertTime(scheduledAt, IstanbulTz);
+            var monthStartLocal = new DateTime(scheduledLocal.Year, scheduledLocal.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
+            var monthEndLocal = monthStartLocal.AddMonths(1);
+            // Npgsql yalnız Offset=0 (UTC) DateTimeOffset'i "timestamp with time zone" query
+            // parametresine yazabiliyor ("Cannot write DateTimeOffset with Offset=03:00:00...")
+            // — +03:00 offset'li değeri DOĞRUDAN LINQ'e vermek 500'e patlıyor. Istanbul'daki
+            // takvim sınırını hesapladıktan SONRA UTC'ye çeviriyoruz; instant değişmiyor.
+            var monthStart = new DateTimeOffset(monthStartLocal, IstanbulTz.GetUtcOffset(monthStartLocal)).ToUniversalTime();
+            var monthEnd = new DateTimeOffset(monthEndLocal, IstanbulTz.GetUtcOffset(monthEndLocal)).ToUniversalTime();
             var countThisMonth = await ctx.Set<BookingAggregate>().AsNoTracking()
                 .CountAsync(b => b.CustomerId == customerId && b.BarberShopId == shop.Id
                     && b.Status != BookingStatus.Cancelled

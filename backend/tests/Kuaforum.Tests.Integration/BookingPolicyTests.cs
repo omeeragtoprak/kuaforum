@@ -398,6 +398,43 @@ public sealed class BookingPolicyTests(IntegrationTestFactory factory)
 
     // ── InitiateBooking enforcement: MinDaysBetweenBookings ───────────────
 
+    /// <summary>
+    /// RFC-013 review C1 (BLOKLAYICI) — reviewer repro. İlk implementasyon yalnız
+    /// ScheduledAt'i EN BÜYÜK randevuya bakıyordu ("son booking"): müşteri önce anchor+30'a
+    /// (uzak) bir randevu alırsa, "son booking" hep o uzak tarih olarak kalıyor ve aradaki
+    /// HİÇBİR gün minDays kontrolüne takılmıyordu — anchor+1 talebi 201 dönüyordu (canlı
+    /// repro ile doğrulandı). Doğru kural PENCERE: yeni talebin ±minDays aralığında iptal
+    /// edilmemiş HERHANGİ bir randevu var mı. Bu test önce FAIL (201 bekleniyor ama kural
+    /// olması gereken davranış 400) sonra fix'le PASS etti — bkz. EnsureBookingPolicyAsync.
+    /// </summary>
+    [Fact]
+    public async Task InitiateBooking_MinDaysBetweenBookings_WindowRule_CatchesGapEvenWithFarBookingAsLast()
+    {
+        var f = await SeedShopAndAuthAsync();
+        await PutPolicyAsync(f.OwnerClient, depositEnabled: false, depositPercent: null,
+            maxPendingPerCustomer: 3, minDaysBetweenBookings: 7, maxBookingsPerMonth: null);
+
+        var anchor = FutureMondayUtc(90);
+        await CreateBookingDirectAsync(f, BookingStatus.Confirmed, anchor);
+        // "En son" (ScheduledAt'i en büyük) booking — eski buggy implementasyonda kontrol
+        // YALNIZ buna bakıyordu, bu yüzden aşağıdaki anchor+1 talebi onu görmezden geliyordu.
+        await CreateBookingDirectAsync(f, BookingStatus.Confirmed, anchor.AddDays(30));
+
+        // anchor+1, anchor'ın 7 günlük penceresinin TAM İÇİNDE — reddedilmeli, "son booking"
+        // (anchor+30) çok uzakta olsa bile.
+        var gapFill = await f.CustomerClient.PostAsJsonAsync("/v1/bookings", new
+        {
+            stylistId = f.StylistId,
+            scheduledAt = anchor.AddDays(1),
+            serviceCatalogIds = new[] { f.ServiceId },
+            isWalkIn = false,
+            customerNote = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, gapFill.StatusCode);
+        var body = await gapFill.Content.ReadAsStringAsync();
+        Assert.Contains("en az 7 gün", body);
+    }
+
     [Fact]
     public async Task InitiateBooking_MinDaysBetweenBookings_RejectsWithinWindow_AcceptsAfterWindow()
     {
@@ -480,6 +517,48 @@ public sealed class BookingPolicyTests(IntegrationTestFactory factory)
     }
 
     // ── InitiateBooking enforcement: MaxBookingsPerMonth ──────────────────
+
+    /// <summary>
+    /// RFC-013 review I2 — ay sınırı client'ın gönderdiği DateTimeOffset.Offset'e göre DEĞİL,
+    /// sabit Europe/Istanbul takvimine göre hesaplanmalı. Bu test, UTC gece yarısı sınırını
+    /// geçen bir "sınır" randevu kuruyor: instant, UTC takviminde AYIN SON GÜNÜ 22:00 (Ekim
+    /// 31, 22:00 UTC) ama İstanbul takviminde BİR SONRAKİ AYIN 1'İ, 01:00 (Kasım 1, 01:00).
+    /// Postgres timestamptz her zaman offset=0 döndürdüğünden, bu randevu DB'den okunduğunda
+    /// "Ekim" gibi GÖRÜNÜR — offset-bağımlı eski mantık onu Ekim'e sayardı ve Kasım ayı içindeki
+    /// ikinci (açıkça Kasım) randevuyu YANLIŞLIKLA kabul ederdi. İstanbul-normalize doğru mantık
+    /// bu sınır randevuyu KASIM'a sayar, dolayısıyla ikinci Kasım randevusu reddedilir.
+    /// </summary>
+    [Fact]
+    public async Task InitiateBooking_MaxBookingsPerMonth_NormalizesToIstanbulCalendar_AcrossUtcMidnightBoundary()
+    {
+        var f = await SeedShopAndAuthAsync();
+        await PutPolicyAsync(f.OwnerClient, depositEnabled: false, depositPercent: null,
+            maxPendingPerCustomer: 3, minDaysBetweenBookings: null, maxBookingsPerMonth: 1);
+
+        // "monthM" = birkaç ay ileride güvenli bir ay; sınır randevu bu ayın SON gününde UTC
+        // 22:00'de kuruluyor (= İstanbul'da bir sonraki ayın 1'i, 01:00).
+        var today = DateTime.UtcNow;
+        var monthMStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(4);
+        var lastDayOfMonthM = DateTime.DaysInMonth(monthMStart.Year, monthMStart.Month);
+        var boundaryBookingUtc = new DateTimeOffset(monthMStart.Year, monthMStart.Month, lastDayOfMonthM, 22, 0, 0, TimeSpan.Zero);
+        await CreateBookingDirectAsync(f, BookingStatus.Confirmed, boundaryBookingUtc);
+
+        // Bir sonraki ayın (İstanbul'da "Kasım") 10'u, 10:00 UTC — hem UTC hem İstanbul
+        // takviminde açıkça o aya ait, belirsizlik yok. Pazar'a denk gelirse kaydır.
+        var nextMonthStart = monthMStart.AddMonths(1);
+        var unambiguousNextMonthDay = new DateTimeOffset(nextMonthStart.Year, nextMonthStart.Month, 10, 10, 0, 0, TimeSpan.Zero);
+        while (unambiguousNextMonthDay.DayOfWeek == DayOfWeek.Sunday) unambiguousNextMonthDay = unambiguousNextMonthDay.AddDays(1);
+
+        var resp = await f.CustomerClient.PostAsJsonAsync("/v1/bookings", new
+        {
+            stylistId = f.StylistId,
+            scheduledAt = unambiguousNextMonthDay,
+            serviceCatalogIds = new[] { f.ServiceId },
+            isWalkIn = false,
+            customerNote = (string?)null,
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
 
     [Fact]
     public async Task InitiateBooking_MaxBookingsPerMonth_RejectsSecondBookingSameMonth_AcceptsNextMonth()

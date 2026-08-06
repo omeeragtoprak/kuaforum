@@ -56,10 +56,13 @@ public sealed class PlatformSettings : AggregateRoot
 
     public Result UpdateDepositPercentBounds(decimal min, decimal max)
     {
+        // Asimetrik aralık kasıtlı: alt sınır %100'e EŞİT olamaz (kapora hiçbir zaman
+        // hizmet bedelinin tamamı olamaz — o zaman "kapora" değil "tam ödeme" olur), üst
+        // sınır ise %100'e eşit OLABİLİR (bir owner teoride kaporayı tam bedele eşitleyebilir).
         if (min <= 0 || min >= 1)
-            return Result.Failure(Error.Validation("Kapora oranı alt sınırı %0 ile %100 arasında olmalı."));
+            return Result.Failure(Error.Validation("Kapora oranı alt sınırı %0'dan büyük ve %100'den küçük olmalı."));
         if (max <= 0 || max > 1)
-            return Result.Failure(Error.Validation("Kapora oranı üst sınırı %0 ile %100 arasında olmalı."));
+            return Result.Failure(Error.Validation("Kapora oranı üst sınırı %0'dan büyük olmalı ve %100'ü aşamaz."));
         if (min >= max)
             return Result.Failure(Error.Validation("Kapora oranı alt sınırı üst sınırından küçük olmalı."));
 

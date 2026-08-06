@@ -87,7 +87,7 @@ public static class BillingEndpoints
                 ctx.UserId.Value, body.CommissionRateGlobal, body.CommissionPaymentIban,
                 body.CommissionPaymentBankName, body.CommissionPaymentAccountHolderName,
                 body.DepositPercentMin, body.DepositPercentMax), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("UpdatePlatformSettings");
 
         adminGroup.MapPut("/barber-shops/{id:guid}/commission-rate", async (
