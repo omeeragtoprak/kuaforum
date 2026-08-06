@@ -258,6 +258,76 @@ export type UsersAdminPage = {
   pageSize: number;
 };
 
+// ---------------------------------------------------------------------------
+// RFC-012 faturalama / tahsilat
+// ---------------------------------------------------------------------------
+
+/** Backend CommissionStatementStatus (Open=0 … SuspensionApplied=4). */
+export type CommissionStatementStatusName =
+  | 'Open'
+  | 'Notified'
+  | 'Paid'
+  | 'Overdue'
+  | 'SuspensionApplied';
+
+export type PlatformSettingsDto = {
+  id: string;
+  /** 0-1 arası decimal (backend doğrulaması: >0 ve <=0.5). UI yüzde gösterir. */
+  commissionRateGlobal: number;
+  commissionPaymentIban?: string | null;
+  commissionPaymentBankName?: string | null;
+  commissionPaymentAccountHolderName?: string | null;
+  /**
+   * RFC-013 C3 alanları (kapora oranı alt/üst sınırı, 0-1 decimal). Bu ekranın konusu değil
+   * ama PUT tüm satırı yazdığı için okunup geri gönderilmeleri gerekir — aksi halde 0'a
+   * düşer ve backend validasyonu (GreaterThan(0)) 400 döner.
+   */
+  depositPercentMin?: number;
+  depositPercentMax?: number;
+};
+
+export type UpdatePlatformSettingsBody = {
+  commissionRateGlobal: number;
+  commissionPaymentIban: string | null;
+  commissionPaymentBankName: string | null;
+  commissionPaymentAccountHolderName: string | null;
+  // Bkz. PlatformSettingsDto: GET'ten okunan değerler aynen geri yazılır (kaybolmasın diye).
+  depositPercentMin?: number;
+  depositPercentMax?: number;
+};
+
+export type AdminCommissionStatementDto = {
+  id: string;
+  barberShopId: string;
+  barberShopName: string;
+  /** DateOnly — "2026-07-01" formatında gelir. */
+  periodStart: string;
+  periodEnd: string;
+  amountDueMinor: number;
+  dueDate: string;
+  // JsonStringEnumConverter → "Notified"; sayı da tolere edilir (String(status) ile okunur).
+  status: number | string;
+  isDisputed: boolean;
+  // Admin kuyruk DTO'su (AdminCommissionStatementItemDto) şu an matrah/oran taşımıyor.
+  // Backend eklediğinde tablo otomatik doldurur — o güne kadar "—" gösterilir.
+  basisAmountMinor?: number;
+  rateApplied?: number;
+};
+
+export type AdminCommissionStatementsPage = {
+  items: AdminCommissionStatementDto[];
+  page: number;
+  pageSize: number;
+  totalCount: number;
+};
+
+export type AdminStatementsQuery = {
+  status?: CommissionStatementStatusName;
+  disputedOnly?: boolean;
+  page?: number;
+  pageSize?: number;
+};
+
 export const adminApi = {
   async login(email: string, password: string, totpCode: string) {
     // deviceFingerprint must be stable across requests — it's persisted client-side and
@@ -371,6 +441,56 @@ export const adminApi = {
     qs.set('pageSize', String(params.pageSize ?? 50));
     return apiFetch<AuditLogPage>(`/v1/admin/audit-logs?${qs}`);
   },
+
+  // --- RFC-012 faturalama -------------------------------------------------
+  async platformSettings(): Promise<PlatformSettingsDto> {
+    return apiFetch<PlatformSettingsDto>('/v1/admin/billing/settings');
+  },
+  /**
+   * PUT tüm alanları birlikte yazar (banka bilgisi kısmi güncellenmez) — çağıran taraf
+   * yüklediği mevcut değerleri geri göndermeli. commissionRateGlobal 0-1 arası decimal.
+   */
+  async updatePlatformSettings(body: UpdatePlatformSettingsBody): Promise<void> {
+    await apiFetch<void>('/v1/admin/billing/settings', {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  },
+  /** rateOverride: 0-1 arası decimal, null → override kaldırılır (global orana döner). */
+  async setBarberShopCommissionRate(shopId: string, rateOverride: number | null): Promise<void> {
+    await apiFetch<void>(`/v1/admin/billing/barber-shops/${shopId}/commission-rate`, {
+      method: 'PUT',
+      body: JSON.stringify({ rateOverride }),
+    });
+  },
+  async listCommissionStatements(params: AdminStatementsQuery = {}): Promise<AdminCommissionStatementsPage> {
+    const qs = new URLSearchParams();
+    // Enum query binding Enum.TryParse üzerinden — isim birebir doğru yazılmalı ("Notified").
+    if (params.status) qs.set('status', params.status);
+    if (params.disputedOnly) qs.set('disputedOnly', 'true');
+    qs.set('page', String(params.page ?? 1));
+    qs.set('pageSize', String(params.pageSize ?? 25));
+    return apiFetch<AdminCommissionStatementsPage>(`/v1/admin/billing/statements?${qs}`);
+  },
+  async markStatementPaid(statementId: string, reason: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/billing/statements/${statementId}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    });
+  },
+  async adjustStatementAmount(statementId: string, newAmountDueMinor: number, reason: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/billing/statements/${statementId}/adjust`, {
+      method: 'POST',
+      body: JSON.stringify({ newAmountDueMinor, reason }),
+    });
+  },
+  /** newDueDate: DateOnly — "2026-09-15" (yyyy-MM-dd). */
+  async extendStatementDueDate(statementId: string, newDueDate: string, reason: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/billing/statements/${statementId}/extend-due`, {
+      method: 'POST',
+      body: JSON.stringify({ newDueDate, reason }),
+    });
+  },
 };
 
 export type AuditLogQuery = {
@@ -468,6 +588,46 @@ export type AdminBarberShopsPage = {
 
 export function formatTry(minor: number): string {
   return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(minor / 100);
+}
+
+/**
+ * Backend DateOnly ("2026-07-31") — new Date(str) UTC gece yarısı olarak parse edip
+ * negatif offset'li makinede bir gün geriye kaydırdığı için parçalayarak lokal tarih kurar.
+ */
+export function formatDateOnly(value: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!m) return value;
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return new Intl.DateTimeFormat('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' }).format(d);
+}
+
+/** 0-1 arası decimal → yüzde metni ("0.185" → "18,5"). Float gürültüsü yuvarlanır. */
+export function rateToPercentText(rate: number): string {
+  const pct = Math.round(rate * 10000) / 100;
+  return String(pct).replace('.', ',');
+}
+
+/** Yüzde girdisi → 0-1 arası decimal. Geçersizse null ("18,5" → 0.185). */
+export function percentTextToRate(input: string): number | null {
+  const normalized = input.trim().replace(',', '.');
+  if (normalized === '') return null;
+  const pct = Number(normalized);
+  if (!Number.isFinite(pct)) return null;
+  return Math.round(pct * 100) / 10000;
+}
+
+/**
+ * TL girdisi → kuruş. Virgül varsa ondalık ayırıcı virgüldür (nokta binlik: "1.234,56"),
+ * yoksa nokta ondalık kabul edilir ("1234.56"). Geçersizse null.
+ */
+export function parseTryToMinor(input: string): number | null {
+  const raw = input.trim().replace(/\s|₺/g, '');
+  if (raw === '') return null;
+  const normalized = raw.includes(',')
+    ? raw.replace(/\./g, '').replace(',', '.')
+    : raw;
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null;
+  return Math.round(Number(normalized) * 100);
 }
 
 export function formatDateTime(iso: string): string {

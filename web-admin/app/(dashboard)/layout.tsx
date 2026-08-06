@@ -10,6 +10,7 @@ const NAV: Array<{ href: import('next').Route; label: string }> = [
   { href: '/users', label: 'Kullanıcılar' },
   { href: '/barber-shops', label: 'Kuaförler' },
   { href: '/bookings', label: 'Randevular' },
+  { href: '/billing', label: 'Faturalama' },
   { href: '/kyc', label: 'KYC Kuyruğu' },
   { href: '/reviews', label: 'Yorum Moderasyonu' },
   { href: '/audit-logs' as import('next').Route, label: 'Audit Log' },
