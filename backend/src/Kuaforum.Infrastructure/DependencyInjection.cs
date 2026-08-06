@@ -223,6 +223,7 @@ public static class DependencyInjection
         services.AddScoped<GeographySeeder>();
         services.AddScoped<DemoBarberSeeder>();
         services.AddScoped<ComprehensiveDemoSeeder>();
+        services.AddScoped<RichDemoSeeder>();
         services.AddScoped<AdminSeeder>();
         services.AddScoped<Persistence.Seeding.PlatformSettingsSeeder>();
 
@@ -233,6 +234,7 @@ public static class DependencyInjection
         IServiceProvider services,
         bool seedDemoBarbers,
         bool seedComprehensiveDemo,
+        bool seedRichDemo = false,
         CancellationToken ct = default)
     {
         await using var scope = services.CreateAsyncScope();
@@ -262,6 +264,17 @@ public static class DependencyInjection
         {
             var comprehensive = scope.ServiceProvider.GetRequiredService<ComprehensiveDemoSeeder>();
             await comprehensive.SeedAsync(ct);
+        }
+
+        // RFC follow-up (2026-08-06): founder "dummy veri bol olsun" isteği — Erzurum
+        // ağırlıklı 13 salon + dev quick-login "Customer" personası için her randevu
+        // durumu + yorum havuzu + faturalama örnekleri. RichDemoSeeder kendi içinde
+        // DemoBarberSeeder'ı (idempotent) tekrar çağırır, bu yüzden seedDemoBarbers=false
+        // iken bile güvenle çalışır — yine de flag'ler ayrı tutulur (explicit opt-in).
+        if (seedRichDemo)
+        {
+            var rich = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
+            await rich.SeedAsync(ct);
         }
     }
 

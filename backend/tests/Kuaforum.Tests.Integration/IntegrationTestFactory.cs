@@ -64,6 +64,12 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
                 ["ConnectionStrings:Redis"] = _redis.GetConnectionString(),
                 ["Seed:Demo"] = "true",
                 ["Seed:ComprehensiveDemo"] = "false",
+                // RichDemoSeeder never runs implicitly at factory boot — it's exercised only
+                // by tests that explicitly resolve it (RichDemoSeederTests), same pattern as
+                // ComprehensiveDemoSeeder above. Without this override, appsettings.
+                // Development.json's "RichDemo": true default would silently run it on every
+                // single integration test factory boot, mutating shared state 100+ tests rely on.
+                ["Seed:RichDemo"] = "false",
                 // Hangfire UsePostgreSqlStorage eager bağlanır; testte ayrı bir
                 // Postgres instance açmaktan kaçınmak için devre dışı.
                 ["Hangfire:Enabled"] = "false",

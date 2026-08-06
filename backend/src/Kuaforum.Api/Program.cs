@@ -197,10 +197,14 @@ if (hangfireEnabled)
 // Demo barber shops are seeded only when Seed:Demo=true (dev/staging only).
 // Seed:ComprehensiveDemo=true ek olarak 15 şehir, ~50 müşteri, ~250 booking, payments,
 // reviews, notifications üretir — visual demo + integration test için.
+// Seed:RichDemo=true ek olarak (DemoBarberSeeder'ın 6 Erzurum salonunun üzerine) 7 yeni
+// Erzurum salonu, dev quick-login "Customer" personası için her randevu durumu, yorum
+// havuzu ve örnek faturalama üretir — "founder telefonda gezecek" demo deneyimi içindir.
 var seedDemo = builder.Configuration.GetValue<bool>("Seed:Demo");
 var seedComprehensive = builder.Configuration.GetValue<bool>("Seed:ComprehensiveDemo");
+var seedRichDemo = builder.Configuration.GetValue<bool>("Seed:RichDemo");
 await Kuaforum.Infrastructure.DependencyInjection.SeedReferenceDataAsync(
-    app.Services, seedDemo, seedComprehensive);
+    app.Services, seedDemo, seedComprehensive, seedRichDemo);
 
 app.Run();
 
