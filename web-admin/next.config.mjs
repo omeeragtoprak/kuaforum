@@ -3,9 +3,8 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   output: 'standalone',
-  experimental: {
-    typedRoutes: true,
-  },
+  // Next 15.5: typedRoutes experimental'dan stable'a taşındı (top-level).
+  typedRoutes: true,
 };
 
 export default nextConfig;
