@@ -7,6 +7,7 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { AuthPrompt } from '@/components/AuthPrompt';
 import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
@@ -92,12 +93,15 @@ export default function BookingsScreen() {
           query.isLoading ? (
             <SkeletonList count={3} render={() => <SkeletonBookingRow />} />
           ) : query.isError ? (
-            <EmptyState
-              emoji="⚠️"
-              title="Bağlantı hatası"
-              description="Sunucuya ulaşılamıyor."
-              actionLabel="Tekrar dene"
-              onAction={() => query.refetch()}
+            <ErrorState
+              error={query.error}
+              onRetry={() => query.refetch()}
+              notFoundTitle="Randevu listesi bulunamadı"
+              notFoundDescription="Bu kaynak kaldırılmış görünüyor."
+              notFoundActionLabel="Tekrar dene"
+              onNotFoundAction={() => query.refetch()}
+              networkTitle="Bağlantı hatası"
+              networkDescription="Sunucuya ulaşılamıyor."
             />
           ) : all.length === 0 ? (
             <EmptyState

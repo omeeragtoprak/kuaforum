@@ -9,6 +9,7 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
 import { SkeletonShopCard, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout, Shadow } from '@/lib/theme';
 import { GeographyApi, City } from '@/api/geography';
@@ -123,22 +124,28 @@ export default function DiscoverScreen() {
         }
         ListEmptyComponent={
           citiesQuery.isError ? (
-            <EmptyState
-              emoji="📡"
-              title="Şehirler yüklenemedi"
-              description="Sunucuya ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
-              actionLabel="Tekrar dene"
-              onAction={() => citiesQuery.refetch()}
+            <ErrorState
+              error={citiesQuery.error}
+              onRetry={() => citiesQuery.refetch()}
+              notFoundTitle="Şehir listesi bulunamadı"
+              notFoundDescription="Bu kaynak kaldırılmış görünüyor."
+              notFoundActionLabel="Tekrar dene"
+              onNotFoundAction={() => citiesQuery.refetch()}
+              networkTitle="Şehirler yüklenemedi"
+              networkDescription="Sunucuya ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
             />
           ) : citiesQuery.isLoading || (!cityId && !citiesQuery.isError) || shopsQuery.isLoading ? (
             <SkeletonList count={4} render={() => <SkeletonShopCard />} />
           ) : shopsQuery.isError ? (
-            <EmptyState
-              emoji="⚠️"
-              title="Bağlantı hatası"
-              description="Sunucuya ulaşılamıyor."
-              actionLabel="Tekrar dene"
-              onAction={() => shopsQuery.refetch()}
+            <ErrorState
+              error={shopsQuery.error}
+              onRetry={() => shopsQuery.refetch()}
+              notFoundTitle="Bu bölge artık desteklenmiyor"
+              notFoundDescription="Farklı bir şehir dene."
+              notFoundActionLabel="Şehir değiştir"
+              onNotFoundAction={() => setCityModalOpen(true)}
+              networkTitle="Bağlantı hatası"
+              networkDescription="Sunucuya ulaşılamıyor."
             />
           ) : (
             <EmptyState

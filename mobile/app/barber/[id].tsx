@@ -8,6 +8,8 @@ import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
+import { SkeletonBarberDetail } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout, Shadow } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
 import { ReviewApi } from '@/api/review';
@@ -125,20 +127,24 @@ export default function BarberDetailScreen() {
 
   if (shopQuery.isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
-        <EmptyState title="Yükleniyor…" />
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <SkeletonBarberDetail />
       </SafeAreaView>
     );
   }
   if (shopQuery.isError || !shopQuery.data) {
+    // G12 fix: 404 (kuaför gerçekten silinmiş/yayından kaldırılmış) ile geçici
+    // sunucu/ağ hatası artık aynı "Bulunamadı" metnine düşmüyor — bkz. ErrorState.
     return (
       <SafeAreaView style={styles.container}>
-        <EmptyState
-          emoji="⚠️"
-          title="Bulunamadı"
-          description="Bu kuaför yüklenemedi."
-          actionLabel="Geri dön"
-          onAction={() => router.back()}
+        <ErrorState
+          error={shopQuery.error}
+          onRetry={() => shopQuery.refetch()}
+          notFoundEmoji="🚫"
+          notFoundTitle="Bu kuaför artık yayında değil"
+          notFoundDescription="Bu salon kaldırılmış veya profili yayından kaldırılmış olabilir."
+          notFoundActionLabel="Geri dön"
+          onNotFoundAction={() => router.back()}
         />
       </SafeAreaView>
     );
