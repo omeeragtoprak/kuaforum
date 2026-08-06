@@ -79,3 +79,6 @@ logs/
 
 # Lokal compose override'ları (port remap vb. makineye özel)
 infra/docker-compose.override.yml
+
+# Manuel Android APK build çıktıları (README.md hariç — o versiyonlanır)
+builds/*.apk
