@@ -436,6 +436,17 @@ Backend'de **201 test** var (113 domain + 51 application + 37 integration) ve do
 - **Consent supersede domain intent metodu:** eski-versiyon rızasını kapatıp yenisini yazma iş kuralı şu an handler içinde `existingTos?.Revoke()` + `Consent.Grant(...)` ikilisiyle örtük; domain'e `Supersede(newVersion)` intent metodu eklenip event/audit semantiği tek yerde toplanmalı.
 - Efor: toplam 0.5-1 gün (parça parça alınabilir; Marketing re-ask İYS kararına bağlı)
 
+**P2-14 (2026-08-06). RFC-012/013 iş modeli kalıntıları — küçük kalite borçları (review zincirinden)**
+- **Kompozit index yok (C3 review M2):** `InitiateBooking` sıcak yolu artık global 3-Pending sayımına ek olarak per-shop policy sayımları yapıyor (2-3 benzer tarama). Mevcut index'ler `ix_bookings_customer` / `ix_bookings_customer_scheduled`; `(customer_id, barber_shop_id, status)` kompoziti yok. MVP hacminde kabul edilebilir; trafik geldiğinde global+per-shop sayımı tek `GROUP BY`'a indirilebilir.
+- **`BookingSlotSafetyTests.Exclude_constraint_alone_rejects_overlap_when_the_app_level_lock_is_bypassed` flaky:** `Task.WhenAll` ile eşzamanlı DB yazması yarıştıran, tasarım gereği zamanlamaya duyarlı test; sistem yükü altında 4 koşumdan 1'inde kırıldı, izole 3/3 geçti (2026-08-06 gözlemi). CI'da izlenmeli; kırılırsa deterministik bir bariyer (ör. advisory lock ile senkron başlatma) düşünülmeli.
+- **Terk edilmiş `Initiated` CommissionPayment re-initiation'ı bloklar (C1+C2 review I2):** `CommissionPaymentCommands.cs`'te expiry/reinitiate yolu yok — kuaför ödeme başlatıp yarıda bırakırsa yeni deneme sonsuza dek engellenir. Bugün Mock-only olduğu için etkisiz; **gerçek PayTR aktivasyonundan ÖNCE şart** (RFC-006'daki `ReinitiateCheckout` kalıbı örnek alınabilir).
+- **`CheckoutRequest.BookingId` slotunda statement id taşınması (C1+C2 review M1):** `CommissionPayment` PSP çağrısında booking alanını statement id için kullanıyor — Mock'a pinli, doc-comment'te "kalıcı kontrat değil" yazılı; gerçek PSP entegrasyonunda ayrıştırılmalı.
+- **Mobile sabitleri backend ile elle senkron (C5b review M10):** `mobile/src/lib/booking-policy.ts`'teki 1-3 / 1-365 / 1-100 tavanları `BookingPolicy.cs` ile eşleşiyor ama hiçbir test bunu pinlemiyor; backend aralığı değişirse mobile sessizce eski aralığı gösterir.
+- **Kaydedilmemiş değişiklik uyarısı yok (C5b review M9):** kuaför randevu ayarları ekranında `dirty` iken geri/tab geçişinde değişiklikler sessizce kaybolur.
+- **`booking-settings` 404 ayrımı (C5b review M7):** `BookingPolicyCommands.cs` PlatformSettings bulunamadığında da 404 dönüyor → mobile "salon yok" boş-durumunu gösterir (yanıltıcı).
+- **Mobile i18n borcu:** kuaför paneli ekranlarının hiçbiri i18next kullanmıyor (CLAUDE.md §7 "sabit string yasak" kuralıyla çelişen mevcut durum); bu cycle borcu büyütmedi ama ayrı bir i18n-migration işi gerekiyor (bkz. P2-11 i18n kararı).
+- Efor: toplam 1-1.5 gün (parça parça; PayTR-öncesi zorunlu olan tek madde CommissionPayment reinitiation)
+
 ---
 
 ## 6. Compliance & Legal
