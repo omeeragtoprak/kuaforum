@@ -1,12 +1,14 @@
 # Ödeme Mimarisi
 
+> **Güncelleme 2026-08-05:** Bu dokümanın §4 (Komisyon Modeli, §4.3 Split Payment dahil) **süpersedelendi** — komisyon artık checkout anında split edilmiyor, aylık ciro üzerinden ay sonunda tahakkuk ediyor. §5'teki "Platform → Kuaför" faturası da artık randevu başına değil, aylık toplu. Güncel model + gerekçe: [RFC-012](../rfc/RFC-012-monthly-commission-billing.md) ve [`02-commission-model.md`](02-commission-model.md). Kalan bölümler (PSP seçimi, sub-merchant onboarding, e-Arşiv "kuaför→müşteri" fatura mekaniği, refund, reconciliation) hâlâ geçerli.
+
 ## Üst Düzey Karar
 
 - **Pazaryeri modeli:** Iyzico/PayTR Pazaryeri ürünü kullanılır. **Platformun (Kuaforum) hiçbir an fonu elinde tutmaması** sayesinde 6493 sayılı Kanun **Madde 12/2-(b) "ticari temsilci" istisnası** uygulanır. **TCMB Ödeme Hizmeti Sağlayıcısı lisansı GEREKLİ DEĞİL.**
 - **Primary PSP:** **PayTR Pazaryeri** (T+1 settlement) — kuaför cash-flow dostu.
 - **Fallback PSP:** **Iyzico Pazaryeri** (T+3 hafta holdback dezavantajı, ama API + dokümantasyon zenginliği için yedek).
 - **Abstraction:** `IPaymentProvider` arayüzü, PSP swap maliyetini düşürür ve pazarlık avantajı sağlar.
-- **Komisyon hesabı:** Default %10 (negotiable kuaför tier'ına göre %5-15 aralığı).
+- **Komisyon hesabı:** Aylık ciro üzerinden, admin-ayarlı global oran + per-shop override (RFC-012) — bkz. [`02-commission-model.md`](02-commission-model.md). Checkout anında kesinti yok.
 - **E-Arşiv:** Çift fatura modeli (kuaför→müşteri, platform→kuaför), Nilvera entegrasyonu.
 
 > Detaylı regülasyon analizi: [`docs/01-research/payment-infrastructure.md`](../01-research/payment-infrastructure.md), [`docs/01-research/turkey-compliance.md`](../01-research/turkey-compliance.md).
@@ -126,6 +128,8 @@ services.AddKeyedScoped<IPaymentProvider, IyzicoPaymentProvider>("iyzico");
 
 ## 4. Komisyon Modeli
 
+> **[SÜPERSEDE — bkz. RFC-012]** Aşağıdaki §4.1-4.3 "randevu anında kesilen komisyon" varsayımına dayanıyor; bu artık doğru değil. Güncel model (aylık ciro faturalama, `PlatformSettings.CommissionRateGlobal` + `CommissionStatement`): [`02-commission-model.md`](02-commission-model.md).
+
 ### 4.1 Hesaplama
 ```
 hizmet_tutar = 500 TL  (kuaförün belirlediği)
@@ -146,13 +150,18 @@ kuaför_net = 500 - 50 - 14.95 = 435.05 TL
 MVP'de **tek tier %10**.
 
 ### 4.3 Split Payment
-- PSP `Pazaryeri` ürünü ile checkout sırasında split otomatik:
+
+> **[SÜPERSEDE — bkz. RFC-012]** Checkout anında otomatik komisyon-split artık yok — kapora tamamen kuaföre akıyor (RFC-006 çapraz not), platform komisyonu ayrı bir aylık statement ile tahsil ediliyor.
+
+- ~~PSP `Pazaryeri` ürünü ile checkout sırasında split otomatik:~~
   - Tutar: 500 TL → kuaför sub-merchant'a 450 TL, platform main account'a 50 TL.
   - PSP MDR brüt'ten kesilir, kuaförün payına yansır (PayTR/Iyzico bu modele uygun).
 
 ---
 
 ## 5. Çift Fatura (E-Arşiv)
+
+> **[SÜPERSEDE — bkz. RFC-012]** FATURA #2 (Platform → Kuaför) burada randevu başına anlık kesiliyor gösteriliyor; güncel modelde bu fatura **aylık toplu**. FATURA #1 (Kuaför → Müşteri, randevu başına) hâlâ geçerli — değişen yalnız platformun komisyon faturası. Detay: [`02-commission-model.md`](02-commission-model.md) §5 (Komisyon Faturası).
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -257,4 +266,5 @@ MVP'de **tek tier %10**.
 - [`docs/PHASE-0-MASTER-SPEC.md`](../PHASE-0-MASTER-SPEC.md)
 - [`docs/01-research/payment-infrastructure.md`](../01-research/payment-infrastructure.md)
 - [`docs/01-research/turkey-compliance.md`](../01-research/turkey-compliance.md)
-- [`docs/09-payment/02-commission-model.md`](02-commission-model.md) (yazılacak)
+- [`docs/09-payment/02-commission-model.md`](02-commission-model.md) — güncel komisyon modeli (RFC-012)
+- [`docs/rfc/RFC-012-monthly-commission-billing.md`](../rfc/RFC-012-monthly-commission-billing.md)
