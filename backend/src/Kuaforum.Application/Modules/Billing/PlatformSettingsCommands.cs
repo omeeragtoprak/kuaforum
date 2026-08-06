@@ -12,7 +12,9 @@ public sealed record PlatformSettingsDto(
     decimal CommissionRateGlobal,
     string? CommissionPaymentIban,
     string? CommissionPaymentBankName,
-    string? CommissionPaymentAccountHolderName);
+    string? CommissionPaymentAccountHolderName,
+    decimal DepositPercentMin,
+    decimal DepositPercentMax);
 
 public sealed record GetPlatformSettingsQuery() : IQuery<PlatformSettingsDto>;
 
@@ -28,7 +30,8 @@ public sealed class GetPlatformSettingsQueryHandler(IApplicationDbContext db)
 
         return Result.Success(new PlatformSettingsDto(
             settings.Id, settings.CommissionRateGlobal,
-            settings.CommissionPaymentIban, settings.CommissionPaymentBankName, settings.CommissionPaymentAccountHolderName));
+            settings.CommissionPaymentIban, settings.CommissionPaymentBankName, settings.CommissionPaymentAccountHolderName,
+            settings.DepositPercentMin, settings.DepositPercentMax));
     }
 }
 
@@ -37,7 +40,9 @@ public sealed record UpdatePlatformSettingsCommand(
     decimal CommissionRateGlobal,
     string? CommissionPaymentIban,
     string? CommissionPaymentBankName,
-    string? CommissionPaymentAccountHolderName) : ICommand;
+    string? CommissionPaymentAccountHolderName,
+    decimal DepositPercentMin,
+    decimal DepositPercentMax) : ICommand;
 
 public sealed class UpdatePlatformSettingsCommandValidator : AbstractValidator<UpdatePlatformSettingsCommand>
 {
@@ -45,6 +50,10 @@ public sealed class UpdatePlatformSettingsCommandValidator : AbstractValidator<U
     {
         RuleFor(x => x.AdminUserId).NotEmpty();
         RuleFor(x => x.CommissionRateGlobal).GreaterThan(0).LessThanOrEqualTo(0.5m);
+        // Sıkı aralık denetimi (alt < üst, ikisi de %0-%100 içinde) domain'de
+        // PlatformSettings.UpdateDepositPercentBounds() içinde yapılıyor.
+        RuleFor(x => x.DepositPercentMin).GreaterThan(0);
+        RuleFor(x => x.DepositPercentMax).GreaterThan(0);
     }
 }
 
@@ -64,12 +73,21 @@ public sealed class UpdatePlatformSettingsCommandHandler(IApplicationDbContext d
             request.CommissionPaymentIban, request.CommissionPaymentBankName, request.CommissionPaymentAccountHolderName);
         if (bankingResult.IsFailure) return bankingResult;
 
+        var depositBoundsResult = settings.UpdateDepositPercentBounds(request.DepositPercentMin, request.DepositPercentMax);
+        if (depositBoundsResult.IsFailure) return depositBoundsResult;
+
         await audit.RecordAsync(
             "admin.platform_settings.updated",
             nameof(PlatformSettings),
             settings.Id.ToString(),
             actorUserId: request.AdminUserId,
-            payload: new { request.CommissionRateGlobal, hasIban = !string.IsNullOrWhiteSpace(request.CommissionPaymentIban) },
+            payload: new
+            {
+                request.CommissionRateGlobal,
+                hasIban = !string.IsNullOrWhiteSpace(request.CommissionPaymentIban),
+                request.DepositPercentMin,
+                request.DepositPercentMax,
+            },
             ct: ct);
 
         await db.SaveChangesAsync(ct);

@@ -85,7 +85,8 @@ public static class BillingEndpoints
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new UpdatePlatformSettingsCommand(
                 ctx.UserId.Value, body.CommissionRateGlobal, body.CommissionPaymentIban,
-                body.CommissionPaymentBankName, body.CommissionPaymentAccountHolderName), ct);
+                body.CommissionPaymentBankName, body.CommissionPaymentAccountHolderName,
+                body.DepositPercentMin, body.DepositPercentMax), ct);
             return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("UpdatePlatformSettings");
 
@@ -138,7 +139,9 @@ public static class BillingEndpoints
         decimal CommissionRateGlobal,
         string? CommissionPaymentIban,
         string? CommissionPaymentBankName,
-        string? CommissionPaymentAccountHolderName);
+        string? CommissionPaymentAccountHolderName,
+        decimal DepositPercentMin,
+        decimal DepositPercentMax);
     public sealed record SetCommissionRateOverrideRequest(decimal? RateOverride);
     public sealed record AdminReasonRequest(string Reason);
     public sealed record AdjustAmountRequest(long NewAmountDueMinor, string Reason);

@@ -74,6 +74,9 @@ public sealed class InitiateBookingCommandHandler(
         if (shop is null || shop.Status != BarberShopStatus.Active)
             return Result.Failure<InitiateBookingResponse>(Error.Validation("İşletme aktif değil."));
 
+        var policyCheck = await EnsureBookingPolicyAsync(ctx, shop, request.CustomerId, request.ScheduledAt, cancellationToken);
+        if (policyCheck.IsFailure) return Result.Failure<InitiateBookingResponse>(policyCheck.Error);
+
         var services = await ctx.Set<ServiceCatalog>().AsNoTracking()
             .Where(s => s.BarberShopId == stylist.BarberShopId
                         && request.ServiceCatalogIds.Contains(s.Id)
@@ -149,5 +152,70 @@ public sealed class InitiateBookingCommandHandler(
 
         return Result.Success(new InitiateBookingResponse(
             booking.Id, booking.ScheduledAt, booking.ScheduledEndsAt, booking.TotalAmountMinor, booking.Currency));
+    }
+
+    /// <summary>
+    /// RFC-013 C3: per-shop anti-spam kuralları — MEVCUT global 3-Pending tabanının
+    /// (yukarıdaki <see cref="MaxActivePendingBookingsPerCustomer"/> kontrolü, shop'tan
+    /// bağımsız) YANINA eklenir, onun yerine geçmez. Sayım semantiği (RFC-013 ara karar,
+    /// koordinatörce onaylandı): NoShow dahil, Cancelled hariç — bir müşterinin gelmediği
+    /// randevu yine "o ayki/o aralıktaki hakkını" kullanmış sayılır, aksi halde no-show
+    /// yapıp limitten muaf kalma kaçağı doğar.
+    /// </summary>
+    private static async Task<Result> EnsureBookingPolicyAsync(
+        DbContext ctx, BarberShop shop, Guid customerId, DateTimeOffset scheduledAt, CancellationToken ct)
+    {
+        // (a) per-shop MaxPendingPerCustomer — global tavan zaten üstte kontrol edildi,
+        // shop kendi limitini onun altına çekebilir (varsayılan 2 < platform tavanı 3).
+        var shopPendingCount = await ctx.Set<BookingAggregate>().AsNoTracking()
+            .CountAsync(b => b.CustomerId == customerId && b.BarberShopId == shop.Id && b.Status == BookingStatus.Pending, ct);
+        if (shopPendingCount >= shop.BookingPolicyMaxPendingPerCustomer)
+        {
+            return Result.Failure(Error.Validation(
+                $"Bu işletmede en fazla {shop.BookingPolicyMaxPendingPerCustomer} bekleyen (henüz onaylanmamış) randevunuz olabilir. " +
+                "Devam etmek için bunlardan birini tamamlayın veya iptal edin."));
+        }
+
+        // (b) MinDaysBetweenBookings — müşterinin bu shop'taki EN SON (ScheduledAt'i en
+        // büyük) iptal edilmemiş randevusuyla yeni talep arasındaki gün farkı. Instant-bazlı
+        // fark (DateTimeOffset çıkarma) kullanılıyor — offset'ten bağımsız, her zaman doğru.
+        if (shop.BookingPolicyMinDaysBetweenBookings is int minDays)
+        {
+            var lastScheduledAt = await ctx.Set<BookingAggregate>().AsNoTracking()
+                .Where(b => b.CustomerId == customerId && b.BarberShopId == shop.Id && b.Status != BookingStatus.Cancelled)
+                .OrderByDescending(b => b.ScheduledAt)
+                .Select(b => (DateTimeOffset?)b.ScheduledAt)
+                .FirstOrDefaultAsync(ct);
+
+            if (lastScheduledAt is DateTimeOffset last)
+            {
+                var gapDays = Math.Abs((scheduledAt - last).TotalDays);
+                if (gapDays < minDays)
+                {
+                    return Result.Failure(Error.Validation(
+                        $"Bu işletmede randevularınız arasında en az {minDays} gün olmalı."));
+                }
+            }
+        }
+
+        // (c) MaxBookingsPerMonth — yeni talebin takvim ayı içinde, aynı shop'ta, iptal
+        // edilmemiş (NoShow dahil) kaç randevusu var. DateTimeOffset karşılaştırması instant
+        // bazlı olduğundan offset farkı sonucu etkilemez.
+        if (shop.BookingPolicyMaxBookingsPerMonth is int maxPerMonth)
+        {
+            var monthStart = new DateTimeOffset(scheduledAt.Year, scheduledAt.Month, 1, 0, 0, 0, scheduledAt.Offset);
+            var monthEnd = monthStart.AddMonths(1);
+            var countThisMonth = await ctx.Set<BookingAggregate>().AsNoTracking()
+                .CountAsync(b => b.CustomerId == customerId && b.BarberShopId == shop.Id
+                    && b.Status != BookingStatus.Cancelled
+                    && b.ScheduledAt >= monthStart && b.ScheduledAt < monthEnd, ct);
+            if (countThisMonth >= maxPerMonth)
+            {
+                return Result.Failure(Error.Validation(
+                    $"Bu işletmede aylık en fazla {maxPerMonth} randevu alabilirsiniz."));
+            }
+        }
+
+        return Result.Success();
     }
 }

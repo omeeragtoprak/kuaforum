@@ -170,6 +170,21 @@ public sealed class BookingSlotSafetyTests(IntegrationTestFactory factory)
         var stylistId = stylists.First().Id;
         var serviceId = services.First().Id;
 
+        // RFC-013 C3: shop'un kendi MaxPendingPerCustomer'ı artık varsayılan 2 (platform
+        // tavanı 3'ün ALTINDA) — bu test özellikle GLOBAL 3-Pending tabanını izole test
+        // ettiğinden, per-shop limiti platform tavanına (3) çekip global kontrolün hâlâ
+        // bağlayıcı olduğunu doğruluyoruz (aksi halde 3. rezervasyon per-shop limitte
+        // 2'de zaten reddedilir, bu testin amacını bozar).
+        var policyResp = await ownerClient.PutAsJsonAsync("/v1/owner/barber-shop/booking-policy", new
+        {
+            depositEnabled = false,
+            depositPercent = (decimal?)null,
+            maxPendingPerCustomer = 3,
+            minDaysBetweenBookings = (int?)null,
+            maxBookingsPerMonth = (int?)null,
+        });
+        Assert.Equal(HttpStatusCode.OK, policyResp.StatusCode);
+
         // Distinct days so none of these overlap in time — isolates the *count* cap from the
         // slot-overlap machinery tested elsewhere in this file.
         var firstBookingId = Guid.Empty;

@@ -34,6 +34,17 @@ public sealed class BarberShop : AggregateRoot
     /// </summary>
     public decimal? CommissionRateOverride { get; private set; }
 
+    /// <summary>
+    /// RFC-013 C3: BookingPolicy flattened kolonlar — Address kalıbıyla aynı (owned-entity
+    /// yok, ayrı tablo yok). BookingPolicy VO yalnızca doğrulama/taşıyıcı; kalıcı gerçek
+    /// bu alanlar. Varsayılanlar BookingPolicy.CreateDefault() ile birebir aynı olmalı.
+    /// </summary>
+    public bool BookingPolicyDepositEnabled { get; private set; }
+    public decimal? BookingPolicyDepositPercent { get; private set; }
+    public int BookingPolicyMaxPendingPerCustomer { get; private set; } = 2;
+    public int? BookingPolicyMinDaysBetweenBookings { get; private set; }
+    public int? BookingPolicyMaxBookingsPerMonth { get; private set; }
+
     public static Result<BarberShop> Create(Guid ownerId, string name, SalonGenderType genderType)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 120)
@@ -139,6 +150,18 @@ public sealed class BarberShop : AggregateRoot
             return Result.Failure(Error.Validation("Komisyon oranı %0 ile %50 arasında olmalı."));
 
         CommissionRateOverride = rate;
+        Touch();
+        return Result.Success();
+    }
+
+    /// <summary>RFC-013 C3: owner kendi kapora + anti-spam ayarını değiştirir. Doğrulama BookingPolicy.Create() içinde yapılmış olmalı (Application katmanı çağırır).</summary>
+    public Result SetBookingPolicy(BookingPolicy policy)
+    {
+        BookingPolicyDepositEnabled = policy.DepositEnabled;
+        BookingPolicyDepositPercent = policy.DepositPercent;
+        BookingPolicyMaxPendingPerCustomer = policy.MaxPendingPerCustomer;
+        BookingPolicyMinDaysBetweenBookings = policy.MinDaysBetweenBookings;
+        BookingPolicyMaxBookingsPerMonth = policy.MaxBookingsPerMonth;
         Touch();
         return Result.Success();
     }

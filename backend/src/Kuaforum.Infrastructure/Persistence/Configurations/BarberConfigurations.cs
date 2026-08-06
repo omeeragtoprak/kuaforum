@@ -29,6 +29,16 @@ internal sealed class BarberShopConfiguration : IEntityTypeConfiguration<BarberS
         builder.Property(x => x.SubMerchantKey).HasColumnName("sub_merchant_key").HasMaxLength(120);
         builder.Property(x => x.CommissionTier).HasColumnName("commission_tier").HasMaxLength(20);
         builder.Property(x => x.CommissionRateOverride).HasColumnName("commission_rate_override").HasPrecision(5, 4);
+        // HasDefaultValue şart: aksi halde EF migration'ı CLR sıfır değerini (false/0) SQL
+        // DEFAULT'u yapar — C#'taki property initializer (`= 2`) yalnız `new BarberShop()`
+        // anında uygulanır, mevcut satırlara AddColumn migration'ı ile eklenen kolonun DB
+        // DEFAULT'una yansımaz. Bu olmadan mevcut tüm shop'lar MaxPendingPerCustomer=0 alır
+        // ve InitiateBooking her müşteri için "limit doldu" der (kritik regresyon).
+        builder.Property(x => x.BookingPolicyDepositEnabled).HasColumnName("booking_policy_deposit_enabled").HasDefaultValue(false);
+        builder.Property(x => x.BookingPolicyDepositPercent).HasColumnName("booking_policy_deposit_percent").HasPrecision(5, 4);
+        builder.Property(x => x.BookingPolicyMaxPendingPerCustomer).HasColumnName("booking_policy_max_pending_per_customer").HasDefaultValue(2);
+        builder.Property(x => x.BookingPolicyMinDaysBetweenBookings).HasColumnName("booking_policy_min_days_between_bookings");
+        builder.Property(x => x.BookingPolicyMaxBookingsPerMonth).HasColumnName("booking_policy_max_bookings_per_month");
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");

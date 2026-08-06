@@ -1,4 +1,5 @@
 using FluentValidation;
+using Kuaforum.Application.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
@@ -7,6 +8,7 @@ using Kuaforum.Domain.Modules.Review;
 using ReviewAggregate = Kuaforum.Domain.Modules.Review.Review;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Kuaforum.Application.Modules.Barber;
 
@@ -45,7 +47,12 @@ public sealed record PublicBarberShopDto(
     int RatingCount,
     IReadOnlyList<PublicServiceSummaryDto> Services,
     IReadOnlyList<PublicWorkingHoursSummaryDto> WorkingHours,
-    IReadOnlyList<string> StylistNames);
+    IReadOnlyList<string> StylistNames,
+    // RFC-013 C3: yalnızca EFEKTİF değerler — global Payment:OnlinePaymentsEnabled kapalıysa
+    // shop DepositEnabled=true olsa bile burada false/null döner (mobile/web "kapora" UI'ını
+    // yanlışlıkla göstermesin diye ham shop ayarı değil, ikisinin AND'i sızdırılır).
+    bool DepositEnabled,
+    decimal? DepositPercent);
 
 public sealed record PublicBarberShopListItemDto(
     Guid Id,
@@ -73,7 +80,7 @@ public sealed class GetPublicBarberShopBySlugQueryValidator : AbstractValidator<
     }
 }
 
-public sealed class GetPublicBarberShopBySlugQueryHandler(IApplicationDbContext db)
+public sealed class GetPublicBarberShopBySlugQueryHandler(IApplicationDbContext db, IOptions<PaymentOptions> paymentOptions)
     : IRequestHandler<GetPublicBarberShopBySlugQuery, Result<PublicBarberShopDto>>
 {
     private static readonly DayOfWeek[] OrderedDays =
@@ -103,6 +110,8 @@ public sealed class GetPublicBarberShopBySlugQueryHandler(IApplicationDbContext 
                 s.AddressLine1,
                 s.Latitude,
                 s.Longitude,
+                s.BookingPolicyDepositEnabled,
+                s.BookingPolicyDepositPercent,
                 CityName = ctx.Set<City>().Where(c => c.Id == s.AddressCityId).Select(c => c.Name).FirstOrDefault(),
                 DistrictName = ctx.Set<District>().Where(d => d.Id == s.AddressDistrictId).Select(d => d.Name).FirstOrDefault(),
                 NeighborhoodName = ctx.Set<Neighborhood>().Where(n => n.Id == s.AddressNeighborhoodId).Select(n => n.Name).FirstOrDefault(),
@@ -153,12 +162,14 @@ public sealed class GetPublicBarberShopBySlugQueryHandler(IApplicationDbContext 
                 : new PublicWorkingHoursSummaryDto(day, openRows.Min(w => w.OpenTime), openRows.Max(w => w.CloseTime), false);
         }).ToList();
 
+        var effectiveDepositActive = paymentOptions.Value.OnlinePaymentsEnabled && shop.BookingPolicyDepositEnabled;
         var dto = new PublicBarberShopDto(
             shop.Id, shop.Name, shop.Slug, shop.Description, shop.PhoneE164, shop.GenderType,
             shop.CityName, shop.DistrictName, shop.NeighborhoodName, shop.AddressLine1,
             shop.Latitude, shop.Longitude,
             shop.RatingAverage, shop.RatingCount,
-            services, workingHours, stylistNames);
+            services, workingHours, stylistNames,
+            effectiveDepositActive, effectiveDepositActive ? shop.BookingPolicyDepositPercent : null);
 
         return Result.Success(dto);
     }

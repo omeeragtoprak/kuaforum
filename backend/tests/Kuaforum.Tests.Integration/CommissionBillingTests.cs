@@ -240,6 +240,8 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
             commissionPaymentIban = (string?)null,
             commissionPaymentBankName = (string?)null,
             commissionPaymentAccountHolderName = (string?)null,
+            depositPercentMin = 0.05m,
+            depositPercentMax = 0.50m,
         });
 
         var (periodStart, _) = LastMonthPeriod();
@@ -300,6 +302,8 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
             commissionPaymentIban = (string?)null,
             commissionPaymentBankName = (string?)null,
             commissionPaymentAccountHolderName = (string?)null,
+            depositPercentMin = 0.05m,
+            depositPercentMax = 0.50m,
         });
 
         var (periodStart, _) = LastMonthPeriod();
@@ -324,6 +328,8 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
             commissionPaymentIban = (string?)null,
             commissionPaymentBankName = (string?)null,
             commissionPaymentAccountHolderName = (string?)null,
+            depositPercentMin = 0.05m,
+            depositPercentMax = 0.50m,
         });
 
         var after = (await f.OwnerClient.GetJson<OwnerStatementsPage>("/v1/owner/billing/statements")).Items.Single();
@@ -341,6 +347,8 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
             commissionPaymentIban = (string?)null,
             commissionPaymentBankName = (string?)null,
             commissionPaymentAccountHolderName = (string?)null,
+            depositPercentMin = 0.05m,
+            depositPercentMax = 0.50m,
         });
         var overrideResp = await f.AdminClient.PutAsJsonAsync($"/v1/admin/billing/barber-shops/{f.ShopId}/commission-rate", new { rateOverride = 0.05m });
         Assert.Equal(HttpStatusCode.NoContent, overrideResp.StatusCode);

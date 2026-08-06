@@ -19,16 +19,28 @@ public sealed class PlatformSettings : AggregateRoot
     public string? CommissionPaymentBankName { get; private set; }
     public string? CommissionPaymentAccountHolderName { get; private set; }
 
+    /// <summary>RFC-013 C3: owner'ların BookingPolicy.DepositPercent'i için admin-ayarlı alt/üst sınır (örn. %5-%50).</summary>
+    public decimal DepositPercentMin { get; private set; }
+
+    /// <summary>RFC-013 C3: bkz. DepositPercentMin.</summary>
+    public decimal DepositPercentMax { get; private set; }
+
     /// <summary>
     /// Seeder tarafından bir kez çağrılır. Founder'ın kesin ilk oran kararı implementasyon
     /// anında netleşmediği için burada örnek %20 (RFC-012 founder örneği) varsayılan —
-    /// admin PUT /v1/admin/billing/settings ile launch öncesi kesinleştirmeli.
+    /// admin PUT /v1/admin/billing/settings ile launch öncesi kesinleştirmeli. Aynı şekilde
+    /// DepositPercentMin/Max için RFC-013'ün örnek %5-%50 aralığı varsayılan.
     /// </summary>
-    public static PlatformSettings CreateDefault(decimal commissionRateGlobal = 0.20m)
+    public static PlatformSettings CreateDefault(
+        decimal commissionRateGlobal = 0.20m,
+        decimal depositPercentMin = 0.05m,
+        decimal depositPercentMax = 0.50m)
     {
         return new PlatformSettings
         {
             CommissionRateGlobal = commissionRateGlobal,
+            DepositPercentMin = depositPercentMin,
+            DepositPercentMax = depositPercentMax,
         };
     }
 
@@ -38,6 +50,21 @@ public sealed class PlatformSettings : AggregateRoot
             return Result.Failure(Error.Validation("Komisyon oranı %0 ile %50 arasında olmalı."));
 
         CommissionRateGlobal = rate;
+        Touch();
+        return Result.Success();
+    }
+
+    public Result UpdateDepositPercentBounds(decimal min, decimal max)
+    {
+        if (min <= 0 || min >= 1)
+            return Result.Failure(Error.Validation("Kapora oranı alt sınırı %0 ile %100 arasında olmalı."));
+        if (max <= 0 || max > 1)
+            return Result.Failure(Error.Validation("Kapora oranı üst sınırı %0 ile %100 arasında olmalı."));
+        if (min >= max)
+            return Result.Failure(Error.Validation("Kapora oranı alt sınırı üst sınırından küçük olmalı."));
+
+        DepositPercentMin = min;
+        DepositPercentMax = max;
         Touch();
         return Result.Success();
     }

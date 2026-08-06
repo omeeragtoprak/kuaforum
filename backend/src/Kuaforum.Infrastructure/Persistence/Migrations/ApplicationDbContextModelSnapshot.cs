@@ -59,6 +59,31 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(8)")
                         .HasColumnName("address_postal_code");
 
+                    b.Property<bool>("BookingPolicyDepositEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("booking_policy_deposit_enabled");
+
+                    b.Property<decimal?>("BookingPolicyDepositPercent")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasColumnName("booking_policy_deposit_percent");
+
+                    b.Property<int?>("BookingPolicyMaxBookingsPerMonth")
+                        .HasColumnType("integer")
+                        .HasColumnName("booking_policy_max_bookings_per_month");
+
+                    b.Property<int>("BookingPolicyMaxPendingPerCustomer")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(2)
+                        .HasColumnName("booking_policy_max_pending_per_customer");
+
+                    b.Property<int?>("BookingPolicyMinDaysBetweenBookings")
+                        .HasColumnType("integer")
+                        .HasColumnName("booking_policy_min_days_between_bookings");
+
                     b.Property<decimal?>("CommissionRateOverride")
                         .HasPrecision(5, 4)
                         .HasColumnType("numeric(5,4)")
@@ -712,6 +737,20 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<decimal>("DepositPercentMax")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasDefaultValue(0.50m)
+                        .HasColumnName("deposit_percent_max");
+
+                    b.Property<decimal>("DepositPercentMin")
+                        .ValueGeneratedOnAdd()
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasDefaultValue(0.05m)
+                        .HasColumnName("deposit_percent_min");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")

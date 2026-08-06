@@ -175,6 +175,25 @@ public static class BarberEndpoints
             return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("DeleteService");
 
+        // RFC-013 C3: owner kendi shop'unun kapora + anti-spam ayarını görür/değiştirir.
+        // ID parametresi yok — GetMyBarberShopQuery kalıbıyla aynı, ctx.UserId üzerinden bulunur.
+        ownerGroup.MapGet("/booking-policy", async (IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new GetBookingPolicyQuery(ctx.UserId.Value), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+        }).WithName("GetBookingPolicy");
+
+        ownerGroup.MapPut("/booking-policy", async (
+            [FromBody] UpdateBookingPolicyRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new UpdateBookingPolicyCommand(
+                ctx.UserId.Value, body.DepositEnabled, body.DepositPercent,
+                body.MaxPendingPerCustomer, body.MinDaysBetweenBookings, body.MaxBookingsPerMonth), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
+        }).WithName("UpdateBookingPolicy");
+
         ownerGroup.MapPost("/{id:guid}/kyc/submit", async (Guid id, [FromBody] SubmitKycRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
@@ -253,4 +272,10 @@ public static class BarberEndpoints
     public sealed record WorkingHoursRequest(DayOfWeek DayOfWeek, TimeOnly OpenTime, TimeOnly CloseTime, bool IsClosed);
     public sealed record TimeOffRequest(DateTimeOffset StartsAt, DateTimeOffset EndsAt, string? Reason);
     public sealed record SubmitKycRequest(IReadOnlyList<KycDocumentRequest> Documents);
+    public sealed record UpdateBookingPolicyRequest(
+        bool DepositEnabled,
+        decimal? DepositPercent,
+        int MaxPendingPerCustomer,
+        int? MinDaysBetweenBookings,
+        int? MaxBookingsPerMonth);
 }

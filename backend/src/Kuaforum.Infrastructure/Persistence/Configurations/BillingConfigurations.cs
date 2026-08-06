@@ -15,6 +15,11 @@ internal sealed class PlatformSettingsConfiguration : IEntityTypeConfiguration<P
         builder.Property(x => x.CommissionPaymentIban).HasColumnName("commission_payment_iban").HasMaxLength(34);
         builder.Property(x => x.CommissionPaymentBankName).HasColumnName("commission_payment_bank_name").HasMaxLength(120);
         builder.Property(x => x.CommissionPaymentAccountHolderName).HasColumnName("commission_payment_account_holder_name").HasMaxLength(120);
+        // HasDefaultValue şart — bkz. BarberConfigurations.cs'teki aynı gerekçe (aksi halde
+        // mevcut PlatformSettings satırı bu migration'dan sonra min=max=0 alır ve owner hiçbir
+        // DepositPercent'i geçerli aralığa sokamaz).
+        builder.Property(x => x.DepositPercentMin).HasColumnName("deposit_percent_min").HasPrecision(5, 4).HasDefaultValue(0.05m);
+        builder.Property(x => x.DepositPercentMax).HasColumnName("deposit_percent_max").HasPrecision(5, 4).HasDefaultValue(0.50m);
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");
