@@ -176,4 +176,95 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory)
         var erzurumShopCount = await db.BarberShops.AsNoTracking().CountAsync(s => s.AddressCityId == erzurum.Id);
         Assert.Equal(6, erzurumShopCount);
     }
+
+    private const string DevLoginOwnerPhone = "+905001000001"; // DevLoginCommand.BarberOwnerDemoPhone ile birebir aynı
+
+    /// <summary>
+    /// Regresyon kilidi (elle test bulgusu, 2026-08-06): dev-login "BarberOwner" personasının
+    /// salonu ("Modern Stüdyo Kuaför") RichDemoSeeder'ın ürettiği hiçbir randevuya sahip
+    /// değildi — panel tamamen boş görünüyordu. Bu test bugün en az bir Completed ve bir
+    /// Pending randevu olduğunu, saatlerin iş saatleri içinde kaldığını, faturalama ve KYC
+    /// kuyruğunun da dolu olduğunu doğrular.
+    /// </summary>
+    [Fact]
+    public async Task SeedAsync_DevLoginOwnerShop_HasTodayBookings_Billing_AndAdminKycQueueIsPopulated()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            // Production sırasını (SeedReferenceDataAsync: AdminSeeder → ... → RichDemoSeeder)
+            // yansıtmak için AdminSeeder de burada açıkça çağrılıyor — ResetDatabaseAsync
+            // "users" tablosunu TRUNCATE ettiğinden factory boot'undaki admin de siliniyor;
+            // aksi halde Step 10'un UnderReview geçişi (reviewer id gerektirir) admin
+            // bulamayıp sessizce Pending'de kalır.
+            var adminSeeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.AdminSeeder>();
+            await adminSeeder.SeedAsync(default);
+
+            var seeder = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var db = factory.Services.CreateScope().ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var devOwner = await db.Users.AsNoTracking().FirstAsync(u => u.PhoneE164 == DevLoginOwnerPhone);
+        var devShop = await db.BarberShops.AsNoTracking().FirstAsync(s => s.OwnerId == devOwner.Id);
+        Assert.Equal("Modern Stüdyo Kuaför", devShop.Name);
+
+        var istanbulTz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, istanbulTz).DateTime);
+
+        var devBookings = await db.Bookings.AsNoTracking().Where(b => b.BarberShopId == devShop.Id).ToListAsync();
+        Assert.NotEmpty(devBookings);
+
+        bool IsToday(Kuaforum.Domain.Modules.Booking.Booking b) =>
+            DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(b.ScheduledAt, istanbulTz).DateTime) == todayLocal;
+
+        var todaysBookings = devBookings.Where(IsToday).ToList();
+        Assert.Contains(todaysBookings, b => b.Status == BookingStatus.Completed);
+        Assert.Contains(todaysBookings, b => b.Status == BookingStatus.Pending);
+        Assert.True(todaysBookings.Count >= 5, $"Bugün için en az 5 randevu bekleniyordu, {todaysBookings.Count} bulundu.");
+
+        // Kusur 2 regresyon kilidi: HİÇBİR randevu iş saatleri (09:00-19:00 Europe/Istanbul,
+        // makul bir payla) dışında olmamalı — önceki sürüm sunucunun o anki saat-dakikasını
+        // (ör. 06:58) sabitliyordu. "Bugünün" 2 Confirmed + 1 Pending'i seed zamanının GERÇEK
+        // saatine göre ("şimdiden X dk sonra" sıralı kursör, bkz. RichDemoSeeder Step 9 madde 2)
+        // üretildiği için akşamüzeri/geç saatte seed edilirse 19:00'ı birazcık aşabilir — bu
+        // yüzden bugünün randevularına 21:00'a kadar makul bir pay tanınır; gelecek günlerin
+        // randevuları (RealisticSlotUtc ile üretilir, "now"dan bağımsız) SIKI 09:00-19:00 sınırına tabidir.
+        foreach (var b in devBookings)
+        {
+            var localTime = TimeZoneInfo.ConvertTime(b.ScheduledAt, istanbulTz).TimeOfDay;
+            var upperBound = IsToday(b) ? TimeSpan.FromHours(21) : TimeSpan.FromHours(19);
+            Assert.True(localTime >= TimeSpan.FromHours(9) && localTime <= upperBound,
+                $"Randevu {b.Id} iş saatleri dışında: {localTime} (ScheduledAt UTC={b.ScheduledAt}).");
+        }
+
+        // En az bir kapora ödenmiş Pending randevu (dev-login owner'ın salonunda da).
+        var devDeposit = devBookings.Where(b => b.Status == BookingStatus.Pending && b.DepositPaidAt != null).ToList();
+        Assert.NotEmpty(devDeposit);
+        Assert.True(devShop.BookingPolicyDepositEnabled, "Kapora ödemesi olan bir randevu var ama salonun kapora ayarı kapalı.");
+
+        // Faturalama — owner ekranı boş kalmamalı.
+        var devStatements = await db.CommissionStatements.AsNoTracking().Where(s => s.BarberShopId == devShop.Id).ToListAsync();
+        Assert.Contains(devStatements, s => s.Status == CommissionStatementStatus.Notified);
+        Assert.Contains(devStatements, s => s.Status == CommissionStatementStatus.Paid);
+
+        // Bildirimler — owner'a en az bir bildirim.
+        var devNotifs = await db.NotificationLogs.AsNoTracking().Where(n => n.UserId == devOwner.Id).ToListAsync();
+        Assert.NotEmpty(devNotifs);
+
+        // Admin KYC kuyruğu — daha önce her zaman boştu (hiçbir seeder KycSubmission satırı
+        // üretmiyordu). En az 2 kayıt: biri Pending, biri UnderReview.
+        var kycSubmissions = await db.KycSubmissions.AsNoTracking().ToListAsync();
+        Assert.True(kycSubmissions.Count >= 2, $"Admin KYC kuyruğunda en az 2 kayıt bekleniyordu, {kycSubmissions.Count} bulundu.");
+        Assert.Contains(kycSubmissions, k => k.Status == KycStatus.Pending);
+        Assert.Contains(kycSubmissions, k => k.Status == KycStatus.UnderReview);
+
+        // BarberOwnerDraft personasının kendi KYC akışı hâlâ TAZE olmalı (Step 10 ona dokunmamalı).
+        var draftOwner = await db.Users.AsNoTracking().FirstAsync(u => u.PhoneE164 == "+905001000099");
+        var draftShop = await db.BarberShops.AsNoTracking().FirstAsync(s => s.OwnerId == draftOwner.Id);
+        Assert.Equal(BarberShopStatus.Draft, draftShop.Status);
+        var draftSubmissions = await db.KycSubmissions.AsNoTracking().Where(k => k.BarberShopId == draftShop.Id).ToListAsync();
+        Assert.Empty(draftSubmissions);
+    }
 }

@@ -40,6 +40,19 @@ public sealed class RichDemoSeeder(
     private const string CustomerDemoPhone = "+905551234567"; // DevLoginCommand.CustomerDemoPhone ile birebir aynı
     private const decimal CommissionRate = 0.10m;
 
+    // Kusur 1 fix (2026-08-06, elle test bulgusu): dev-login "BarberOwner" DevLoginCommand.
+    // BarberOwnerDemoPhone ile bu telefonu arar → DemoBarberSeeder.DemoData[0] "Modern Stüdyo
+    // Kuaför" (Kadıköy/İstanbul). Bu seeder o ana kadar SADECE Erzurum'a odaklıydı — dev-login
+    // ile giren kuaförün paneli (bugün/bu hafta/takvim/faturalama/bildirim/yorum) TAMAMEN BOŞ
+    // görünüyordu. Şablonun kendisi hard-code EDİLMEZ — owner bu telefondan bulunur, sonra
+    // BarberShop.OwnerId ile şablona gidilir (DevLoginCommand'ın kendi arama mantığıyla birebir
+    // aynı — id sabitlenirse iki yer birbirinden bağımsız kayarsa sessizce kırılır).
+    private const string DevLoginOwnerPhone = "+905001000001";
+
+    private static readonly TimeZoneInfo IstanbulTz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
+    private static readonly TimeOnly DefaultOpenTime = new(9, 0);
+    private static readonly TimeOnly DefaultCloseTime = new(19, 0);
+
     // Instance field (BİLEREK static DEĞİL) — RichDemoSeeder DI'da Scoped, her SeedAsync
     // çağrısı taze bir instance üzerinde çalışır. static olsaydı aynı test process'inde
     // ÖNCE koşan başka bir test (ör. idempotency testi SeedAsync'i 2 kez çağırıyor)
@@ -277,6 +290,20 @@ public sealed class RichDemoSeeder(
             .ToDictionary(g => g.Key, g => g.ToList());
 
         var now = DateTimeOffset.UtcNow;
+
+        // Kusur 2 fix (2026-08-06, elle test bulgusu): "todayLocal" + "daysSinceMonday"
+        // aşağıdaki RealisticSlotUtc çağrılarının VE dev-login owner'ın "bu hafta/geçen hafta"
+        // randevu üretiminin ortak referansı — GetOwnerDashboardStatsQueryHandler.
+        // MondayStartUtc ile AYNI formül (((int)DayOfWeek + 6) % 7, Pazartesi=0) kasıtlı
+        // tekrarlanıyor: o handler Application katmanında, bu seeder Infrastructure'da,
+        // aralarında paylaşılan bir yardımcı yok (BookingPolicy.MaxPendingPerCustomerCeiling /
+        // InitiateBookingCommand.MaxActivePendingBookingsPerCustomer'daki bilinçli
+        // cross-layer tekrar presedentiyle aynı ilke — PolicyConstantsPinTests o ikisini
+        // birbirine pin'ler, burada öyle bir test yok ama formül tek satır ve triviyal).
+        var nowLocal = TimeZoneInfo.ConvertTime(now, IstanbulTz);
+        var todayLocal = DateOnly.FromDateTime(nowLocal.DateTime);
+        var daysSinceMonday = ((int)todayLocal.DayOfWeek + 6) % 7;
+
         var bookingsToAdd = new List<Booking>();
         var paymentsToAdd = new List<Payment>();
         var reviewCandidates = new List<Booking>(); // Completed bookings eligible for reviews
@@ -303,7 +330,7 @@ public sealed class RichDemoSeeder(
             // [2]=Huzur(anti-spam) [3]=Vadi [4]=Yıldız [5]=Dağ [6]=Taze
 
             // 1) Pending + kapora ödenmiş — C5c/C4 akışının UI'da görünmesi için kritik.
-            var depositBooking = MakeDemoBooking(0, now.AddDays(5).AddHours(11), requiresOnlinePayment: true, depositSnapshot: 0.10m);
+            var depositBooking = MakeDemoBooking(0, RealisticSlotUtc(todayLocal.AddDays(5), 8, newShops[0].Services.Count > 0 ? newShops[0].Services[0].DurationMinutes : 45), requiresOnlinePayment: true, depositSnapshot: 0.10m);
             if (depositBooking is not null)
             {
                 var lale = newShops[0].Shop;
@@ -327,7 +354,7 @@ public sealed class RichDemoSeeder(
                 completedBooking.Start();
                 completedBooking.Complete();
                 payment.MarkSettled();
-                var shift = now.AddDays(-25) - completedBooking.ScheduledAt;
+                var shift = RealisticSlotUtc(todayLocal.AddDays(-25), 6, newShops[3].Services.Count > 0 ? newShops[3].Services[0].DurationMinutes : 45) - completedBooking.ScheduledAt;
                 BackdateBooking(completedBooking, shift, confirmed: true, started: true, completed: true, cancelled: false);
                 BackdatePayment(payment, shift);
                 bookingsToAdd.Add(completedBooking);
@@ -340,7 +367,7 @@ public sealed class RichDemoSeeder(
             if (cancelledBooking is not null)
             {
                 cancelledBooking.Cancel(BookingCancellationReason.CustomerRequested);
-                var shift = now.AddDays(-10) - now.AddHours(3);
+                var shift = RealisticSlotUtc(todayLocal.AddDays(-10), 10, newShops[4].Services.Count > 0 ? newShops[4].Services[0].DurationMinutes : 45) - now.AddHours(3);
                 BackdateBooking(cancelledBooking, shift, confirmed: false, started: false, completed: false, cancelled: true);
                 bookingsToAdd.Add(cancelledBooking);
             }
@@ -351,13 +378,13 @@ public sealed class RichDemoSeeder(
             if (noShowBooking is not null)
             {
                 noShowBooking.OwnerConfirm();
-                var shift = now.AddDays(-15) - now.AddHours(4);
+                var shift = RealisticSlotUtc(todayLocal.AddDays(-15), 4, newShops[5].Services.Count > 0 ? newShops[5].Services[0].DurationMinutes : 45) - now.AddHours(4);
                 BackdateBooking(noShowBooking, shift, confirmed: true, started: false, completed: false, cancelled: false);
                 bookingsToAdd.Add(noShowBooking);
             }
 
             // 5) Confirmed (upcoming ~+4 gün)
-            var confirmedBooking = MakeDemoBooking(6, now.AddDays(4).AddHours(13));
+            var confirmedBooking = MakeDemoBooking(6, RealisticSlotUtc(todayLocal.AddDays(4), 16, newShops[6].Services.Count > 0 ? newShops[6].Services[0].DurationMinutes : 45));
             if (confirmedBooking is not null)
             {
                 confirmedBooking.OwnerConfirm();
@@ -365,7 +392,7 @@ public sealed class RichDemoSeeder(
             }
 
             // 6) Pending (upcoming ~+7 gün, owner onayı bekliyor, ödeme yok)
-            var pendingBooking = MakeDemoBooking(2, now.AddDays(7).AddHours(15));
+            var pendingBooking = MakeDemoBooking(2, RealisticSlotUtc(todayLocal.AddDays(7), 24, newShops[2].Services.Count > 0 ? newShops[2].Services[0].DurationMinutes : 45));
             if (pendingBooking is not null)
             {
                 bookingsToAdd.Add(pendingBooking);
@@ -415,7 +442,7 @@ public sealed class RichDemoSeeder(
                 booking.OwnerConfirm();
                 booking.Start();
                 booking.Complete();
-                var shift = now.AddDays(pastDays) - scheduledAtNear;
+                var shift = RealisticSlotUtc(todayLocal.AddDays(pastDays), dayCursor + i * 11, service.DurationMinutes) - scheduledAtNear;
                 BackdateBooking(booking, shift, confirmed: true, started: true, completed: true, cancelled: false);
                 BackdatePayment(payment, shift);
 
@@ -433,7 +460,8 @@ public sealed class RichDemoSeeder(
                 var extraStylist = stylists[^1];
                 var extraService = services[0];
                 var extraResult = Booking.Initiate(
-                    extraCustomer.Id, shopRow.Id, extraStylist.Id, now.AddDays(3 + dayCursor % 10).AddHours(16),
+                    extraCustomer.Id, shopRow.Id, extraStylist.Id,
+                    RealisticSlotUtc(todayLocal.AddDays(3 + dayCursor % 10), dayCursor * 3 + 7, extraService.DurationMinutes),
                     new (Guid, string, int, int, long)[] { (extraService.Id, extraService.Name, extraService.DurationMinutes, extraService.BufferMinutes, extraService.PriceMinor) },
                     BookingType.Scheduled, CommissionRate, requiresOnlinePayment: false);
                 if (extraResult.IsSuccess)
@@ -568,6 +596,376 @@ public sealed class RichDemoSeeder(
             logger.LogInformation("RichDemoSeeder: created 3 commission statements (Notified/SuspensionApplied/Paid).");
         }
 
+        // ── Step 9: dev-login "BarberOwner" personasının salonu ("Modern Stüdyo Kuaför") ──
+        // Kusur 1 fix: bu şablona ait TEK bir randevu bile yoktu — dev-login ile giren founder
+        // "Bugün boş", Toplam/Bekleyen/Ciro ₺0, "BU HAFTA ₺0" görüyordu. Owner'ın telefonu
+        // hard-code EDİLMİYOR: DevLoginCommand'ın BARBEROwner aramasıyla birebir aynı yoldan
+        // (telefon → User → BarberShop.OwnerId) bulunuyor.
+        var devOwner = await db.Users.FirstOrDefaultAsync(u => u.PhoneE164 == DevLoginOwnerPhone, ct);
+        var devShop = devOwner is null ? null : await db.BarberShops.FirstOrDefaultAsync(s => s.OwnerId == devOwner.Id, ct);
+
+        if (devOwner is null || devShop is null)
+        {
+            logger.LogWarning("RichDemoSeeder: dev-login BarberOwner ({Phone}) veya salonu bulunamadı — Step 9 atlandı.", DevLoginOwnerPhone);
+        }
+        else
+        {
+            var devStylists = await db.Stylists.AsNoTracking()
+                .Where(s => s.BarberShopId == devShop.Id && s.IsActive)
+                .OrderBy(s => s.DisplayName)
+                .ToListAsync(ct);
+            var devServices = await db.ServiceCatalogs.AsNoTracking()
+                .Where(s => s.BarberShopId == devShop.Id && s.IsActive)
+                .OrderBy(s => s.Name)
+                .ToListAsync(ct);
+
+            var devCustomerPool = new List<User>();
+            if (demoCustomer is not null) devCustomerPool.Add(demoCustomer);
+            devCustomerPool.AddRange(secondaryCustomers);
+
+            if (devStylists.Count < 2 || devServices.Count == 0 || devCustomerPool.Count == 0)
+            {
+                logger.LogWarning(
+                    "RichDemoSeeder: dev-login salonunda beklenen veri yok (stylists={S} services={V} customers={C}) — Step 9 atlandı.",
+                    devStylists.Count, devServices.Count, devCustomerPool.Count);
+            }
+            else
+            {
+                var devBookings = new List<Booking>();
+                var devPayments = new List<Payment>();
+                var devReviewCandidates = new List<Booking>();
+                var devCustIdx = 0;
+                User NextDevCustomer()
+                {
+                    var c = devCustomerPool[devCustIdx % devCustomerPool.Count];
+                    devCustIdx++;
+                    return c;
+                }
+
+                Booking? MakeDevBooking(int stylistIdx, int serviceIdx, DateTimeOffset scheduledAt, bool requiresOnlinePayment = false, decimal? depositSnapshot = null)
+                {
+                    var stylist = devStylists[stylistIdx % devStylists.Count];
+                    var service = devServices[serviceIdx % devServices.Count];
+                    var customer = NextDevCustomer();
+                    var result = Booking.Initiate(
+                        customer.Id, devShop.Id, stylist.Id, scheduledAt,
+                        new (Guid, string, int, int, long)[] { (service.Id, service.Name, service.DurationMinutes, service.BufferMinutes, service.PriceMinor) },
+                        BookingType.Scheduled, CommissionRate, requiresOnlinePayment, depositPercentSnapshot: depositSnapshot);
+                    return result.IsSuccess ? result.Value : null;
+                }
+
+                var placeholderFuture = now.AddHours(1); // Initiate()'in "geçmişte olamaz" guard'ını geçmek için — hepsi aşağıda backdate edilecek.
+
+                // 1) BUGÜN — 2 Completed (gerçekten geçmişte, mümkün olduğunca iş saatleri içinde).
+                var pastIdxToday = PastSlotIndexBeforeNow(now);
+                var todayCompleted1 = MakeDevBooking(0, 0, placeholderFuture);
+                if (todayCompleted1 is not null)
+                {
+                    var payment = CreateAndCapturePayment(todayCompleted1, todayCompleted1.CustomerId, devShop.Id);
+                    todayCompleted1.MarkPaymentReceived(payment.Id);
+                    todayCompleted1.OwnerConfirm();
+                    todayCompleted1.Start();
+                    todayCompleted1.Complete();
+                    payment.MarkSettled();
+                    var target = RealisticSlotUtc(todayLocal, 0, devServices[0 % devServices.Count].DurationMinutes);
+                    var shift = target - todayCompleted1.ScheduledAt;
+                    BackdateBooking(todayCompleted1, shift, confirmed: true, started: true, completed: true, cancelled: false);
+                    BackdatePayment(payment, shift);
+                    devBookings.Add(todayCompleted1);
+                    devPayments.Add(payment);
+                    devReviewCandidates.Add(todayCompleted1);
+                }
+
+                var todayCompleted2 = MakeDevBooking(1, 1, placeholderFuture);
+                if (todayCompleted2 is not null)
+                {
+                    var payment = CreateAndCapturePayment(todayCompleted2, todayCompleted2.CustomerId, devShop.Id);
+                    todayCompleted2.MarkPaymentReceived(payment.Id);
+                    todayCompleted2.OwnerConfirm();
+                    todayCompleted2.Start();
+                    todayCompleted2.Complete();
+                    payment.MarkSettled();
+                    var target = RealisticSlotUtc(todayLocal, Math.Min(pastIdxToday, 4), devServices[1 % devServices.Count].DurationMinutes);
+                    var shift = target - todayCompleted2.ScheduledAt;
+                    BackdateBooking(todayCompleted2, shift, confirmed: true, started: true, completed: true, cancelled: false);
+                    BackdatePayment(payment, shift);
+                    devBookings.Add(todayCompleted2);
+                    devPayments.Add(payment);
+                    devReviewCandidates.Add(todayCompleted2);
+                }
+
+                // 2) BUGÜN — 2 Confirmed (ilerleyen saatler) + 1 Pending (onay bekliyor). Gerçek
+                // iş-saati slotu "now"dan önceyse (öğleden sonra/akşam seed edilirse hemen her
+                // zaman böyle) doğrudan "şimdiden X dk sonra"ya düşülür — ama stylist-bazlı bir
+                // KURSÖRLE sıralı ilerletilir ki iki randevu ASLA çakışmasın (bir önceki sürüm
+                // bağımsız fallback'ler kullanıyordu: 150dk'lık bir hizmet 17:20'de başlayıp
+                // 19:50'de bitip aynı stilistin 19:05'teki randevusuyla çakışıyordu —
+                // ex_bookings_stylist_slot EXCLUDE constraint'i canlı DB'de bunu yakaladı).
+                // En kısa 3 hizmet seçilir (uzun bir Boyama/Röfle 150dk'lık hizmet günün geç
+                // saatinde seed edilince kapanış saatini rahatça aşabilirdi) — kalan iş-saati
+                // penceresine sığma ihtimalini maksimize eder.
+                var shortServiceIdx = devServices
+                    .Select((s, idx) => (s.DurationMinutes, idx))
+                    .OrderBy(x => x.DurationMinutes)
+                    .Select(x => x.idx)
+                    .ToList();
+                var shortIdx0 = shortServiceIdx.Count > 0 ? shortServiceIdx[0] : 0;
+                var shortIdx1 = shortServiceIdx.Count > 1 ? shortServiceIdx[1] : 0;
+                var shortIdx2 = shortServiceIdx.Count > 2 ? shortServiceIdx[2] : shortIdx0;
+
+                var stylist0Cursor = now.AddMinutes(20);
+                var stylist1Cursor = now.AddMinutes(20);
+
+                var dur1 = devServices[shortIdx0].DurationMinutes;
+                var todayConfirmed1 = MakeDevBooking(0, shortIdx0, stylist0Cursor);
+                if (todayConfirmed1 is not null)
+                {
+                    todayConfirmed1.OwnerConfirm();
+                    devBookings.Add(todayConfirmed1);
+                    stylist0Cursor = stylist0Cursor.AddMinutes(dur1 + 15);
+                }
+
+                var dur5 = devServices[shortIdx1].DurationMinutes;
+                var todayConfirmed2 = MakeDevBooking(1, shortIdx1, stylist1Cursor);
+                if (todayConfirmed2 is not null)
+                {
+                    todayConfirmed2.OwnerConfirm();
+                    devBookings.Add(todayConfirmed2);
+                    stylist1Cursor = stylist1Cursor.AddMinutes(dur5 + 15);
+                }
+
+                var todayPending = MakeDevBooking(0, shortIdx2, stylist0Cursor);
+                if (todayPending is not null) devBookings.Add(todayPending);
+
+                // 3) Kapora ödenmiş Pending (+5 gün) — owner "ödenmiş, onay bekliyor" akışını
+                // burada da görsün. Bunun için salonun kapora ayarı önce açılıyor.
+                if (settings is not null)
+                {
+                    var devPolicy = BookingPolicy.Create(true, 0.15m, 2, null, null, settings.DepositPercentMin, settings.DepositPercentMax);
+                    if (devPolicy.IsSuccess) devShop.SetBookingPolicy(devPolicy.Value);
+                }
+                var devDeposit = MakeDevBooking(0, 3, RealisticSlotUtc(todayLocal.AddDays(5), 12, devServices[3 % devServices.Count].DurationMinutes), requiresOnlinePayment: true, depositSnapshot: 0.15m);
+                if (devDeposit is not null)
+                {
+                    var depositMinor = Kuaforum.Domain.Common.PaymentAmounts.CalculateDepositMinor(devDeposit.TotalAmountMinor, 0.15m);
+                    var payment = Payment.Initiate(
+                        devDeposit.Id, devDeposit.CustomerId, devShop.Id, depositMinor, platformCommissionMinor: 0,
+                        PaymentProviderName.Mock, PaymentKind.Deposit, idempotencyKey: $"rich-dev-deposit-{devDeposit.Id:N}").Value;
+                    payment.Capture($"RICH-DEV-TX-{devDeposit.Id:N}"[..32], depositMinor * 18 / 1000);
+                    devDeposit.MarkPaymentReceived(payment.Id); // Status Pending kalır — onay bekliyor
+                    devBookings.Add(devDeposit);
+                    devPayments.Add(payment);
+                }
+
+                // 4) GELECEK 14 gün — 8 karışık Confirmed/Pending (takvim sekmesi dolsun).
+                var future = new (int DayOffset, int StylistIdx, int ServiceIdx, int SlotIdx, bool Confirm)[]
+                {
+                    (2, 0, 0, 10, true), (3, 1, 4, 14, false), (4, 0, 5, 22, true), (6, 1, 1, 8, false),
+                    (8, 0, 4, 30, true), (9, 1, 5, 4, false), (11, 0, 0, 16, true), (13, 1, 2, 26, false),
+                };
+                foreach (var f in future)
+                {
+                    var duration = devServices[f.ServiceIdx % devServices.Count].DurationMinutes;
+                    var slotAt = RealisticSlotUtc(todayLocal.AddDays(f.DayOffset), f.SlotIdx, duration);
+                    var b = MakeDevBooking(f.StylistIdx, f.ServiceIdx, slotAt);
+                    if (b is null) continue;
+                    if (f.Confirm) b.OwnerConfirm();
+                    devBookings.Add(b);
+                }
+
+                db.Bookings.AddRange(devBookings);
+                db.Payments.AddRange(devPayments);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("RichDemoSeeder: dev-login owner şablonuna {N} randevu eklendi (bugün + bu hafta + gelecek 14 gün).", devBookings.Count);
+
+                // 5) BU HAFTA (bugün dahil en az 6 Completed) + GEÇEN HAFTA (3-4 Completed) —
+                // "BU HAFTA ₺X, N tamamlanan" ve geçen haftaya göre % karşılaştırması dolsun.
+                // daysSinceMonday'a göre offset — hangi gün seed edilirse edilsin doğru UTC
+                // hafta penceresine düşer (GetOwnerDashboardStatsQueryHandler.MondayStartUtc).
+                var historyBookings = new List<Booking>();
+                var historyPayments = new List<Payment>();
+                const int extraThisWeekCompleted = 4; // + bugünün 2'si = en az 6
+                for (var i = 0; i < extraThisWeekCompleted; i++)
+                {
+                    var dayOffset = daysSinceMonday == 0 ? 0 : -(1 + (i % daysSinceMonday));
+                    AddDevHistoryCompleted(dayOffset, i);
+                }
+                const int lastWeekCompleted = 4;
+                for (var i = 0; i < lastWeekCompleted; i++)
+                {
+                    var dayOffset = -(daysSinceMonday + 2 + i);
+                    AddDevHistoryCompleted(dayOffset, extraThisWeekCompleted + i);
+                }
+
+                void AddDevHistoryCompleted(int dayOffset, int idx)
+                {
+                    var stylistIdx = idx % 2;
+                    var serviceIdx = idx % devServices.Count;
+                    var b = MakeDevBooking(stylistIdx, serviceIdx, now.AddHours(1));
+                    if (b is null) return;
+                    var payment = CreateAndCapturePayment(b, b.CustomerId, devShop.Id);
+                    b.MarkPaymentReceived(payment.Id);
+                    b.OwnerConfirm();
+                    b.Start();
+                    b.Complete();
+                    payment.MarkSettled();
+                    var target = RealisticSlotUtc(todayLocal.AddDays(dayOffset), idx * 5, devServices[serviceIdx].DurationMinutes);
+                    var shift = target - b.ScheduledAt;
+                    BackdateBooking(b, shift, confirmed: true, started: true, completed: true, cancelled: false);
+                    BackdatePayment(payment, shift);
+                    historyBookings.Add(b);
+                    historyPayments.Add(payment);
+                    devReviewCandidates.Add(b);
+                }
+
+                db.Bookings.AddRange(historyBookings);
+                db.Payments.AddRange(historyPayments);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("RichDemoSeeder: dev-login owner şablonuna {N} geçmiş (bu hafta/geçen hafta) Completed randevu eklendi.", historyBookings.Count);
+
+                // 6) Faturalama — en az 1 Notified + 1 Paid (owner faturalama ekranı boş kalmasın).
+                var (devPeriodStart, devPeriodEnd) = LastMonthPeriod();
+                var devRate = settings?.CommissionRateGlobal ?? CommissionRate;
+                var devNotified = CommissionStatement.Create(devShop.Id, devPeriodStart, devPeriodEnd, 540_000, devRate).Value;
+                devNotified.MarkNotified();
+                db.CommissionStatements.Add(devNotified);
+
+                var priorPeriodStart = devPeriodStart.AddMonths(-1);
+                var priorPeriodEnd = devPeriodStart.AddDays(-1);
+                var devPaid = CommissionStatement.Create(devShop.Id, priorPeriodStart, priorPeriodEnd, 780_000, devRate).Value;
+                devPaid.MarkNotified();
+                devPaid.MarkPaid();
+                db.CommissionStatements.Add(devPaid);
+                await db.SaveChangesAsync(ct);
+                await db.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE commission_statements SET due_date = {DateOnly.FromDateTime(now.UtcDateTime).AddDays(10)} WHERE id = {devNotified.Id}", ct);
+                logger.LogInformation("RichDemoSeeder: dev-login owner şablonuna 2 komisyon faturası eklendi (Notified/Paid).");
+
+                // 7) Bildirimler — yeni randevu talebi/kapora/iptal/faturalama, okunmuş/okunmamış karışık.
+                var devNotifs = new List<NotificationLog>();
+                var newRequest = NotificationLog.Create(devOwner.Id, NotificationChannel.Push, "booking.new_request",
+                    $"fcm-mock-{devOwner.Id:N}"[..20], "Yeni randevu talebi", "Bugün için yeni bir randevu talebi var, onayını bekliyor.");
+                newRequest.MarkSent($"mock-msg-{Guid.NewGuid():N}"[..16]);
+                devNotifs.Add(newRequest); // unread
+
+                var depositNotice = NotificationLog.Create(devOwner.Id, NotificationChannel.Push, "booking.deposit_paid",
+                    $"fcm-mock-{devOwner.Id:N}"[..20], "Kapora alındı", "Bir randevu için kapora ödendi, onayını bekliyor.");
+                depositNotice.MarkSent($"mock-msg-{Guid.NewGuid():N}"[..16]);
+                depositNotice.MarkRead();
+                devNotifs.Add(depositNotice);
+
+                var cancelNotice = NotificationLog.Create(devOwner.Id, NotificationChannel.InApp, "booking.cancelled",
+                    devOwner.Id.ToString(), "Randevu iptal edildi", "Bir müşteri randevusunu iptal etti.");
+                cancelNotice.MarkSent(null);
+                cancelNotice.MarkRead();
+                devNotifs.Add(cancelNotice);
+
+                var billingNotice = NotificationLog.Create(devOwner.Id, NotificationChannel.Sms, "billing.commission_notified",
+                    devOwner.PhoneE164 ?? DevLoginOwnerPhone, "Komisyon faturan hazır", "Bu ay için komisyon faturan oluşturuldu.");
+                billingNotice.MarkSent($"netgsm-mock-{Guid.NewGuid():N}"[..16]);
+                devNotifs.Add(billingNotice); // unread
+
+                db.NotificationLogs.AddRange(devNotifs);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("RichDemoSeeder: dev-login owner'a {N} bildirim eklendi.", devNotifs.Count);
+
+                // 8) Yorumlar — biri owner cevaplı, ortalama puan oluşsun.
+                var devReviews = new List<Review>();
+                var devRatings = new[] { 5, 4, 5, 3, 4 };
+                for (var i = 0; i < devReviewCandidates.Count && i < devRatings.Length; i++)
+                {
+                    var booking = devReviewCandidates[i];
+                    var rating = devRatings[i];
+                    var body = PickReviewBody(rating);
+                    var reviewResult = Review.Submit(booking.CustomerId, booking.BarberShopId, booking.StylistId, booking.Id, rating, body);
+                    if (reviewResult.IsFailure) continue;
+                    var review = reviewResult.Value;
+                    if (i == 0 && review.ModerationStatus == ReviewModerationStatus.Approved)
+                        review.AddReply(devOwner.Id, PickReplyText(rating));
+                    devReviews.Add(review);
+                }
+                db.Reviews.AddRange(devReviews);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("RichDemoSeeder: dev-login owner şablonuna {N} yorum eklendi.", devReviews.Count);
+            }
+        }
+
+        // ── Step 10: admin KYC kuyruğu — kuyruk şu ana kadar HER ZAMAN boştu, çünkü
+        // DemoBarberSeeder/RichDemoSeeder şablonları doğrudan BarberShop.ApproveKyc() ile
+        // Active'e geçiyordu — hiçbir zaman gerçek bir KycSubmission satırı üretilmiyordu (admin
+        // kuyruğu KycSubmission tablosunu okur, BarberShopStatus'ü DEĞİL). 2 yeni Draft salon:
+        // biri Pending (yeni başvuru), biri UnderReview (admin incelemeye almış) — admin onay/red
+        // akışı elle test edilebilsin. Dev-login "BarberOwnerDraft" personasının kendi şablonuna
+        // (Şişli Draft, KYC akışının TAZE kalması gereken tek yer) BİLEREK dokunulmuyor.
+        var kycIstanbul = await db.Cities.AsNoTracking().FirstOrDefaultAsync(c => c.PlateCode == 34, ct);
+        var kycDistrict = kycIstanbul is null ? null : await db.Districts.AsNoTracking().FirstOrDefaultAsync(d => d.CityId == kycIstanbul.Id, ct);
+        var adminUser = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Role == UserRole.Admin, ct);
+
+        if (kycIstanbul is null || kycDistrict is null)
+        {
+            logger.LogWarning("RichDemoSeeder: İstanbul/ilçe bulunamadı — Step 10 (KYC kuyruğu) atlandı.");
+        }
+        else
+        {
+            var kycShopSpecs = new (string OwnerPhone, string OwnerName, string ShopName, KycStatus TargetStatus)[]
+            {
+                ("+905003000001", "Kadir Bekleyen", "Bekleyen Kuaför Stüdyosu", KycStatus.Pending),
+                ("+905003000002", "Zehra İnceleme", "İncelemede Güzellik Salonu", KycStatus.UnderReview),
+            };
+            var kycCreated = 0;
+
+            foreach (var spec in kycShopSpecs)
+            {
+                var exists = await db.Users.AnyAsync(u => u.PhoneE164 == spec.OwnerPhone, ct);
+                if (exists) continue; // idempotency: bu seeder'ın üst-düzey gate'i zaten var ama savunmacı
+
+                var phoneResult = PhoneE164.TryCreate(spec.OwnerPhone);
+                if (phoneResult.IsFailure) continue;
+                var ownerResult = User.CreateCustomerByPhone(phoneResult.Value, spec.OwnerName);
+                if (ownerResult.IsFailure) continue;
+                var kycOwner = ownerResult.Value;
+                kycOwner.PromoteToBarberOwner();
+                db.Users.Add(kycOwner);
+
+                var shopResult = BarberShop.Create(kycOwner.Id, spec.ShopName, SalonGenderType.Unisex);
+                if (shopResult.IsFailure) continue;
+                var kycShop = shopResult.Value;
+                kycShop.UpdateBasics(name: spec.ShopName, description: "KYC test — admin onay/red akışı için demo başvuru.", genderType: null, phone: null);
+
+                var coordResult = Coordinate.TryCreate(41.0, 29.0);
+                if (coordResult.IsSuccess)
+                {
+                    var addressResult = Address.Create(kycIstanbul.Id, kycDistrict.Id, null, "Demo Cad. No:1", coordResult.Value);
+                    if (addressResult.IsSuccess) kycShop.SetAddress(addressResult.Value);
+                }
+
+                var markPending = kycShop.MarkPendingKyc();
+                if (markPending.IsFailure) continue;
+                db.BarberShops.Add(kycShop);
+
+                var submission = KycSubmission.Create(kycShop.Id, kycOwner.Id);
+                db.KycSubmissions.Add(submission);
+
+                var taxDoc = KycDocument.Create(submission.Id, DocumentType.TaxLicense, "vergi-levhasi.pdf", $"kyc/demo/{submission.Id:N}/tax.pdf", 128_000, "application/pdf");
+                if (taxDoc.IsSuccess) db.KycDocuments.Add(taxDoc.Value);
+                var idDoc = KycDocument.Create(submission.Id, DocumentType.IdentityCard, "kimlik.jpg", $"kyc/demo/{submission.Id:N}/id.jpg", 96_000, "image/jpeg");
+                if (idDoc.IsSuccess) db.KycDocuments.Add(idDoc.Value);
+
+                if (spec.TargetStatus == KycStatus.UnderReview)
+                {
+                    if (adminUser is not null)
+                        submission.MarkUnderReview(adminUser.Id);
+                    else
+                        logger.LogWarning("RichDemoSeeder: admin kullanıcısı yok — {Shop} başvurusu UnderReview yerine Pending kalacak.", spec.ShopName);
+                }
+
+                kycCreated++;
+            }
+
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("RichDemoSeeder: admin KYC kuyruğuna {N} örnek başvuru eklendi (Pending/UnderReview).", kycCreated);
+        }
+
         logger.LogInformation("RichDemoSeeder: complete. newShops={NewShops} totalErzurumShops={Total} reviews={Reviews}",
             newShops.Count, allErzurumShops.Count, reviewsToAdd.Count);
     }
@@ -578,6 +976,56 @@ public sealed class RichDemoSeeder(
         var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
         var start = new DateOnly(today.Year, today.Month, 1).AddMonths(-1);
         return (start, start.AddMonths(1).AddDays(-1));
+    }
+
+    /// <summary>
+    /// Kusur 2 fix (2026-08-06, elle test bulgusu): önceki sürüm bir "now.AddDays(N)" hedefiyle
+    /// "now.AddHours(X)" placeholder'ı arasındaki farkı (shift) hesaplayıp TÜM alanlara
+    /// uyguluyordu — matematik saat bileşenini iptal ediyordu ve nihai ScheduledAt SUNUCUNUN O
+    /// ANKİ SAAT-DAKİKASINDA sabitleniyordu ("14 Ağu Cum 06:58" gibi, kuaförler sabaha karşı
+    /// randevu vermez). Bu yardımcı yalnızca GERÇEKÇİ bir iş-saati üretir: verilen yerel tarihte,
+    /// çalışma saatleri içinde (yoksa 09:00–19:00 varsayımı), 15 dakikanın katı bir başlangıç —
+    /// hizmet süresi kapanış saatini aşmayacak şekilde slot sayısı daraltılır. Random KULLANMAZ
+    /// (bkz. Rng alanının doc'u — paylaşılan Random test sırasına göre flaky çıktı üretiyordu);
+    /// yalnızca (localDate, slotIndex) girdisinden deterministik üretir — slotIndex slot sayısına
+    /// modulo alınır, bu yüzden HERHANGİ bir int güvenlidir (aralık dışı çökme riski yok).
+    /// Europe/Istanbul yerel saatine göre hesaplanır, DB'ye UTC olarak döner.
+    /// </summary>
+    private static DateTimeOffset RealisticSlotUtc(
+        DateOnly localDate, int slotIndex, int serviceDurationMinutes = 45,
+        TimeOnly? openTime = null, TimeOnly? closeTime = null)
+    {
+        var open = openTime ?? DefaultOpenTime;
+        var close = closeTime ?? DefaultCloseTime;
+        if (close <= open) { open = DefaultOpenTime; close = DefaultCloseTime; }
+
+        var windowMinutes = (close.ToTimeSpan() - open.ToTimeSpan()).TotalMinutes;
+        var reserve = Math.Clamp(serviceDurationMinutes, 15, (int)windowMinutes);
+        var usableMinutes = Math.Max(15, windowMinutes - reserve);
+        var slotCount = Math.Max(1, (int)(usableMinutes / 15) + 1);
+
+        var offset = ((slotIndex % slotCount) + slotCount) % slotCount;
+        var localStart = open.AddMinutes(offset * 15);
+
+        var localDateTime = new DateTime(localDate.Year, localDate.Month, localDate.Day, localStart.Hour, localStart.Minute, 0, DateTimeKind.Unspecified);
+        var utcOffset = IstanbulTz.GetUtcOffset(localDateTime);
+        return new DateTimeOffset(localDateTime, utcOffset).ToUniversalTime();
+    }
+
+    /// <summary>
+    /// "Bugün, gerçekten geçmişte kalmış" bir Completed randevu üretmek için: şu ana kadar
+    /// açılıştan (09:00 varsayılan) geçen 15dk'lık slot sayısı, en az 1 slot pay bırakarak.
+    /// Seeding çok erken saatte (ör. 03:00) çalışırsa 0 döner — o nadir kenar durumda çağıran
+    /// taraf en erken slotu (index 0) kullanır, sonuç teknik olarak "gelecekte" kalabilir; bu
+    /// bilinen ve kabul edilen bir sınır durumdur (raporda not düşülür).
+    /// </summary>
+    private static int PastSlotIndexBeforeNow(DateTimeOffset nowUtc, TimeOnly? openTime = null)
+    {
+        var open = openTime ?? DefaultOpenTime;
+        var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, IstanbulTz);
+        var minutesSinceOpen = (nowLocal.TimeOfDay - open.ToTimeSpan()).TotalMinutes;
+        if (minutesSinceOpen < 15) return 0;
+        return Math.Max(0, (int)(minutesSinceOpen / 15) - 1);
     }
 
     private Payment CreateAndCapturePayment(Booking booking, Guid customerId, Guid shopId)
