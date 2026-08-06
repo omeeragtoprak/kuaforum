@@ -140,6 +140,32 @@
 
 ---
 
+## G14. Gerçek çevrimdışı algısı yok — "uçak modu" ile "sunucu erişilemez" ayırt edilemiyor
+
+**Kanıt:** `mobile/src/lib/classify-error.ts` (2026-08-06) hata sınıflandırmasını axios hata nesnesinin şeklinden yapıyor. Cihaz çevrimdışıyken de sunucu erişilemezken de aynı `ERR_NETWORK` sinyali geliyor; ikisi ayrıştırılamıyor. Direktif E4 her ekran için ayrı bir "çevrimdışı durumu" istiyor.
+
+**Etki:** Düşük. Kullanıcı zaten "Bağlantı kurulamadı + Tekrar dene" görüyor — değerin büyük kısmı alınmış durumda. Eksik olan yalnız (a) "internetin kapalı" gibi daha net metin ve (b) bağlantı geri gelince otomatik yeniden deneme.
+
+**Neden şimdi yapılmadı (bilinçli karar):** Gerçek çevrimdışı algısı `expo-network` veya `@react-native-community/netinfo` gerektiriyor; ikisi de kurulu değil. Yeni bir native bağımlılık + APK yeniden derlemesi demek. Kazanç (daha iyi metin + otomatik retry) maliyeti şu an karşılamıyor; G11/G12 düzeltmesi kullanıcıyı yanlış yönlendirme sorununu zaten çözdü.
+
+**Tetikleyici:** Gerçek kullanıcı testlerinde "internetim yokken ne olduğunu anlamadım" geri bildirimi gelirse, ya da native bağımlılık gerektiren başka bir iş için zaten rebuild yapılacaksa aynı pakete alınır.
+
+**Efor:** 3-4 saat (bağımlılık + rebuild dahil).
+
+---
+
+## G15. Aynı hata/yükleme kalıbı kapsam dışı bırakılan ekranlarda sürüyor
+
+G11/G12 düzeltmesi yalnız üç ekranı kapsadı (kuaför detay, keşfet, randevularım). Aynı kusur şu ekranlarda **duruyor** — kayda geçiriliyor ki "çözüldü" sanılmasın:
+
+- `mobile/app/booking/[id].tsx` — G12 kalıbı birebir aynı: `isError || !data` → "Bulunamadı / Bu randevu yüklenemedi". Randevu detayı kullanıcının en sık açtığı ekranlardan; **öncelikli**.
+- `mobile/app/(barber)/profile.tsx:104` ve `mobile/src/components/kyc/KycDocumentPicker.tsx:155` — düz "Yükleniyor…" metni.
+- `mobile/app/(tabs)/bookings.tsx:65` — başlık altındaki tali "Yükleniyor…" metni (ana gövde artık skeleton).
+
+**Efor:** 2-3 saat (bileşenler hazır, sadece uygulanacak).
+
+---
+
 ## Özet Tablo
 
 | # | Başlık | Etki | Efor |
@@ -157,6 +183,8 @@
 | G11 | Yükleme durumlarında skeleton yerine düz "Yükleniyor..." metni | Düşük-Orta | 0.5 gün |
 | G12 | "Bulunamadı" ile "sunucuya ulaşılamadı" ayrışmıyor | Orta | 0.5 gün |
 | G13 | Entitlement kota kontrolünde yarış koşulu (ödemeli plan öncesi kapatılmalı) | Düşük→Orta | 3-5 saat |
+| G14 | Gerçek çevrimdışı algısı yok (native bağımlılık gerekiyor, bilinçli erteleme) | Düşük | 3-4 saat |
+| G15 | G11/G12 düzeltmesi kapsam dışı ekranlarda uygulanmadı (randevu detayı öncelikli) | Orta | 2-3 saat |
 
 ---
 
