@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Modules.Barber;
 using Kuaforum.Domain.Modules.Billing;
 using BookingAggregate = Kuaforum.Domain.Modules.Booking.Booking;
@@ -147,6 +148,64 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
         }
 
         return statement.Id;
+    }
+
+    /// <summary>
+    /// Domain aggregate'ini doğrudan Overdue durumuna taşıyıp kaydeder (job'u hiç çalıştırmadan) —
+    /// SuspendOverdueCommissionAccountsJob'un "zaten Overdue'da asılı kalmış" retry senaryosunu
+    /// ve ExtendDueDate'in Overdue→Notified geri alma davranışını job'un kendi Notified→Overdue
+    /// adımından bağımsız test edebilmek için.
+    /// </summary>
+    private async Task<Guid> CreateOverdueStatementDirectlyAsync(ShopFixture f, long basisAmountMinor, decimal rate, DateOnly dueDate)
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var (periodStart, periodEnd) = LastMonthPeriod();
+
+        var statement = CommissionStatement.Create(f.ShopId, periodStart, periodEnd, basisAmountMinor, rate).Value;
+        statement.MarkNotified();
+        statement.MarkOverdue();
+        db.Set<CommissionStatement>().Add(statement);
+        await db.SaveChangesAsync();
+
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE commission_statements SET due_date = {dueDate} WHERE id = {statement.Id}");
+        return statement.Id;
+    }
+
+    /// <summary>
+    /// DevLoginAsync("BarberOwner") her zaman AYNI sabit demo owner'a giriş yapar
+    /// (DevLoginCommandHandler.BarberOwnerDemoPhone) — cross-owner IDOR testi için İKİNCİ,
+    /// gerçekten farklı bir owner+shop gerekir. Bu owner OTP/dev-login akışından geçmiyor;
+    /// token'ı doğrudan IJwtTokenService ile mint ediyoruz (ShopSuspensionTests'in admin
+    /// kullanıcısını OTP'siz doğrudan DB'ye ekleme deseninin bir uzantısı).
+    /// </summary>
+    private async Task<HttpClient> CreateSecondOwnerWithOwnShopAsync()
+    {
+        Guid ownerBId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var phoneRes = PhoneE164.TryCreate("+905009999998");
+            var ownerBRes = Kuaforum.Domain.Modules.Identity.User.CreateCustomerByPhone(phoneRes.Value, "Demo Owner B");
+            var ownerB = ownerBRes.Value;
+            ownerB.PromoteToBarberOwner();
+            db.Users.Add(ownerB);
+
+            var shopBRes = BarberShop.Create(ownerB.Id, "Owner B Shop", SalonGenderType.Unisex);
+            db.Set<BarberShop>().Add(shopBRes.Value);
+            await db.SaveChangesAsync();
+            ownerBId = ownerB.Id;
+        }
+
+        using var authScope = factory.Services.CreateScope();
+        var authDb = authScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var jwtService = authScope.ServiceProvider.GetRequiredService<IJwtTokenService>();
+        var ownerBUser = await authDb.Set<Kuaforum.Domain.Modules.Identity.User>().AsNoTracking().FirstAsync(u => u.Id == ownerBId);
+        var tokens = jwtService.Issue(ownerBUser);
+
+        var client = factory.CreateClient();
+        client.SetBearer(tokens.AccessToken);
+        return client;
     }
 
     private static (DateOnly PeriodStart, DateOnly PeriodEnd) LastMonthPeriod()
@@ -450,5 +509,64 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
 
         var initiateResp = await f.OwnerClient.PostAsync($"/v1/owner/billing/statements/{statementId}/pay/initiate", null);
         Assert.False(initiateResp.IsSuccessStatusCode);
+    }
+
+    // ── Review fix turu: cross-owner IDOR + Overdue retry ──────────────
+
+    /// <summary>
+    /// C1 (review): owner-B, owner-A'nın statement'ına detail/dispute/pay-initiate ile
+    /// erişemez — handler guard'ları 403 döner (guard koddaydı ama testsizdi; regresyon kilidi).
+    /// </summary>
+    [Fact]
+    public async Task CrossOwner_CannotAccessOtherOwnersStatement_DetailDisputeAndPayInitiateAllForbidden()
+    {
+        var ownerA = await SeedShopAndAuthAsync();
+        var statementId = await CreateNotifiedStatementAsync(ownerA, basisAmountMinor: 50_000, rate: 0.20m);
+
+        using var ownerBClient = await CreateSecondOwnerWithOwnShopAsync();
+
+        var detail = await ownerBClient.GetAsync($"/v1/owner/billing/statements/{statementId}");
+        Assert.Equal(HttpStatusCode.Forbidden, detail.StatusCode);
+
+        var dispute = await ownerBClient.PostAsJsonAsync(
+            $"/v1/owner/billing/statements/{statementId}/dispute",
+            new { note = "Bu statement bana ait değil ama erişmeyi deniyorum." });
+        Assert.Equal(HttpStatusCode.Forbidden, dispute.StatusCode);
+
+        var pay = await ownerBClient.PostAsync($"/v1/owner/billing/statements/{statementId}/pay/initiate", null);
+        Assert.Equal(HttpStatusCode.Forbidden, pay.StatusCode);
+
+        // Yan etki yok: statement dispute edilmemiş, durum değişmemiş.
+        var fromOwnerA = (await ownerA.OwnerClient.GetJson<OwnerStatementsPage>("/v1/owner/billing/statements"))
+            .Items.Single(x => x.Id == statementId);
+        Assert.False(fromOwnerA.IsDisputed);
+        Assert.Equal(CommissionStatementStatus.Notified, fromOwnerA.Status);
+    }
+
+    /// <summary>
+    /// I3 (review): önceki koşumda Overdue'ya geçmiş ama suspend edilememiş statement,
+    /// job'ın SONRAKİ koşumunda yeniden işlenir (Notified-only seçim bug'ının regresyon kilidi).
+    /// </summary>
+    [Fact]
+    public async Task SuspendJob_RetriesStatementsAlreadyStuckInOverdue()
+    {
+        var f = await SeedShopAndAuthAsync();
+        var yesterday = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime).AddDays(-1);
+        var statementId = await CreateOverdueStatementDirectlyAsync(f, basisAmountMinor: 80_000, rate: 0.20m, dueDate: yesterday);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var job = scope.ServiceProvider.GetRequiredService<SuspendOverdueCommissionAccountsJob>();
+            await job.RunAsync(default);
+        }
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var statement = await db.Set<CommissionStatement>().AsNoTracking().SingleAsync(x => x.Id == statementId);
+            Assert.Equal(CommissionStatementStatus.SuspensionApplied, statement.Status);
+            var shop = await db.Set<BarberShop>().AsNoTracking().SingleAsync(x => x.Id == f.ShopId);
+            Assert.Equal(BarberShopStatus.Suspended, shop.Status);
+        }
     }
 }

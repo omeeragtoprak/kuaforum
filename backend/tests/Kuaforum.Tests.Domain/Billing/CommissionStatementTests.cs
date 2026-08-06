@@ -289,4 +289,66 @@ public class CommissionStatementTests
         var result = statement.ExtendDueDate(statement.DueDate.AddDays(7), "Geç uzatma denemesi.");
         Assert.True(result.IsFailure);
     }
+
+    [Fact]
+    public void ExtendDueDate_OnNotifiedStatement_StatusStaysNotified()
+    {
+        var statement = Create();
+        statement.MarkNotified();
+        var newDueDate = statement.DueDate.AddDays(10);
+
+        var result = statement.ExtendDueDate(newDueDate, "Notified durumunda uzatma.");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CommissionStatementStatus.Notified, statement.Status);
+    }
+
+    /// <summary>
+    /// Review fix (RFC-012): "admin uzatması vadeyi durdurabilen tek mekanizma" kararı
+    /// Overdue penceresinde de çalışmalı — aksi halde SuspendOverdueCommissionAccountsJob'un
+    /// Overdue-retry taraması (job doc-comment) hâlâ askı adayı sanmaya devam eder.
+    /// </summary>
+    [Fact]
+    public void ExtendDueDate_OnOverdueStatement_WithFutureNewDate_RevertsToNotified()
+    {
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        var periodEnd = today.AddDays(-12); // DueDate = periodEnd+7 = today-5 (geçmiş, gerçekten Overdue)
+        var periodStart = periodEnd.AddDays(-30);
+        var statement = CommissionStatement.Create(Guid.NewGuid(), periodStart, periodEnd, 100_000, 0.20m).Value;
+        statement.MarkNotified();
+        statement.MarkOverdue();
+        Assert.Equal(CommissionStatementStatus.Overdue, statement.Status);
+
+        var newDueDate = today.AddDays(5); // gelecekte
+        var result = statement.ExtendDueDate(newDueDate, "İtiraz inceleniyor, ek süre tanındı.");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CommissionStatementStatus.Notified, statement.Status); // Overdue'dan geri alındı
+        Assert.Equal(newDueDate, statement.DueDate);
+    }
+
+    /// <summary>
+    /// Yeni vade eski vadeden ileri ama HÂLÂ bugünden geçmişteyse (örn. admin 3 gün uzattı ama
+    /// bu hâlâ geçmiş bir tarih) durum bilerek Overdue'da kalır — job bir sonraki koşumda
+    /// zaten doğru şekilde yeniden değerlendirir (retry taraması onu görmeye devam eder).
+    /// </summary>
+    [Fact]
+    public void ExtendDueDate_OnOverdueStatement_WithStillPastNewDate_StaysOverdue()
+    {
+        var today = DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime);
+        var periodEnd = today.AddDays(-20); // DueDate = periodEnd+7 = today-13
+        var periodStart = periodEnd.AddDays(-30);
+        var statement = CommissionStatement.Create(Guid.NewGuid(), periodStart, periodEnd, 100_000, 0.20m).Value;
+        statement.MarkNotified();
+        statement.MarkOverdue();
+
+        var newDueDate = statement.DueDate.AddDays(3); // ileri ama hâlâ geçmişte (today-10)
+        Assert.True(newDueDate < today); // testin kendi varsayımının sağlaması
+
+        var result = statement.ExtendDueDate(newDueDate, "Kısmi uzatma, hâlâ gecikmiş.");
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(CommissionStatementStatus.Overdue, statement.Status); // hâlâ Overdue
+        Assert.Equal(newDueDate, statement.DueDate);
+    }
 }

@@ -153,7 +153,14 @@ public sealed class CommissionStatement : AggregateRoot
         return Result.Success();
     }
 
-    /// <summary>Admin vade uzatma — RFC-012'de vade sayacını durdurabilen TEK mekanizma.</summary>
+    /// <summary>
+    /// Admin vade uzatma — RFC-012'de vade sayacını durdurabilen TEK mekanizma. Review fix:
+    /// Overdue bir statement'ın vadesi gerçekten geleceğe (bugünden ileri) taşınırsa Notified'a
+    /// GERİ ALINIR — aksi halde SuspendOverdueCommissionAccountsJob'un Overdue-retry taraması
+    /// (bkz. job doc-comment) onu hâlâ askı adayı sanmaya devam eder. Yeni vade eski vadeden
+    /// ileri ama HÂLÂ geçmişteyse (örn. admin 1 gün uzattı ama bu hâlâ dün) durum bilerek
+    /// Overdue'da kalır — job bir sonraki koşumda zaten doğru şekilde yeniden değerlendirir.
+    /// </summary>
     public Result ExtendDueDate(DateOnly newDueDate, string reason)
     {
         if (Status == CommissionStatementStatus.Paid)
@@ -165,6 +172,10 @@ public sealed class CommissionStatement : AggregateRoot
 
         DueDate = newDueDate;
         AdminAdjustmentNote = reason.Length > 500 ? reason[..500] : reason;
+
+        if (Status == CommissionStatementStatus.Overdue && newDueDate > DateOnly.FromDateTime(DateTimeOffset.UtcNow.UtcDateTime))
+            Status = CommissionStatementStatus.Notified;
+
         Touch();
         return Result.Success();
     }

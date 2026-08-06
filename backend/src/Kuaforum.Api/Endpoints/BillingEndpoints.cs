@@ -35,7 +35,9 @@ public static class BillingEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new DisputeCommissionStatementCommand(ctx.UserId.Value, id, body.Note), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess
+                ? Results.NoContent()
+                : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : r.Error.Code == "forbidden" ? 403 : 400);
         }).WithName("DisputeCommissionStatement");
 
         ownerGroup.MapPost("/statements/{id:guid}/pay/initiate", async (
@@ -46,7 +48,13 @@ public static class BillingEndpoints
             var r = await m.Send(new InitiateCommissionPaymentCommand(ctx.UserId.Value, id, idempKey), ct);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "conflict" ? 409 : 400);
+                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch
+                {
+                    "conflict" => 409,
+                    "not_found" => 404,
+                    "forbidden" => 403,
+                    _ => 400,
+                });
         }).WithName("InitiateCommissionPayment");
 
         // Mock-only completion endpoint for dev — PaymentEndpoints.MockCompleteAsync presedenti.
