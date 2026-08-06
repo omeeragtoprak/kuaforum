@@ -257,7 +257,11 @@ export default function BookingDetailScreen() {
   // başlatabilir — backend InitiatePaymentCommandHandler booking.CustomerId != request.CustomerId
   // ise Forbidden döner, bu yüzden !isBarber şart.
   const confirmMode = resolveBookingConfirmMode(onlinePaymentsEnabled);
+  // RFC-013 C4: ödeme booking'i otomatik onaylamıyor — Pending + paymentKind dolu, "ödedim ama
+  // kuaför henüz onaylamadı" durumu. "Ödemeyi tamamla" CTA'sı bu durumda GÖSTERİLMEZ (zaten
+  // ödendi); yerine ayrı, "kuaför onayı bekleniyor" ifadesi taşıyan bir durum kutusu gösterilir.
   const canCompletePayment = !isBarber && confirmMode === 'online-payment' && isBookingPending(b.status) && b.paymentKind == null;
+  const showPaidPendingApproval = !isBarber && confirmMode === 'online-payment' && isBookingPending(b.status) && b.paymentKind != null;
   const showOwnerApprovalPending = !isBarber && confirmMode === 'salon-payment' && isBookingPending(b.status);
   const totalDuration = b.items.reduce((s, i) => s + (i.durationMinutes ?? 0), 0);
 
@@ -424,6 +428,19 @@ export default function BookingDetailScreen() {
           {showOwnerApprovalPending ? (
             <View style={styles.pendingApprovalBox} accessible accessibilityLabel="Kuaför onayı bekleniyor">
               <Text style={styles.pendingApprovalText}>⏳ Kuaför onayı bekleniyor</Text>
+            </View>
+          ) : null}
+          {showPaidPendingApproval ? (
+            <View
+              style={styles.paidPendingApprovalBox}
+              accessible
+              accessibilityLabel="Ödendi, kuaför onayı bekleniyor. Kuaför onaylamazsa ödemen tam olarak iade edilir."
+            >
+              <Text style={styles.paidPendingApprovalText}>💰 Ödendi · kuaför onayı bekliyor</Text>
+              <Text style={styles.paidPendingApprovalSub}>
+                Kuaför onaylayınca bildirim alacaksın. Onaylamazsa ödediğin tutar tam olarak iade
+                edilir (birkaç iş günü sürebilir).
+              </Text>
             </View>
           ) : null}
           {ownerCanConfirm ? (
@@ -598,6 +615,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pendingApprovalText: { fontSize: FontSize.sm, color: Colors.info, fontWeight: FontWeight.semibold },
+  paidPendingApprovalBox: {
+    backgroundColor: Colors.warningSoft,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    gap: 4,
+  },
+  paidPendingApprovalText: { fontSize: FontSize.sm, color: Colors.warning, fontWeight: FontWeight.semibold, textAlign: 'center' },
+  paidPendingApprovalSub: { fontSize: FontSize.xs, color: Colors.textSecondary, textAlign: 'center', lineHeight: 16 },
   countdownText: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.info },
   countdownSoon: { backgroundColor: Colors.warningSoft },
   countdownTextSoon: { color: Colors.warning },

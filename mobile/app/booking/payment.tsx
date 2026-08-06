@@ -8,15 +8,20 @@ import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
 import { apiClient, extractApiError } from '@/api/client';
 import type { PaymentKind } from '@/api/payment';
-import { formatTry, isBookingConfirmed } from '@/lib/format';
+import { formatTry } from '@/lib/format';
 import { Haptics } from '@/lib/haptics';
 import { ErrorReporter } from '@/lib/error-reporter';
 import { PaymentCountdown } from '@/components/payment/PaymentCountdown';
 import { MockCheckoutCard } from '@/components/payment/MockCheckoutCard';
 import { CheckoutWebView } from '@/components/payment/CheckoutWebView';
 import { PaymentResultCard } from '@/components/payment/PaymentResultCard';
+import { resolvePaymentPollOutcome } from '@/lib/payment-poll';
 
-type Phase = 'checkout' | 'verifying' | 'success' | 'cancelled' | 'pendingWebhook' | 'error';
+// RFC-013 C4: 'success' artık YALNIZ booking gerçekten Confirmed olduğunda kullanılır
+// (owner ödeme sırasında/hemen sonra onaylamış — nadir ama mümkün bir yarış). Kapora/tam
+// online ödeme normalde booking'i Pending'de bırakır — bu durum ayrı 'paidPendingApproval'
+// fazıyla gösterilir (ödeme BAŞARILI, owner onayı bekleniyor; "randevun onaylandı" DENMEZ).
+type Phase = 'checkout' | 'verifying' | 'success' | 'paidPendingApproval' | 'cancelled' | 'pendingWebhook' | 'error';
 
 const VERIFY_MAX_ATTEMPTS = 8;
 const VERIFY_INTERVAL_MS = 2000;
@@ -98,8 +103,11 @@ export default function PaymentScreen() {
   );
   const [mockLoading, setMockLoading] = useState(false);
 
-  // 'verifying' fazı: booking Confirmed olana kadar 2sn arayla poll et (max 8 deneme ≈ 14sn).
-  // Webhook/mock complete asenkron çalıştığı için booking'in Confirmed'e geçmesi anlık olmayabilir.
+  // 'verifying' fazı: booking'e ödeme yansıyana kadar 2sn arayla poll et (max 8 deneme ≈ 14sn).
+  // Webhook/mock complete asenkron çalıştığı için bu yansıma anlık olmayabilir. RFC-013 C4'ten
+  // sonra "yansıma" artık booking Confirmed olması DEĞİL — ödeme kaydı (paymentKind) yeterli;
+  // Confirmed'i beklemek burada hiç gelmeyecek bir durumu bekleyip her seferinde pendingWebhook'a
+  // düşürürdü (bkz. lib/payment-poll.ts).
   useEffect(() => {
     if (phase !== 'verifying' || !bookingId) return;
     let cancelled = false;
@@ -111,14 +119,15 @@ export default function PaymentScreen() {
       try {
         const booking = await BookingApi.getById(bookingId!);
         if (cancelled) return;
-        if (isBookingConfirmed(booking.status)) {
-          // Ödeme doğrulandı → cache'teki eski (Pending) booking'i düşür. Aksi halde detay
-          // ekranı global staleTime (60sn, bkz. _layout.tsx) boyunca Pending + "Ödemeyi
+        const outcome = resolvePaymentPollOutcome(booking);
+        if (outcome !== 'pending') {
+          // Ödeme doğrulandı → cache'teki eski (Pending, ödemesiz) booking'i düşür. Aksi halde
+          // detay ekranı global staleTime (60sn, bkz. _layout.tsx) boyunca eski "Ödemeyi
           // tamamla" CTA'sını göstermeye devam ediyor (ikinci initiate 409'a düşüyor ama UX bozuk).
           queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
           queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
           Haptics.success();
-          setPhase('success');
+          setPhase(outcome === 'confirmed' ? 'success' : 'paidPendingApproval');
           return;
         }
       } catch (err) {
@@ -251,11 +260,30 @@ export default function PaymentScreen() {
           {phase === 'success' ? (
             <PaymentResultCard
               icon="✅"
-              title="Ödeme alındı"
+              title="Randevun onaylandı"
               message={
                 kind === 'Deposit' && !!remaining && remaining > 0
-                  ? `Randevun onaylandı.\n\nSalonda ödenecek: ${formatTry(remaining)}`
-                  : 'Randevun onaylandı.'
+                  ? `Ödemen alındı ve kuaförün onayladı.\n\nSalonda ödenecek: ${formatTry(remaining)}`
+                  : 'Ödemen alındı ve kuaförün onayladı.'
+              }
+              primaryLabel="Randevuya git"
+              onPrimary={goToBookingDetail}
+            />
+          ) : null}
+
+          {/* RFC-013 C4: kapora/tam online ödeme booking'i OTOMATİK onaylamaz — booking Pending
+              kalır, owner ayrı bir adımda onaylar. Bu faz "ödeme alındı" ile "randevu kesinleşti"yi
+              kasıtlı olarak AYRIŞTIRIYOR; "Randevun onaylandı" burada asla söylenmez. */}
+          {phase === 'paidPendingApproval' ? (
+            <PaymentResultCard
+              icon="⏳"
+              title="Ödemen alındı"
+              message={
+                `Talebin kuaföre iletildi. Kuaför onayladığında randevun kesinleşir ve bildirim alırsın.` +
+                (kind === 'Deposit' && !!remaining && remaining > 0
+                  ? `\n\nSalonda ödenecek: ${formatTry(remaining)}`
+                  : '') +
+                `\n\nKuaför onaylamazsa (ya da randevu saatine kadar yanıt vermezse) ödediğin tutar tam olarak iade edilir — iade, ödeme sağlayıcına bağlı olarak birkaç iş günü sürebilir.`
               }
               primaryLabel="Randevuya git"
               onPrimary={goToBookingDetail}
@@ -278,7 +306,7 @@ export default function PaymentScreen() {
             <PaymentResultCard
               icon="⏳"
               title="Ödemen işleniyor"
-              message="Onaylanınca bildirim alacaksın. Randevu detayından da durumu kontrol edebilirsin."
+              message="Ödemenin backend'e yansıması biraz sürebilir. Yansıdıktan sonra talebin kuaföre iletilir; kuaför onayladığında bildirim alacaksın. Durumu Randevu detayından kontrol edebilirsin."
               primaryLabel="Randevuya git"
               onPrimary={goToBookingDetail}
             />

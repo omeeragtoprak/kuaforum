@@ -12,7 +12,7 @@ import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
 import {
   formatTime, formatTry, formatPhoneTr,
-  bookingStatusInfo, isBookingConfirmed, isBookingInProgress,
+  bookingStatusInfo, isBookingConfirmed, isBookingInProgress, isBookingPending,
   isBookingRevenueCounted, isBookingUpcoming, isBookingCancelled,
 } from '@/lib/format';
 
@@ -221,6 +221,18 @@ function BookingRow({
         </View>
         <Badge label={status.label} tone={status.tone} />
       </View>
+
+      {/* RFC-013 C4/C5c: ödeme booking'i otomatik onaylamıyor — kapora/tam online ödemesi
+          alınmış ama hâlâ Pending (owner onayı bekleyen) talepler burada öne çıkarılıyor ki
+          kuaför bunlara öncelik versin (para zaten yatmış, yanıt bekliyor). */}
+      {isBookingPending(booking.status) && booking.paymentKind != null ? (
+        <View
+          accessible
+          accessibilityLabel="Ödendi, onayınız bekleniyor. Öncelik verin."
+        >
+          <Badge label="💰 Ödendi · onay bekliyor" tone="warning" />
+        </View>
+      ) : null}
 
       <View style={styles.customerBlock}>
         <Text style={styles.customerName}>

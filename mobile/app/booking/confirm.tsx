@@ -210,9 +210,13 @@ export default function ConfirmBookingScreen() {
                 onPress={() => setPayKind('Deposit')}
                 title="Kapora ile ayırt (önerilen)"
                 detail={
+                  // Kapora oranı artık salon bazlı ayarlanabiliyor (RFC-013 C3) — burada
+                  // gösterilen yalnızca ÖN İZLEME (varsayılan orana göre, bkz. lib/deposit.ts).
+                  // Kesin tutar bir sonraki adımda (ödeme başlatma yanıtından) gelir, bu yüzden
+                  // "≈" ile işaretleniyor; kesinmiş gibi sunulmuyor.
                   total
-                    ? `Şimdi ${formatTry(estimateDepositMinor(total))} · Salonda ${formatTry(remainingAtShopMinor(total, estimateDepositMinor(total)))}`
-                    : 'Hizmet bedelinin %15’i şimdi, kalanı salonda'
+                    ? `Şimdi ≈${formatTry(estimateDepositMinor(total))} · Salonda ≈${formatTry(remainingAtShopMinor(total, estimateDepositMinor(total)))} (kesin tutar sonraki adımda)`
+                    : 'Kapora tutarı bir sonraki adımda gösterilir'
                 }
               />
               <PayOption
@@ -225,6 +229,22 @@ export default function ConfirmBookingScreen() {
             <Text style={styles.policySub}>
               Kesin tutar ödeme adımında gösterilir. 30 dk içinde ödenmeyen randevu otomatik iptal olur.
             </Text>
+            {/* RFC-013 C4: ödeme booking'i OTOMATİK onaylamaz — backend Booking.MarkPaymentReceived
+                Status'u Pending'de bırakır, onay ayrı bir owner adımıdır (OwnerConfirm, FullOnline
+                dahil). Bu kart, "ödedim = randevum kesin" yanılgısını daha ödeme adımına gelmeden
+                önler. */}
+            <View
+              style={styles.approvalNote}
+              accessible
+              accessibilityLabel="Ödeme, randevuyu otomatik onaylamaz. Talebin kuaföre iletilir; kuaför onayladığında randevun kesinleşir. Kuaför onaylamazsa kaporan tam olarak iade edilir."
+            >
+              <Text style={styles.approvalNoteText}>
+                ℹ️ Ödeme randevuyu otomatik onaylamaz. Kaporanı ödediğinde talebin kuaföre
+                iletilir; kuaför onayladığında randevun kesinleşir ve bildirim alırsın. Kuaför
+                onaylamazsa (ya da randevu saatine kadar yanıt vermezse) ödediğin tutar tam olarak
+                iade edilir — iade, ödeme sağlayıcına bağlı olarak birkaç iş günü sürebilir.
+              </Text>
+            </View>
           </Card>
         ) : (
           <Card style={{ gap: 4 }}>
@@ -339,6 +359,12 @@ const styles = StyleSheet.create({
   policySub: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
   policyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   policyText: { fontSize: FontSize.sm, color: Colors.text },
+  approvalNote: {
+    backgroundColor: Colors.infoSoft,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+  },
+  approvalNoteText: { fontSize: FontSize.xs, color: Colors.info, lineHeight: 18 },
   kvkk: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', lineHeight: 16, marginTop: Spacing.sm },
   kvkkLink: { color: Colors.primary, textDecorationLine: 'underline' },
   payOption: {
