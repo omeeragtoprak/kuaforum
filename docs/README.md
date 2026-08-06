@@ -138,9 +138,23 @@ Bu klasör Kuaforum projesinin tüm tasarım, gereksinim, mimari, regülasyon, s
 
 ---
 
+## FAZ 1 — Domain Denetimi (2026-08-06)
+
+Otonom geliştirme direktifinin denetim çerçevesi olarak uygulanmasının çıktıları. Önce [`ASSUMPTIONS.md`](ASSUMPTIONS.md) okunmalı — direktif ↔ mevcut proje eşlemesi orada.
+
+| Doküman | Açıklama |
+|---|---|
+| [`ASSUMPTIONS.md`](ASSUMPTIONS.md) | Direktif ↔ proje eşlemesi, çıkarılan varsayımlar |
+| [`DOMAIN.md`](DOMAIN.md) | Randevu state machine + slot/uygunluk kuralları + 12 domain sorusunun kanıtlı cevabı (dosya:satır) |
+| [`GAPS.md`](GAPS.md) | FAZ 1'de bulunan YENİ boşluklar (G1-G9) — `GAP-ANALYSIS.md`'nin tekrarı değil, ona ek |
+| [`PROGRESS.md`](PROGRESS.md) | Güncel durum tek-gerçek-kaynağı: test envanteri, RFC durumu, GAP-ANALYSIS senkron notu |
+| [`decisions/ADR-001-direktif-uyarlama.md`](decisions/ADR-001-direktif-uyarlama.md) | Direktifin mevcut projeye nasıl uyarlandığı kararı |
+
+---
+
 ## RFC
 
-`docs/rfc/` — değişiklik kararları için RFC'ler (Phase 1'den itibaren).
+`docs/rfc/` — değişiklik kararları için RFC'ler (Phase 1'den itibaren). Güncel indeks: [`rfc/README.md`](rfc/README.md) (RFC-001..013).
 
 ---
 
@@ -153,4 +167,4 @@ Bu klasör Kuaforum projesinin tüm tasarım, gereksinim, mimari, regülasyon, s
 
 ---
 
-**Son güncelleme:** 2026-05-03 (Phase 0 closure)
+**Son güncelleme:** 2026-08-06 (FAZ 1 domain denetimi eklendi; Phase 0 closure: 2026-05-03)
