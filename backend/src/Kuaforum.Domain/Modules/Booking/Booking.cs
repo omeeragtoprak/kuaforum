@@ -28,6 +28,23 @@ public sealed class Booking : AggregateRoot
     public int? RefundPercentage { get; private set; }
     public Guid? PaymentId { get; private set; }
 
+    /// <summary>
+    /// RFC-013 C4: initiate anında hesaplanıp SNAPSHOT'lanır — <c>global
+    /// Payment:OnlinePaymentsEnabled &amp;&amp; shop.BookingPolicy.DepositEnabled</c>. Sonradan
+    /// flag/policy değişse bile bu booking'in davranışı değişmez (RFC-006'nın kapora-oranı
+    /// snapshot presedentiyle aynı ilke). <see cref="Infrastructure.BackgroundJobs.ExpirePendingBookingsJob"/>
+    /// bu alana göre dallanır — job'un her tick'te shop policy'sini ayrıca sorgulamasını (N+1)
+    /// engeller.
+    /// </summary>
+    public bool RequiresOnlinePayment { get; private set; }
+
+    /// <summary>
+    /// RFC-013 C4: kapora/tam-ödeme capture edildiğinde <see cref="MarkPaymentReceived"/> ile
+    /// set edilir. Booking Status'ü Pending KALIR — ödeme artık onaylamıyor, onay her zaman
+    /// ayrı bir <see cref="OwnerConfirm"/> adımı. Null iken "ödeme yok/henüz alınmadı".
+    /// </summary>
+    public DateTimeOffset? DepositPaidAt { get; private set; }
+
     public IReadOnlyCollection<BookingItem> Items => _items.AsReadOnly();
 
     public static Result<Booking> Initiate(
@@ -38,6 +55,7 @@ public sealed class Booking : AggregateRoot
         IReadOnlyList<(Guid ServiceId, string Name, int DurationMinutes, int BufferMinutes, long PriceMinor)> services,
         BookingType bookingType,
         decimal commissionRate,
+        bool requiresOnlinePayment = false,
         string? customerNote = null)
     {
         if (services.Count == 0)
@@ -62,6 +80,7 @@ public sealed class Booking : AggregateRoot
             BookingType = bookingType,
             TotalAmountMinor = totalAmount,
             PlatformCommissionMinor = commission,
+            RequiresOnlinePayment = requiresOnlinePayment,
             CustomerNote = customerNote?.Length > 500 ? customerNote[..500] : customerNote,
         };
 
@@ -77,23 +96,42 @@ public sealed class Booking : AggregateRoot
         return booking;
     }
 
-    public Result Confirm(Guid paymentId)
+    /// <summary>
+    /// RFC-013 C4: kapora/tam-ödeme capture edildiğinde (mock-complete + PayTR webhook ortak
+    /// yolu, <see cref="Kuaforum.Application.Modules.Payment.PaymentCompletionService"/>)
+    /// çağrılır. Booking'i Confirm ETMEZ (Status Pending kalır) — yalnızca "ödeme alındı, onay
+    /// bekleniyor" işaretler: <see cref="PaymentId"/> + <see cref="DepositPaidAt"/>. Onay her
+    /// zaman ayrı, açık bir adım: <see cref="OwnerConfirm"/> (madde 2/3 — "önce kapora, sonra
+    /// onay", <c>PaymentKind.FullOnline</c> dahil — RFC-006'nın eski "tam ödeme = anında onay"
+    /// varsayımı bu RFC ile bilinçli olarak terk edildi).
+    /// İdempotent: aynı paymentId ile ikinci çağrı (webhook retry) no-op döner — booking bu
+    /// arada owner tarafından zaten Confirmed'a taşınmış olsa BİLE (guard Status'e değil
+    /// PaymentId eşitliğine bakar, aksi halde meşru bir retry haksız yere Failure alırdı).
+    /// </summary>
+    public Result MarkPaymentReceived(Guid paymentId)
     {
-        if (Status != BookingStatus.Pending)
-            return Result.Failure(Error.Validation($"{Status} durumundaki randevu onaylanamaz."));
+        if (PaymentId == paymentId)
+            return Result.Success(); // idempotent no-op — webhook retry güvenliği
 
-        Status = BookingStatus.Confirmed;
-        ConfirmedAt = DateTimeOffset.UtcNow;
+        if (Status != BookingStatus.Pending)
+            return Result.Failure(Error.Validation($"{Status} durumundaki randevu için ödeme işaretlenemez."));
+
         PaymentId = paymentId;
+        DepositPaidAt = DateTimeOffset.UtcNow;
         Touch();
 
-        RaiseDomainEvent(new BookingConfirmedEvent(Id, CustomerId, StylistId, ScheduledAt));
+        RaiseDomainEvent(new BookingPaymentReceivedEvent(Id, CustomerId, StylistId, ScheduledAt));
         return Result.Success();
     }
 
     /// <summary>
-    /// Owner manually confirms a Pending booking without an associated payment authorization.
-    /// Used when PSP integration is unavailable (dev/Phase-1) or for in-person/walk-in flows.
+    /// Owner manually confirms a Pending booking. RFC-013 C4: this is now the ONLY path from
+    /// Pending to Confirmed — used both for the walk-in/no-online-payment flow (PSP unavailable
+    /// or shop's deposit policy off) AND after a deposit/full-online payment has already been
+    /// received via <see cref="MarkPaymentReceived"/> (which deliberately leaves Status as
+    /// Pending). Doesn't touch PaymentId — if MarkPaymentReceived ran first, the previously-set
+    /// PaymentId survives untouched; this is what makes "payment already recorded, confirm is a
+    /// separate step" work without this method needing to know whether a payment exists.
     /// </summary>
     public Result OwnerConfirm()
     {

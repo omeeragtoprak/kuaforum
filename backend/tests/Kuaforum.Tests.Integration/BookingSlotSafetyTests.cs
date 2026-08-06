@@ -57,6 +57,21 @@ public sealed class BookingSlotSafetyTests(IntegrationTestFactory factory)
         var services = await customerClient.GetJson<IReadOnlyList<ServiceRow>>($"/v1/barber-shops/{shop.Id}/services");
         var stylistId = stylists.First().Id;
 
+        // RFC-013 C4: ExpirePendingBookingsJob'un dal (a)'sı (unpaid + 30dk → iptal, iade YOK)
+        // yalnızca RequiresOnlinePayment=true olan booking'lerde tetiklenir — bu da shop'un
+        // kapora politikasının AÇIK olmasını gerektirir (varsayılan: kapalı). Kapora ödenmeden
+        // bu testin senaryosu (hiç ödenmemiş Pending → 30dk sonra iptal, refund artefaktı YOK)
+        // ancak bu dalda anlamlı.
+        var policyResp = await ownerClient.PutAsJsonAsync("/v1/owner/barber-shop/booking-policy", new
+        {
+            depositEnabled = true,
+            depositPercent = 0.15m,
+            maxPendingPerCustomer = 2,
+            minDaysBetweenBookings = (int?)null,
+            maxBookingsPerMonth = (int?)null,
+        });
+        Assert.Equal(HttpStatusCode.OK, policyResp.StatusCode);
+
         var bookingAt = FutureWeekdayUtc(60);
         var initiate = await customerClient.PostAsJsonAsync("/v1/bookings", new
         {
@@ -68,6 +83,13 @@ public sealed class BookingSlotSafetyTests(IntegrationTestFactory factory)
         });
         Assert.Equal(HttpStatusCode.Created, initiate.StatusCode);
         var initiated = (await initiate.Content.ReadFromJsonAsync<InitiateResp>(TestHelpers.Json))!;
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var booking = await db.Set<BookingAggregate>().AsNoTracking().FirstAsync(b => b.Id == initiated.BookingId);
+            Assert.True(booking.RequiresOnlinePayment, "Precondition: shop kapora aktif, booking RequiresOnlinePayment=true olmalı.");
+        }
 
         // Backdate CreatedAt to 45 minutes ago — past the 30-minute PendingTimeout threshold.
         using (var scope = factory.Services.CreateScope())

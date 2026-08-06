@@ -69,8 +69,8 @@ public sealed class DepositPaymentTests(IntegrationTestFactory factory)
         Assert.Equal(PaymentKind.Deposit, payment.Kind);
         Assert.Equal(ExpectedDepositMinor, payment.GrossAmountMinor);
         Assert.Equal(KnownTotalMinor, booking.TotalAmountMinor);
-        Assert.Equal(ExpectedCommissionMinor, booking.PlatformCommissionMinor);
-        Assert.Equal(booking.PlatformCommissionMinor, payment.PlatformCommissionMinor); // komisyon TAM kalır — kapora üzerinden değil
+        Assert.Equal(ExpectedCommissionMinor, booking.PlatformCommissionMinor); // vestigial alan — M18 faturalama bundan beslenmiyor
+        Assert.Equal(0, payment.PlatformCommissionMinor); // RFC-012: komisyon artık ödeme anında kesilmiyor, kapora tamamen kuaföre akar
     }
 
     [Fact]
@@ -133,7 +133,13 @@ public sealed class DepositPaymentTests(IntegrationTestFactory factory)
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             var booking = await db.Set<BookingAggregate>().AsNoTracking().FirstAsync(b => b.Id == bookingId);
-            Assert.Equal(BookingStatus.Confirmed, booking.Status); // kapora tahsilatı da booking'i confirm eder
+            // RFC-013 C4: kapora tahsilatı artık booking'i Confirm ETMEZ — yalnızca "ödeme
+            // alındı" işaretler (Pending kalır, DepositPaidAt dolar). Onay ayrı bir adım
+            // (OwnerConfirm). Cancel() Pending durumda da çalışır (yalnız Cancelled/Completed/
+            // NoShow'da reddedilir), bu yüzden bu testin asıl amacı (iade tutarının kapora
+            // üzerinden hesaplanması) owner hiç onaylamasa da geçerli kalır.
+            Assert.Equal(BookingStatus.Pending, booking.Status);
+            Assert.NotNull(booking.DepositPaidAt);
         }
 
         var cancel = await customerClient.PostAsync($"/v1/bookings/{bookingId}/cancel", null);
@@ -405,11 +411,24 @@ public sealed class DepositPaymentTests(IntegrationTestFactory factory)
 
     /// <summary>
     /// Owner API'siyle 200 TL'lik test servisi yaratır ve müşteri o servise booking açar —
-    /// toplam tutar deterministik olarak 200_00 olur.
+    /// toplam tutar deterministik olarak 200_00 olur. RFC-013 C4: shop'un kapora politikası
+    /// (%15, ExpectedDepositMinor sabitiyle hizalı) burada da açılır — InitiatePaymentCommand
+    /// artık Kind=Deposit için shop.BookingPolicy.DepositEnabled/DepositPercent şart koşuyor
+    /// (global PaymentOptions.DepositRate fallback'i yalnız config'te kalıyor, kullanılmıyor).
     /// </summary>
     private static async Task<Guid> InitiateKnownTotalBookingAsync(HttpClient customer, HttpClient owner, int daysAhead)
     {
         var ownerShop = await owner.GetJson<BarberShopRow>("/v1/owner/barber-shop");
+
+        var policyResp = await owner.PutAsJsonAsync("/v1/owner/barber-shop/booking-policy", new
+        {
+            depositEnabled = true,
+            depositPercent = 0.15m,
+            maxPendingPerCustomer = 2,
+            minDaysBetweenBookings = (int?)null,
+            maxBookingsPerMonth = (int?)null,
+        });
+        Assert.Equal(HttpStatusCode.OK, policyResp.StatusCode);
 
         var createService = await owner.PostAsJsonAsync($"/v1/owner/barber-shop/{ownerShop.Id}/services", new
         {

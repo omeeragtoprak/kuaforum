@@ -816,6 +816,10 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(500)")
                         .HasColumnName("customer_note");
 
+                    b.Property<DateTimeOffset?>("DepositPaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deposit_paid_at");
+
                     b.Property<Guid?>("PaymentId")
                         .HasColumnType("uuid")
                         .HasColumnName("payment_id");
@@ -827,6 +831,10 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.Property<int?>("RefundPercentage")
                         .HasColumnType("integer")
                         .HasColumnName("refund_percentage");
+
+                    b.Property<bool>("RequiresOnlinePayment")
+                        .HasColumnType("boolean")
+                        .HasColumnName("requires_online_payment");
 
                     b.Property<DateTimeOffset>("ScheduledAt")
                         .HasColumnType("timestamp with time zone")

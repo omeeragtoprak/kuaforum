@@ -32,9 +32,11 @@ internal static class NotificationHelpers
 }
 
 /// <summary>
-/// Sends customer + barber confirmations when a booking is paid or owner-confirmed.
-/// In-process MediatR notification — runs after Booking.Confirm() SaveChanges.
-/// Production-ready version moves these to Outbox for at-least-once delivery.
+/// Sends customer + barber confirmations when a booking is owner-confirmed. RFC-013 C4: this
+/// only fires from Booking.OwnerConfirm() now — payment capture alone (MarkPaymentReceived)
+/// never raises BookingConfirmedEvent, so "paid" and "confirmed" are no longer the same moment.
+/// In-process MediatR notification. Production-ready version moves these to Outbox for
+/// at-least-once delivery.
 /// </summary>
 public sealed class BookingConfirmedNotificationHandler(
     IApplicationDbContext db,
@@ -112,6 +114,56 @@ public sealed class BookingConfirmedNotificationHandler(
                     RelatedBookingId: booking.Id), cancellationToken);
             }
         }
+    }
+}
+
+/// <summary>
+/// RFC-013 C4: kapora/tam-ödeme capture edildiğinde (booking Pending kalır, Confirm ETMEZ)
+/// owner'a "ödemesi alınmış, onayınızı bekleyen bir talep var" bildirimi. Müşteriye ayrıca
+/// bildirim YOK — checkout ekranı zaten ödeme başarısını anında gösteriyor (RFC-006), burada
+/// tekrar bildirim göndermek gürültü olurdu. Owner'ın gerçek onay aksiyonunu tetiklemesi asıl
+/// amaç: kapora ödenmiş ama owner farkında olmayan bir talep, randevu saatine kadar
+/// onaylanmazsa ExpirePendingBookingsJob tarafından otomatik iptal + %100 iade edilir (RFC-013
+/// madde 2) — bu bildirim o riski azaltır.
+/// </summary>
+public sealed class BookingPaymentReceivedNotificationHandler(
+    IApplicationDbContext db,
+    INotificationDispatcher dispatcher) : INotificationHandler<BookingPaymentReceivedEvent>
+{
+    public async Task Handle(BookingPaymentReceivedEvent notification, CancellationToken cancellationToken)
+    {
+        var ctx = (DbContext)db;
+        var booking = await ctx.Set<Domain.Modules.Booking.Booking>().AsNoTracking()
+            .FirstOrDefaultAsync(b => b.Id == notification.BookingId, cancellationToken);
+        if (booking is null) return;
+
+        var shop = await ctx.Set<Domain.Modules.Barber.BarberShop>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == booking.BarberShopId, cancellationToken);
+        if (shop is null) return;
+
+        var owner = await ctx.Set<Domain.Modules.Identity.User>().AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == shop.OwnerId, cancellationToken);
+        if (owner is null) return;
+
+        var stylist = await ctx.Set<Domain.Modules.Barber.Stylist>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == booking.StylistId, cancellationToken);
+
+        var localTime = NotificationHelpers.LocalTr(booking.ScheduledAt);
+        var subject = "Ödenmiş talep — onayınızı bekliyor";
+        var body = $"{stylist?.DisplayName ?? "Stilist"} için {localTime} randevu talebinin ödemesi alındı. Onaylamak için randevu detayına gidin.";
+
+        await NotificationHelpers.DispatchInAppAsync(dispatcher, owner.Id,
+            "booking.payment_received.barber", subject, body, cancellationToken,
+            relatedBookingId: booking.Id);
+
+        await dispatcher.DispatchAsync(new NotificationRequest(
+            UserId: owner.Id,
+            Channel: NotificationChannel.Push,
+            TemplateKey: "booking.payment_received.barber",
+            Recipient: $"fcm-token-{owner.Id:N}",
+            Subject: subject,
+            Body: body,
+            RelatedBookingId: booking.Id), cancellationToken);
     }
 }
 

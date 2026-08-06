@@ -35,6 +35,9 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Property(x => x.CancellationReason).HasColumnName("cancellation_reason").HasConversion<int>();
         builder.Property(x => x.RefundPercentage).HasColumnName("refund_percentage");
         builder.Property(x => x.PaymentId).HasColumnName("payment_id");
+        // RFC-013 C4: ödeme-sonra-onay ayrımı.
+        builder.Property(x => x.RequiresOnlinePayment).HasColumnName("requires_online_payment");
+        builder.Property(x => x.DepositPaidAt).HasColumnName("deposit_paid_at");
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");

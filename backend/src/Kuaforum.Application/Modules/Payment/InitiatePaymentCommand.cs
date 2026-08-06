@@ -19,8 +19,9 @@ public sealed record InitiatePaymentCommand(
     string? IdempotencyKey) : ICommand<InitiatePaymentResponse>;
 
 /// <summary>
-/// RFC-006: AmountMinor = online tahsil edilen tutar (FullOnline'da booking toplamı,
-/// Deposit'te ceil(toplam × DepositRate) kapora); RemainingAtShopMinor = salonda ödenecek kalan.
+/// RFC-006/RFC-013 C4: AmountMinor = online tahsil edilen tutar (FullOnline'da booking toplamı,
+/// Deposit'te ceil(toplam × shop.BookingPolicy.DepositPercent) kapora — per-shop oran);
+/// RemainingAtShopMinor = salonda ödenecek kalan.
 /// </summary>
 public sealed record InitiatePaymentResponse(
     Guid PaymentId,
@@ -98,17 +99,35 @@ public sealed class InitiatePaymentCommandHandler(
         var providerName = providerRegistry.DefaultProvider;
         var provider = providerRegistry.GetProvider(providerName);
 
-        // RFC-006: Deposit'te online tahsilat kapora — ceil garantisi + DepositRate >= CommissionRate
-        // invariantı (startup validation) sayesinde kapora platform komisyonunu her zaman karşılar.
-        var opts = paymentOptions.Value;
-        var onlineAmountMinor = request.Kind == PaymentKind.Deposit
-            ? PaymentAmounts.CalculateDepositMinor(booking.TotalAmountMinor, opts.DepositRate)
-            : booking.TotalAmountMinor;
+        // RFC-013 C4: kapora oranı artık PER-SHOP (shop.BookingPolicy.DepositPercent) — global
+        // PaymentOptions.DepositRate config'te geriye dönük fallback olarak DURUYOR ama artık
+        // BURADA kullanılmıyor. Per-shop değer varsa O kazanır; shop kaporayı hiç açmamışsa
+        // ("null/kapalı") Deposit akışı YOK — global orana sessizce düşülmez, çünkü kapora
+        // owner'ın bilinçli opt-in'i (RFC-013 madde 1), owner onayı olmadan hiçbir zaman
+        // devreye giremez.
+        long onlineAmountMinor;
+        if (request.Kind == PaymentKind.Deposit)
+        {
+            if (!shop.BookingPolicyDepositEnabled || shop.BookingPolicyDepositPercent is not { } shopDepositRate)
+                return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Bu işletme kapora ödemesi kabul etmiyor."));
+
+            onlineAmountMinor = PaymentAmounts.CalculateDepositMinor(booking.TotalAmountMinor, shopDepositRate);
+        }
+        else
+        {
+            onlineAmountMinor = booking.TotalAmountMinor;
+        }
+
+        // RFC-012: komisyon artık ödeme anında kesilmiyor — ay sonu CommissionStatement'a
+        // taşındı (matrah booking toplamından türetiliyor, Booking.PlatformCommissionMinor'dan
+        // DEĞİL). Kapora/tam ödeme tamamen kuaföre akar: NetToBarberMinor = GrossAmountMinor -
+        // 0 - PspMdrMinor. booking.PlatformCommissionMinor buraya asla taşınmaz.
+        const long platformCommissionMinor = 0;
 
         PaymentAggregate payment;
         if (existingPayment is not null)
         {
-            var reinit = existingPayment.ReinitiateCheckout(request.Kind, onlineAmountMinor, booking.PlatformCommissionMinor);
+            var reinit = existingPayment.ReinitiateCheckout(request.Kind, onlineAmountMinor, platformCommissionMinor);
             if (reinit.IsFailure) return Result.Failure<InitiatePaymentResponse>(reinit.Error);
             payment = existingPayment; // yeni satır YOK — mevcut satır yeni checkout ile devam eder
             // Idempotency-key satırda İLK initiate'in key'i olarak kalır (bilinçli: eski isteğin replay'i 409 almaya devam eder; reinitiate outcome-idempotent).
@@ -120,7 +139,7 @@ public sealed class InitiatePaymentCommandHandler(
                 booking.CustomerId,
                 booking.BarberShopId,
                 onlineAmountMinor,
-                booking.PlatformCommissionMinor,
+                platformCommissionMinor,
                 providerName,
                 kind: request.Kind,
                 idempotencyKey: request.IdempotencyKey);
@@ -137,7 +156,7 @@ public sealed class InitiatePaymentCommandHandler(
             CustomerPhone: customer.PhoneE164 ?? string.Empty,
             CustomerEmail: customer.Email,
             GrossAmountMinor: onlineAmountMinor,
-            CommissionMinor: booking.PlatformCommissionMinor,
+            CommissionMinor: platformCommissionMinor,
             SubMerchantKey: shop.SubMerchantKey ?? "MOCK-SUB",
             Currency: booking.Currency,
             ReturnUrl: "kuaforum://payment/success",

@@ -95,8 +95,13 @@ public sealed class PaytrWebhookTests(IntegrationTestFactory factory)
         Assert.Equal(PaymentStatus.Initiated, payment.Status); // forge işe yaramadı
     }
 
+    /// <summary>
+    /// RFC-013 C4: webhook capture artık booking'i Confirm ETMİYOR — yalnızca "ödeme alındı,
+    /// onay bekliyor" işaretliyor (PaymentId + DepositPaidAt), Status Pending kalıyor. Onay her
+    /// zaman ayrı, owner-tetikli bir adım (OwnerConfirmBookingCommand).
+    /// </summary>
     [Fact]
-    public async Task Success_webhook_captures_deposit_and_confirms_booking()
+    public async Task Success_webhook_captures_deposit_and_marks_payment_received_without_confirming()
     {
         await factory.ResetDatabaseAsync();
         await SeedAsync();
@@ -116,7 +121,9 @@ public sealed class PaytrWebhookTests(IntegrationTestFactory factory)
         Assert.Equal(PaymentStatus.Captured, payment.Status);
         Assert.StartsWith("paytr-", payment.ProviderTransactionId);
         Assert.NotNull(payment.CapturedAt);
-        Assert.Equal(BookingStatus.Confirmed, booking.Status);
+        Assert.Equal(BookingStatus.Pending, booking.Status);
+        Assert.Equal(paymentId, booking.PaymentId);
+        Assert.NotNull(booking.DepositPaidAt);
     }
 
     [Fact]
@@ -294,6 +301,21 @@ public sealed class PaytrWebhookTests(IntegrationTestFactory factory)
         var ownerClient = factory.CreateClient();
         customerClient.SetBearer((await customerClient.DevLoginAsync("Customer")).AccessToken);
         ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
+
+        // RFC-013 C4: Kind=Deposit artık shop.BookingPolicy.DepositEnabled/DepositPercent şart
+        // koşuyor (per-shop oran InitiatePaymentCommand'ı yönetiyor, global PaymentOptions.
+        // DepositRate fallback'i artık kullanılmıyor) — bu dosyanın tüm testleri Deposit kind
+        // kullandığından politika burada, tek yerde açılıyor (%15, ExpectedDepositMinor sabitiyle hizalı).
+        var policyResp = await ownerClient.PutAsJsonAsync("/v1/owner/barber-shop/booking-policy", new
+        {
+            depositEnabled = true,
+            depositPercent = 0.15m,
+            maxPendingPerCustomer = 2,
+            minDaysBetweenBookings = (int?)null,
+            maxBookingsPerMonth = (int?)null,
+        });
+        Assert.Equal(HttpStatusCode.OK, policyResp.StatusCode);
+
         return (customerClient, ownerClient);
     }
 

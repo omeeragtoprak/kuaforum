@@ -74,10 +74,10 @@ public class BookingTests
     // ── State transitions ──────────────────────────────────────────────
 
     [Fact]
-    public void Confirm_Start_Complete_HappyPath()
+    public void OwnerConfirm_Start_Complete_HappyPath()
     {
         var b = Initiate();
-        Assert.True(b.Confirm(Guid.NewGuid()).IsSuccess);
+        Assert.True(b.OwnerConfirm().IsSuccess);
         Assert.Equal(BookingStatus.Confirmed, b.Status);
         Assert.True(b.Start().IsSuccess);
         Assert.Equal(BookingStatus.Started, b.Status);
@@ -86,11 +86,11 @@ public class BookingTests
     }
 
     [Fact]
-    public void Confirm_OnNonPending_Fails()
+    public void OwnerConfirm_OnNonPending_Fails()
     {
         var b = Initiate();
-        b.Confirm(Guid.NewGuid());
-        var second = b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
+        var second = b.OwnerConfirm();
         Assert.True(second.IsFailure);
     }
 
@@ -106,7 +106,7 @@ public class BookingTests
     public void Complete_OnNonStarted_Fails()
     {
         var b = Initiate();
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         var r = b.Complete();
         Assert.True(r.IsFailure);
     }
@@ -117,7 +117,7 @@ public class BookingTests
     public void Cancel_CustomerRequested_MoreThan24h_Returns100Percent()
     {
         var b = Initiate(DateTimeOffset.UtcNow.AddDays(2));
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         var r = b.Cancel(BookingCancellationReason.CustomerRequested);
         Assert.True(r.IsSuccess);
         Assert.Equal(100, b.RefundPercentage);
@@ -128,7 +128,7 @@ public class BookingTests
     public void Cancel_CustomerRequested_Between12And24h_Returns50Percent()
     {
         var b = Initiate(DateTimeOffset.UtcNow.AddHours(18));
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         var r = b.Cancel(BookingCancellationReason.CustomerRequested);
         Assert.True(r.IsSuccess);
         Assert.Equal(50, b.RefundPercentage);
@@ -138,7 +138,7 @@ public class BookingTests
     public void Cancel_CustomerRequested_LessThan12h_ReturnsZeroPercent()
     {
         var b = Initiate(DateTimeOffset.UtcNow.AddHours(6));
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         var r = b.Cancel(BookingCancellationReason.CustomerRequested);
         Assert.True(r.IsSuccess);
         Assert.Equal(0, b.RefundPercentage);
@@ -153,7 +153,7 @@ public class BookingTests
     public void Cancel_BarberOrSystemReason_RefundIsFixed(BookingCancellationReason reason, int expectedPct)
     {
         var b = Initiate(DateTimeOffset.UtcNow.AddHours(3)); // intentionally <12h
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         var r = b.Cancel(reason);
         Assert.True(r.IsSuccess);
         Assert.Equal(expectedPct, b.RefundPercentage);
@@ -163,7 +163,7 @@ public class BookingTests
     public void Cancel_AfterCompleted_Fails()
     {
         var b = Initiate();
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         b.Start();
         b.Complete();
         var r = b.Cancel(BookingCancellationReason.CustomerRequested);
@@ -174,7 +174,7 @@ public class BookingTests
     public void Cancel_AfterCancelled_Fails()
     {
         var b = Initiate();
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         b.Cancel(BookingCancellationReason.CustomerRequested);
         var r = b.Cancel(BookingCancellationReason.AdminOverride);
         Assert.True(r.IsFailure);
@@ -186,7 +186,7 @@ public class BookingTests
     public void Reschedule_OnConfirmed_PreservesDurationAndUpdatesEndsAt()
     {
         var b = Initiate(DateTimeOffset.UtcNow.AddDays(3));
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         var oldDuration = b.ScheduledEndsAt - b.ScheduledAt;
         var newAt = DateTimeOffset.UtcNow.AddDays(5);
         var r = b.Reschedule(newAt);
@@ -207,7 +207,7 @@ public class BookingTests
     public void Reschedule_OnCompleted_Fails()
     {
         var b = Initiate();
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         b.Start();
         b.Complete();
         var r = b.Reschedule(DateTimeOffset.UtcNow.AddDays(1));
@@ -218,7 +218,7 @@ public class BookingTests
     public void MarkNoShow_BeforeScheduledEnd_Fails()
     {
         var b = Initiate(DateTimeOffset.UtcNow.AddHours(2));
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
         var r = b.MarkNoShow();
         Assert.True(r.IsFailure);
     }
@@ -250,7 +250,7 @@ public class BookingTests
             services: zeroDurationService,
             bookingType: BookingType.Scheduled,
             commissionRate: 0.10m).Value;
-        b.Confirm(Guid.NewGuid());
+        b.OwnerConfirm();
 
         var r = b.MarkNoShow();
 
@@ -258,5 +258,103 @@ public class BookingTests
         Assert.Equal(BookingStatus.NoShow, b.Status);
         Assert.Equal(0, b.RefundPercentage);
         Assert.Contains(b.DomainEvents, e => e is BookingNoShowEvent);
+    }
+
+    // ── RFC-013 C4: RequiresOnlinePayment snapshot + MarkPaymentReceived ─
+
+    [Fact]
+    public void Initiate_DefaultsRequiresOnlinePaymentToFalse()
+    {
+        var booking = Initiate();
+        Assert.False(booking.RequiresOnlinePayment);
+        Assert.Null(booking.DepositPaidAt);
+    }
+
+    [Fact]
+    public void Initiate_WithRequiresOnlinePaymentTrue_SnapshotsIt()
+    {
+        var booking = Kuaforum.Domain.Modules.Booking.Booking.Initiate(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            DateTimeOffset.UtcNow.AddDays(1),
+            SingleService(),
+            BookingType.Scheduled, 0.10m,
+            requiresOnlinePayment: true).Value;
+
+        Assert.True(booking.RequiresOnlinePayment);
+    }
+
+    [Fact]
+    public void MarkPaymentReceived_OnPending_SetsPaymentIdAndDepositPaidAt_WithoutConfirming()
+    {
+        var b = Initiate();
+        var paymentId = Guid.NewGuid();
+
+        var r = b.MarkPaymentReceived(paymentId);
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(BookingStatus.Pending, b.Status); // RFC-013 C4: ödeme onaylamıyor
+        Assert.Equal(paymentId, b.PaymentId);
+        Assert.NotNull(b.DepositPaidAt);
+        Assert.Contains(b.DomainEvents, e => e is BookingPaymentReceivedEvent);
+        Assert.DoesNotContain(b.DomainEvents, e => e is BookingConfirmedEvent);
+    }
+
+    [Fact]
+    public void MarkPaymentReceived_CalledTwiceWithSamePaymentId_IsIdempotentNoOp()
+    {
+        var b = Initiate();
+        var paymentId = Guid.NewGuid();
+        b.MarkPaymentReceived(paymentId);
+        var depositPaidAtAfterFirst = b.DepositPaidAt;
+
+        var second = b.MarkPaymentReceived(paymentId);
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(depositPaidAtAfterFirst, b.DepositPaidAt); // unchanged — no re-stamp
+    }
+
+    /// <summary>
+    /// The idempotency check (PaymentId equality) must win over the Pending-status guard —
+    /// otherwise a legitimate webhook retry arriving AFTER the owner already confirmed the
+    /// booking (Status now Confirmed) would incorrectly fail instead of no-op'ing.
+    /// </summary>
+    [Fact]
+    public void MarkPaymentReceived_SamePaymentId_IsIdempotent_EvenAfterOwnerConfirmed()
+    {
+        var b = Initiate();
+        var paymentId = Guid.NewGuid();
+        b.MarkPaymentReceived(paymentId);
+        b.OwnerConfirm();
+
+        var retry = b.MarkPaymentReceived(paymentId);
+
+        Assert.True(retry.IsSuccess);
+        Assert.Equal(BookingStatus.Confirmed, b.Status);
+    }
+
+    [Fact]
+    public void MarkPaymentReceived_OnNonPending_WithDifferentPaymentId_Fails()
+    {
+        var b = Initiate();
+        b.OwnerConfirm();
+
+        var r = b.MarkPaymentReceived(Guid.NewGuid());
+
+        Assert.True(r.IsFailure);
+    }
+
+    [Fact]
+    public void OwnerConfirm_AfterMarkPaymentReceived_PreservesPaymentIdAndConfirms()
+    {
+        var b = Initiate();
+        var paymentId = Guid.NewGuid();
+        b.MarkPaymentReceived(paymentId);
+
+        var r = b.OwnerConfirm();
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(BookingStatus.Confirmed, b.Status);
+        Assert.Equal(paymentId, b.PaymentId); // MarkPaymentReceived'ın set ettiği değer korunuyor
+        Assert.Contains(b.DomainEvents, e => e is BookingConfirmedEvent);
     }
 }

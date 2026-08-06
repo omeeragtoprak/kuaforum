@@ -242,9 +242,13 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
                     .Select(s => (s.Id, s.Name, s.DurationMinutes, s.BufferMinutes, s.PriceMinor))
                     .ToList();
 
+                // requiresOnlinePayment: false — demo veri, ExpirePendingBookingsJob'un per-shop
+                // dallanmasını test etmiyor (bkz. BookingSlotSafetyTests/PaytrWebhookTests
+                // ayrı, gerçekçi kapora-aktif shop fixture'ları kullanıyor).
                 var bookingResult = Booking.Initiate(
                     customer.Id, shop.Id, stylist.Id, initSchedule,
                     serviceTuples, bookingType, CommissionRate,
+                    requiresOnlinePayment: false,
                     customerNote: Rng.NextDouble() < 0.3 ? PickRandomNote() : null);
 
                 if (bookingResult.IsFailure) { initFailures++; continue; }
@@ -489,15 +493,26 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
 
         Payment CreateAndCapture()
         {
+            // RFC-012: komisyon ödeme anında kesilmiyor artık (ay sonu CommissionStatement'a
+            // taşındı) — booking.PlatformCommissionMinor buraya taşınmaz, sabit 0.
             var p = Payment.Initiate(
                 booking.Id, customerId, shopId,
-                booking.TotalAmountMinor, booking.PlatformCommissionMinor,
+                booking.TotalAmountMinor, platformCommissionMinor: 0,
                 PaymentProviderName.Mock,
                 idempotencyKey: $"seed-{booking.Id:N}").Value;
             var pspMdr = booking.TotalAmountMinor * 18 / 1000;
             var txId = $"DEMO-TX-{booking.Id:N}";
             p.Capture(txId.Length > 32 ? txId[..32] : txId, pspMdr);
             return p;
+        }
+
+        // RFC-013 C4: ödeme artık booking'i tek başına Confirm ETMEZ — demo veri gerçekçiliği
+        // için burada da gerçek iki-adımlı akış simüle edilir (MarkPaymentReceived, sonra ayrı
+        // bir OwnerConfirm çağrısı — gerçek owner onayının yerine geçen sentetik adım).
+        void MarkPaidAndConfirm(Payment payment)
+        {
+            booking.MarkPaymentReceived(payment.Id);
+            booking.OwnerConfirm();
         }
 
         if (hoursDiff < -1)
@@ -507,7 +522,7 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
             if (roll < 0.65)
             {
                 var payment = CreateAndCapture();
-                booking.Confirm(payment.Id); transitions.Confirmed = true;
+                MarkPaidAndConfirm(payment); transitions.Confirmed = true;
                 booking.Start();              transitions.Started = true;
                 booking.Complete();           transitions.Completed = true;
                 if (now - desiredScheduledAt > TimeSpan.FromDays(1))
@@ -517,7 +532,7 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
             else if (roll < 0.85)
             {
                 var payment = CreateAndCapture();
-                booking.Confirm(payment.Id); transitions.Confirmed = true;
+                MarkPaidAndConfirm(payment); transitions.Confirmed = true;
                 booking.Cancel(BookingCancellationReason.CustomerRequested);
                 transitions.Cancelled = true;
                 if (booking.RefundPercentage is > 0)
@@ -532,7 +547,7 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
             else
             {
                 var payment = CreateAndCapture();
-                booking.Confirm(payment.Id); transitions.Confirmed = true;
+                MarkPaidAndConfirm(payment); transitions.Confirmed = true;
                 // For NoShow we need ScheduledEndsAt < now after backdating, which we'll have
                 // because desiredScheduledAt is in the past. But MarkNoShow is checked against
                 // current ScheduledEndsAt (still future since booking was init at +2h).
@@ -546,7 +561,7 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
         else if (hoursDiff < 1)
         {
             var payment = CreateAndCapture();
-            booking.Confirm(payment.Id); transitions.Confirmed = true;
+            MarkPaidAndConfirm(payment); transitions.Confirmed = true;
             if (Rng.NextDouble() < 0.5)
             {
                 booking.Start();
@@ -559,7 +574,7 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
             if (Rng.NextDouble() < 0.45)
             {
                 var payment = CreateAndCapture();
-                booking.Confirm(payment.Id); transitions.Confirmed = true;
+                MarkPaidAndConfirm(payment); transitions.Confirmed = true;
                 return (payment, transitions);
             }
             return (null, transitions);
@@ -581,6 +596,7 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
         ShiftField(booking, "CreatedAt", shift);
         ShiftField(booking, "UpdatedAt", shift);
         if (transitions.Confirmed) ShiftField(booking, "ConfirmedAt", shift);
+        if (transitions.Confirmed) ShiftField(booking, "DepositPaidAt", shift); // MarkPaidAndConfirm sets both at seed-time
         if (transitions.Started)   ShiftField(booking, "StartedAt", shift);
         if (transitions.Completed) ShiftField(booking, "CompletedAt", shift);
         if (transitions.Cancelled) ShiftField(booking, "CancelledAt", shift);

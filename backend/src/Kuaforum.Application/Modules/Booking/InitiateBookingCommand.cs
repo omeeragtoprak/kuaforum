@@ -118,6 +118,11 @@ public sealed class InitiateBookingCommandHandler(
             .Select(s => (s.Id, s.Name, s.DurationMinutes, s.BufferMinutes, s.PriceMinor))
             .ToList();
 
+        // RFC-013 C4: initiate anında SNAPSHOT'lanır — global master-switch AND shop'un o anki
+        // kapora ayarı. Sonradan owner kaporayı kapatsa/açsa veya admin flag'i değiştirse bile
+        // bu booking'in davranışı değişmez (ExpirePendingBookingsJob bu alana göre dallanır).
+        var requiresOnlinePayment = paymentOptions.Value.OnlinePaymentsEnabled && shop.BookingPolicyDepositEnabled;
+
         var bookingResult = BookingAggregate.Initiate(
             request.CustomerId,
             stylist.BarberShopId,
@@ -126,6 +131,7 @@ public sealed class InitiateBookingCommandHandler(
             orderedServices,
             request.IsWalkIn ? BookingType.WalkIn : BookingType.Scheduled,
             paymentOptions.Value.CommissionRate,
+            requiresOnlinePayment,
             request.CustomerNote);
 
         if (bookingResult.IsFailure) return Result.Failure<InitiateBookingResponse>(bookingResult.Error);
