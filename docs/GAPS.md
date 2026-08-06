@@ -124,6 +124,22 @@
 
 ---
 
+## G13. Entitlement kota kontrolünde yarış koşulu — eşzamanlı istekler limiti aşabilir
+
+**Kanıt:** `backend/src/Kuaforum.Application/Modules/Barber/StylistCommands.cs` — `AddStylistCommandHandler` deseni "oku (`CountAsync`) → karşılaştır → yaz (`Add` + `SaveChanges`)". Arada kilit, `SERIALIZABLE` izolasyon ya da DB-seviyesi kısıt yok; migration'larda da böyle bir kısıt bulunmuyor. İki eşzamanlı istek aynı sayıyı okuyup ikisi de eklenebilir → limit +1 aşılır.
+
+**Etki:** Şu an **düşük**. V1'de tüm salonlar `LAUNCH_FREE` planında, `max_staff=20` ve ödemeli plan yok — kota fiilen uykuda, aşılması gelir kaybı yaratmıyor. **Ödemeli planlar açıldığında etki yükselir** (ücretli bir sınırın atlatılması).
+
+**Neden şimdi düzeltilmedi (bilinçli karar, 2026-08-06):** Uykuda olan bir kontrolü advisory lock / DB kısıtıyla sertleştirmek şu an gold-plating (CLAUDE.md §13). Aynı turda bulunan **gerçek bypass** (pasif stylist'i yeniden aktifleştirerek limiti aşma — `UpdateStylistCommandHandler`'ın `SetActive(true)` dalında kontrol yoktu) düzeltildi; yarış koşulu ertelendi.
+
+**Çözüm (ödemeli plan öncesi yapılacak):** PostgreSQL advisory lock (`pg_advisory_xact_lock(shopId hash)`) veya `stylists` üzerinde şart bazlı DB kısıtı — booking'lerdeki M15 `EXCLUDE` deseniyle aynı ruhta. Uygulama katmanı kontrolü tek başına yeterli değildir.
+
+**Tetikleyici:** İlk ücretli abonelik planı aktifleştirilmeden önce.
+
+**Efor:** 3-5 saat.
+
+---
+
 ## Özet Tablo
 
 | # | Başlık | Etki | Efor |
@@ -140,6 +156,7 @@
 | G10 | Test APK'sında API adresi derleme anında gömülü (ağ değişince ölüyor) | Orta | ✅ çözüldü 2026-08-06 |
 | G11 | Yükleme durumlarında skeleton yerine düz "Yükleniyor..." metni | Düşük-Orta | 0.5 gün |
 | G12 | "Bulunamadı" ile "sunucuya ulaşılamadı" ayrışmıyor | Orta | 0.5 gün |
+| G13 | Entitlement kota kontrolünde yarış koşulu (ödemeli plan öncesi kapatılmalı) | Düşük→Orta | 3-5 saat |
 
 ---
 
