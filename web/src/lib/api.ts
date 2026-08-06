@@ -84,7 +84,19 @@ export interface LegalDocument {
 
 // ── Fetch helper ──
 
-async function apiGet<T>(path: string, revalidateSeconds: number): Promise<T | null> {
+/**
+ * `strictErrors`: yalnız 404'ü "yok" sayar, diğer hataları FIRLATIR.
+ * Neden: salon profili gibi `notFound()`'a bağlanan sayfalarda geçici bir API kesintisi
+ * null dönerse sayfa 404'e düşer ve bu 404 ISR tarafından cache'lenir — Google'a "bu sayfa
+ * silindi" sinyali gider. Hata fırlatınca Next 500 (retry edilebilir) döner, prerender
+ * edilmiş sayfalarda ise stale içerik servis edilmeye devam eder.
+ * Liste/landing çağrılarında ise null doğru davranıştır (boş-durum render, build kırılmaz).
+ */
+async function apiGet<T>(
+  path: string,
+  revalidateSeconds: number,
+  opts: { strictErrors?: boolean } = {},
+): Promise<T | null> {
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       next: { revalidate: revalidateSeconds },
@@ -93,10 +105,16 @@ async function apiGet<T>(path: string, revalidateSeconds: number): Promise<T | n
       // 5 sn'de iptal et → null → boş-durum render (build asla kırılmaz).
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return null;
+    if (res.status === 404) return null; // gerçekten yok — her iki modda da null
+    if (!res.ok) {
+      if (opts.strictErrors) throw new Error(`API ${res.status} — ${path}`);
+      return null;
+    }
     return (await res.json()) as T;
-  } catch {
-    // API kapalı / ağ hatası — sayfalar boş-durumla render olur, build kırılmaz.
+  } catch (err) {
+    // API kapalı / ağ hatası / timeout.
+    if (opts.strictErrors) throw err;
+    // Liste sayfaları: boş-durumla render olur, build kırılmaz.
     return null;
   }
 }
@@ -121,9 +139,12 @@ export function getShops(params: {
 }
 
 export function getShopBySlug(slug: string): Promise<PublicShopProfile | null> {
+  // strictErrors: profil sayfası null'ı notFound()'a çeviriyor — geçici kesinti
+  // kalıcı 404 olarak cache'lenmemeli (bkz. apiGet doc'u).
   return apiGet<PublicShopProfile>(
     `/v1/public/barber-shops/${encodeURIComponent(slug)}`,
     300,
+    { strictErrors: true },
   );
 }
 

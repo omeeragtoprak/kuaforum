@@ -11,6 +11,9 @@ function nextKey(): number {
   keyCounter += 1;
   return keyCounter;
 }
+function resetKeys(): void {
+  keyCounter = 0;
+}
 
 /** `**bold**` parçalarını <strong>'a çevirir; kalan her şey düz metin. */
 function renderInline(text: string): ReactNode[] {
@@ -101,6 +104,11 @@ function parseBlocks(markdown: string): Block[] {
 }
 
 export function MarkdownContent({ markdown }: { markdown: string }) {
+  // Sayaç modül seviyesinde yaşıyor ve RSC'de istekler arası paylaşılır; her render'ın
+  // başında sıfırlanması aynı içerik için aynı key dizisini üretir (deterministik
+  // hydration + React reconciliation). Render senkron olduğu için araya başka bir
+  // MarkdownContent çağrısı giremez.
+  resetKeys();
   const blocks = parseBlocks(markdown);
 
   return (
