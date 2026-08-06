@@ -23,6 +23,17 @@ public sealed record Error(string Code, string Message)
     public static Error Forbidden(string message) => new("forbidden", message);
     public static Error Unauthorized(string message = "Yetkisiz erişim.") => new("unauthorized", message);
 
+    /// <summary>
+    /// Follow-up (review, BookingPolicyCommands): bir kullanıcının KENDİ kaynağı eksikken
+    /// ("BarberShop bulunamadı") dönen "not_found" ile, platform-seviyesi bir ayar satırı
+    /// (PlatformSettings tekil satırı) eksikken dönenin AYNI koda düşmemesi için. İkisi de
+    /// mesaj metniyle ayrılıyordu ama kod aynıydı ("not_found") — client bu ayrımı yalnızca
+    /// Türkçe mesaj metnini parse ederek yapabiliyordu (kırılgan). Bu bir kullanıcı hatası
+    /// DEĞİL — deploy/seed sırası bozulmuş demektir (bkz. PlatformSettingsSeeder), 404 değil
+    /// 500 olarak map'lenir (BarberEndpoints.GetBookingPolicy/UpdateBookingPolicy).
+    /// </summary>
+    public static Error ServerMisconfigured(string message) => new("server_misconfigured", message);
+
     private static readonly Dictionary<string, string> EntityNameTr = new(StringComparer.Ordinal)
     {
         ["Booking"] = "Randevu",

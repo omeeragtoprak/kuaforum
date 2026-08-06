@@ -23,7 +23,13 @@ public sealed record BookingPolicyDto(
     int? MinDaysBetweenBookings,
     int? MaxBookingsPerMonth,
     decimal DepositPercentMin,
-    decimal DepositPercentMax);
+    decimal DepositPercentMax,
+    // Follow-up (C5b M6): global master-switch'in HAM değeri — EffectiveDepositActive zaten
+    // (OnlinePaymentsEnabled && DepositEnabled) AND'i ama owner ayar ekranı ikisini AYRI
+    // görmeli: "kapora açtım ama platform genelinde online ödeme kapalı" ile "kapora zaten
+    // kapalı" farklı uyarı metinleri gerektirir. Bu alan olmadan owner KAYDETMEDEN önce
+    // global switch'in durumunu bilemiyordu.
+    bool OnlinePaymentsEnabled);
 
 public sealed record GetBookingPolicyQuery(Guid OwnerId) : IQuery<BookingPolicyDto>;
 
@@ -38,7 +44,9 @@ public sealed class GetBookingPolicyQueryHandler(IApplicationDbContext db, IOpti
         if (shop is null) return Result.Failure<BookingPolicyDto>(Error.NotFound("BarberShop"));
 
         var settings = await ctx.Set<PlatformSettings>().AsNoTracking().FirstOrDefaultAsync(ct);
-        if (settings is null) return Result.Failure<BookingPolicyDto>(Error.NotFound("PlatformSettings"));
+        if (settings is null)
+            return Result.Failure<BookingPolicyDto>(Error.ServerMisconfigured(
+                "Platform ayarları henüz yapılandırılmamış. Lütfen destek ile iletişime geçin."));
 
         var effectiveDepositActive = paymentOptions.Value.OnlinePaymentsEnabled && shop.BookingPolicyDepositEnabled;
 
@@ -50,7 +58,8 @@ public sealed class GetBookingPolicyQueryHandler(IApplicationDbContext db, IOpti
             shop.BookingPolicyMinDaysBetweenBookings,
             shop.BookingPolicyMaxBookingsPerMonth,
             settings.DepositPercentMin,
-            settings.DepositPercentMax));
+            settings.DepositPercentMax,
+            paymentOptions.Value.OnlinePaymentsEnabled));
     }
 }
 
@@ -87,7 +96,9 @@ public sealed class UpdateBookingPolicyCommandHandler(
         if (shop is null) return Result.Failure<BookingPolicyDto>(Error.NotFound("BarberShop"));
 
         var settings = await ctx.Set<PlatformSettings>().AsNoTracking().FirstOrDefaultAsync(ct);
-        if (settings is null) return Result.Failure<BookingPolicyDto>(Error.NotFound("PlatformSettings"));
+        if (settings is null)
+            return Result.Failure<BookingPolicyDto>(Error.ServerMisconfigured(
+                "Platform ayarları henüz yapılandırılmamış. Lütfen destek ile iletişime geçin."));
 
         var policyResult = BookingPolicy.Create(
             request.DepositEnabled,
@@ -128,6 +139,7 @@ public sealed class UpdateBookingPolicyCommandHandler(
             shop.BookingPolicyMinDaysBetweenBookings,
             shop.BookingPolicyMaxBookingsPerMonth,
             settings.DepositPercentMin,
-            settings.DepositPercentMax));
+            settings.DepositPercentMax,
+            paymentOptions.Value.OnlinePaymentsEnabled));
     }
 }

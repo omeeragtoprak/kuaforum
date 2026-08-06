@@ -116,6 +116,8 @@ public sealed record AdminCommissionStatementItemDto(
     string BarberShopName,
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
+    long BasisAmountMinor,
+    decimal RateApplied,
     long AmountDueMinor,
     DateOnly DueDate,
     CommissionStatementStatus Status,
@@ -127,9 +129,16 @@ public sealed record AdminCommissionStatementsPage(
     int PageSize,
     int TotalCount);
 
+/// <summary>
+/// Follow-up (review): PeriodStart eşitlik filtresi — web-admin tahsilat ekranının
+/// "şu ayın faturaları" görünümü için. Yalnız TAM eşleşme (statement'ların PeriodStart'ı
+/// her zaman ayın 1'i — CloseMonthlyCommissionStatementsJob'un ürettiği tek biçim); aralık
+/// sorgusu (BETWEEN) şu an YAGNI, ileride "son N ay" gibi bir ihtiyaç çıkarsa eklenir.
+/// </summary>
 public sealed record GetAdminCommissionStatementsQueueQuery(
     CommissionStatementStatus? StatusFilter,
     bool? DisputedOnly,
+    DateOnly? PeriodStart,
     int Page,
     int PageSize) : IQuery<AdminCommissionStatementsPage>;
 
@@ -142,6 +151,7 @@ public sealed class GetAdminCommissionStatementsQueueQueryHandler(IApplicationDb
         var query = ctx.Set<CommissionStatement>().AsNoTracking().AsQueryable();
         if (request.StatusFilter.HasValue) query = query.Where(s => s.Status == request.StatusFilter.Value);
         if (request.DisputedOnly == true) query = query.Where(s => s.IsDisputed);
+        if (request.PeriodStart.HasValue) query = query.Where(s => s.PeriodStart == request.PeriodStart.Value);
 
         var page = Math.Max(1, request.Page);
         var size = Math.Clamp(request.PageSize, 1, 50);
@@ -161,7 +171,8 @@ public sealed class GetAdminCommissionStatementsQueueQueryHandler(IApplicationDb
 
         var dtos = items.Select(x => new AdminCommissionStatementItemDto(
             x.Statement.Id, x.Statement.BarberShopId, x.ShopName ?? "—",
-            x.Statement.PeriodStart, x.Statement.PeriodEnd, x.Statement.AmountDueMinor,
+            x.Statement.PeriodStart, x.Statement.PeriodEnd,
+            x.Statement.BasisAmountMinor, x.Statement.RateApplied, x.Statement.AmountDueMinor,
             x.Statement.DueDate, x.Statement.Status, x.Statement.IsDisputed))
             .ToList();
 

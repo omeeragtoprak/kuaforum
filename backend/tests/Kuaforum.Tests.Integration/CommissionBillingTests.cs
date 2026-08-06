@@ -28,7 +28,10 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
         Guid Id, DateOnly PeriodStart, DateOnly PeriodEnd, long BasisAmountMinor, decimal RateApplied,
         long AmountDueMinor, DateOnly DueDate, CommissionStatementStatus Status, bool IsDisputed, string? DisputeNote);
     private sealed record OwnerStatementsPage(IReadOnlyList<StatementDto> Items, string? CommissionPaymentIban, string? CommissionPaymentBankName, string? CommissionPaymentAccountHolderName);
-    private sealed record AdminStatementItem(Guid Id, Guid BarberShopId, string BarberShopName, DateOnly PeriodStart, DateOnly PeriodEnd, long AmountDueMinor, DateOnly DueDate, CommissionStatementStatus Status, bool IsDisputed);
+    private sealed record AdminStatementItem(
+        Guid Id, Guid BarberShopId, string BarberShopName, DateOnly PeriodStart, DateOnly PeriodEnd,
+        long BasisAmountMinor, decimal RateApplied, long AmountDueMinor, DateOnly DueDate,
+        CommissionStatementStatus Status, bool IsDisputed);
     private sealed record AdminStatementsPage(IReadOnlyList<AdminStatementItem> Items, int Page, int PageSize, int TotalCount);
     private sealed record InitiateCommissionPaymentResp(Guid CommissionPaymentId, string CheckoutUrl, string? ProviderToken, DateTimeOffset ExpiresAt, long AmountMinor);
     private sealed record SearchItemDto(Guid Id, string Name);
@@ -576,5 +579,53 @@ public sealed class CommissionBillingTests(IntegrationTestFactory factory)
             var shop = await db.Set<BarberShop>().AsNoTracking().SingleAsync(x => x.Id == f.ShopId);
             Assert.Equal(BarberShopStatus.Suspended, shop.Status);
         }
+    }
+
+    // ── Follow-up (review): admin listesi basisAmountMinor/rateApplied + dönem filtresi ──
+
+    /// <summary>
+    /// Follow-up B1: web-admin tahsilat tablosu bu iki alan olmadan "—" gösteriyordu —
+    /// AdminCommissionStatementItemDto zaten CommissionStatement'ı tam yükleyen sorgudan
+    /// üretiliyordu, yalnız DTO'ya map edilmiyorlardı.
+    /// </summary>
+    [Fact]
+    public async Task GetAdminCommissionStatementsQueue_ReturnsBasisAmountAndRateApplied()
+    {
+        var f = await SeedShopAndAuthAsync();
+        await CreateNotifiedStatementAsync(f, basisAmountMinor: 300_000, rate: 0.15m);
+
+        var page = await f.AdminClient.GetJson<AdminStatementsPage>("/v1/admin/billing/statements");
+        var item = Assert.Single(page.Items);
+        Assert.Equal(300_000, item.BasisAmountMinor);
+        Assert.Equal(0.15m, item.RateApplied);
+        Assert.Equal(Kuaforum.Domain.Common.PaymentAmounts.CalculateCommissionMinor(300_000, 0.15m), item.AmountDueMinor);
+    }
+
+    /// <summary>Follow-up B3: dönem eşitlik filtresi (periodStart) — mevcut status/disputedOnly filtre kalıbının yanına eklendi.</summary>
+    [Fact]
+    public async Task GetAdminCommissionStatementsQueue_PeriodStartFilter_ReturnsOnlyMatchingPeriod()
+    {
+        var f = await SeedShopAndAuthAsync();
+        var (lastMonthStart, _) = LastMonthPeriod();
+        await CreateNotifiedStatementAsync(f, basisAmountMinor: 100_000, rate: 0.10m);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var twoMonthsAgoStart = new DateOnly(lastMonthStart.Year, lastMonthStart.Month, 1).AddMonths(-1);
+            var twoMonthsAgoEnd = lastMonthStart.AddDays(-1);
+            var older = CommissionStatement.Create(f.ShopId, twoMonthsAgoStart, twoMonthsAgoEnd, 50_000, 0.10m).Value;
+            older.MarkNotified();
+            db.Set<CommissionStatement>().Add(older);
+            await db.SaveChangesAsync();
+        }
+
+        var unfiltered = await f.AdminClient.GetJson<AdminStatementsPage>("/v1/admin/billing/statements");
+        Assert.Equal(2, unfiltered.TotalCount);
+
+        var filtered = await f.AdminClient.GetJson<AdminStatementsPage>($"/v1/admin/billing/statements?periodStart={lastMonthStart:yyyy-MM-dd}");
+        var only = Assert.Single(filtered.Items);
+        Assert.Equal(lastMonthStart, only.PeriodStart);
+        Assert.Equal(100_000, only.BasisAmountMinor);
     }
 }

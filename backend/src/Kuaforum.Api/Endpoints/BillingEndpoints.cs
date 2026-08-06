@@ -100,10 +100,11 @@ public static class BillingEndpoints
 
         adminGroup.MapGet("/statements", async (
             [FromQuery] CommissionStatementStatus? status, [FromQuery] bool? disputedOnly,
+            [FromQuery] DateOnly? periodStart,
             [FromQuery] int? page, [FromQuery] int? pageSize,
             IMediator m, CancellationToken ct) =>
         {
-            var r = await m.Send(new GetAdminCommissionStatementsQueueQuery(status, disputedOnly, page ?? 1, pageSize ?? 25), ct);
+            var r = await m.Send(new GetAdminCommissionStatementsQueueQuery(status, disputedOnly, periodStart, page ?? 1, pageSize ?? 25), ct);
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
         }).WithName("GetAdminCommissionStatementsQueue");
 

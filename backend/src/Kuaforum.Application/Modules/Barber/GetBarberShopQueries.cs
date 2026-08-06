@@ -1,8 +1,10 @@
+using Kuaforum.Application.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Kuaforum.Application.Modules.Barber;
 
@@ -21,7 +23,15 @@ public sealed record BarberShopDto(
     string? AddressLine1,
     double? Latitude,
     double? Longitude,
-    string? CommissionTier);
+    string? CommissionTier,
+    // Follow-up (C5c gap): mobile müşteri akışı, randevu ÖNCESİ salonun kapora oranını
+    // göremiyordu — GetPublicBarberShopBySlugQuery (web landing) zaten EFEKTİF (global
+    // Payment:OnlinePaymentsEnabled && shop.DepositEnabled) değerleri taşıyordu, bu id-bazlı
+    // DTO'da (mobile'ın asıl kullandığı /v1/barber-shops/{id}) eksikti. Aynı ilke: yalnız
+    // EFEKTİF değer sızar, ham shop ayarı değil — global switch kapalıyken DepositEnabled=true
+    // olsa bile burada false/null döner.
+    bool DepositEnabled,
+    decimal? DepositPercent);
 
 public sealed record StylistDto(
     Guid Id,
@@ -44,18 +54,22 @@ public sealed record ServiceDto(
 
 public sealed record GetMyBarberShopQuery(Guid OwnerId) : IQuery<BarberShopDto?>;
 
-public sealed class GetMyBarberShopQueryHandler(IApplicationDbContext db) : IRequestHandler<GetMyBarberShopQuery, Result<BarberShopDto?>>
+public sealed class GetMyBarberShopQueryHandler(IApplicationDbContext db, IOptions<PaymentOptions> paymentOptions)
+    : IRequestHandler<GetMyBarberShopQuery, Result<BarberShopDto?>>
 {
     public async Task<Result<BarberShopDto?>> Handle(GetMyBarberShopQuery request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
+        var onlinePaymentsEnabled = paymentOptions.Value.OnlinePaymentsEnabled;
         var shop = await ctx.Set<BarberShop>().AsNoTracking()
             .Where(s => s.OwnerId == request.OwnerId)
             .Select(s => new BarberShopDto(
                 s.Id, s.OwnerId, s.Name, s.Slug, s.Description, s.PhoneE164,
                 s.GenderType, s.Status,
                 s.AddressCityId, s.AddressDistrictId, s.AddressNeighborhoodId, s.AddressLine1,
-                s.Latitude, s.Longitude, s.CommissionTier))
+                s.Latitude, s.Longitude, s.CommissionTier,
+                onlinePaymentsEnabled && s.BookingPolicyDepositEnabled,
+                (onlinePaymentsEnabled && s.BookingPolicyDepositEnabled) ? s.BookingPolicyDepositPercent : null))
             .FirstOrDefaultAsync(ct);
         return Result.Success(shop);
     }
@@ -63,18 +77,22 @@ public sealed class GetMyBarberShopQueryHandler(IApplicationDbContext db) : IReq
 
 public sealed record GetBarberShopByIdQuery(Guid BarberShopId) : IQuery<BarberShopDto>;
 
-public sealed class GetBarberShopByIdQueryHandler(IApplicationDbContext db) : IRequestHandler<GetBarberShopByIdQuery, Result<BarberShopDto>>
+public sealed class GetBarberShopByIdQueryHandler(IApplicationDbContext db, IOptions<PaymentOptions> paymentOptions)
+    : IRequestHandler<GetBarberShopByIdQuery, Result<BarberShopDto>>
 {
     public async Task<Result<BarberShopDto>> Handle(GetBarberShopByIdQuery request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
+        var onlinePaymentsEnabled = paymentOptions.Value.OnlinePaymentsEnabled;
         var shop = await ctx.Set<BarberShop>().AsNoTracking()
             .Where(s => s.Id == request.BarberShopId && s.Status == BarberShopStatus.Active)
             .Select(s => new BarberShopDto(
                 s.Id, s.OwnerId, s.Name, s.Slug, s.Description, s.PhoneE164,
                 s.GenderType, s.Status,
                 s.AddressCityId, s.AddressDistrictId, s.AddressNeighborhoodId, s.AddressLine1,
-                s.Latitude, s.Longitude, s.CommissionTier))
+                s.Latitude, s.Longitude, s.CommissionTier,
+                onlinePaymentsEnabled && s.BookingPolicyDepositEnabled,
+                (onlinePaymentsEnabled && s.BookingPolicyDepositEnabled) ? s.BookingPolicyDepositPercent : null))
             .FirstOrDefaultAsync(ct);
         if (shop is null) return Result.Failure<BarberShopDto>(Error.NotFound("BarberShop"));
         return Result.Success(shop);

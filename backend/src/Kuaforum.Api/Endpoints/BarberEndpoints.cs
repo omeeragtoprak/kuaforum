@@ -183,7 +183,7 @@ public static class BarberEndpoints
             var r = await m.Send(new GetBookingPolicyQuery(ctx.UserId.Value), token);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "not_found" => 404, "forbidden" => 403, _ => 400 });
+                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "not_found" => 404, "forbidden" => 403, "server_misconfigured" => 500, _ => 400 });
         }).WithName("GetBookingPolicy");
 
         ownerGroup.MapPut("/booking-policy", async (
@@ -195,7 +195,7 @@ public static class BarberEndpoints
                 body.MaxPendingPerCustomer, body.MinDaysBetweenBookings, body.MaxBookingsPerMonth), token);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "not_found" => 404, "forbidden" => 403, _ => 400 });
+                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "not_found" => 404, "forbidden" => 403, "server_misconfigured" => 500, _ => 400 });
         }).WithName("UpdateBookingPolicy");
 
         ownerGroup.MapPost("/{id:guid}/kyc/submit", async (Guid id, [FromBody] SubmitKycRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
