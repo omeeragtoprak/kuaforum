@@ -125,7 +125,13 @@ public static class BarberEndpoints
             IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
-            var fromUtc = from ?? DateTimeOffset.UtcNow.Date;
+            // NOT (canlı sunucuda yakalanan gerçek bug, 2026-08-06): DateTimeOffset.UtcNow.Date
+            // bir DateTime döner (DateTimeOffset DEĞİL) — implicit dönüşüm sunucunun YEREL saat
+            // dilimini kullanır. Sunucu OS'i UTC değilse (bu makinede +03:00) Npgsql "timestamp
+            // with time zone yalnız Offset=0 kabul eder" hatasıyla patlar — from/to query param'ı
+            // VERİLMEDEN her owner bookings çağrısında (varsayılan yol). new DateTimeOffset(...,
+            // TimeSpan.Zero) ile açıkça UTC'ye sabitleniyor.
+            var fromUtc = from ?? new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
             var toUtc = to ?? fromUtc.AddDays(7);
             var r = await m.Send(new GetOwnerBookingsQuery(ctx.UserId.Value, fromUtc, toUtc, status), token);
             return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);

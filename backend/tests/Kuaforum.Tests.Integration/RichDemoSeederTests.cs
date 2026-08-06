@@ -118,6 +118,44 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory)
     }
 
     /// <summary>
+    /// Regresyon kilidi (canlı dev DB'de yakalanan gerçek bug, 2026-08-06): "+905551234567"
+    /// (dev-login "Customer" personası) daha önce bir hesap-silme akışı testinde soft-delete
+    /// edilmişse, seeder onu sessizce OLDUĞU GİBİ kullanıyordu — User.CanLogin=false olduğu
+    /// için dev-login sonsuza dek 400 dönüyor, üretilen tüm zengin randevu/yorum/bildirim
+    /// verisi hiç görülemiyordu. Fix: RestoreFromSoftDelete() (30 günlük pencere).
+    /// </summary>
+    [Fact]
+    public async Task SeedAsync_WhenDemoCustomerWasSoftDeleted_RestoresAccount_SoDevLoginWorksAfterward()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var phoneRes = Kuaforum.Domain.Modules.Identity.ValueObjects.PhoneE164.TryCreate(DemoCustomerPhone);
+            var userRes = User.CreateCustomerByPhone(phoneRes.Value, "Demo Müşteri");
+            var user = userRes.Value;
+            Assert.True(user.SoftDelete().IsSuccess);
+            db.Users.Add(user);
+            await db.SaveChangesAsync();
+        }
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var db2 = factory.Services.CreateScope().ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var demoCustomer = await db2.Users.AsNoTracking().FirstAsync(u => u.PhoneE164 == DemoCustomerPhone);
+        Assert.True(demoCustomer.CanLogin, "Soft-delete edilmiş Demo Müşteri hesabı RichDemoSeeder sonrası hâlâ giriş yapamıyor.");
+        Assert.Null(demoCustomer.DeletedAt);
+
+        // Zengin veri gerçekten BU (geri yüklenmiş) kullanıcıya bağlanmış olmalı.
+        var demoBookings = await db2.Bookings.AsNoTracking().Where(b => b.CustomerId == demoCustomer.Id).ToListAsync();
+        Assert.NotEmpty(demoBookings);
+    }
+
+    /// <summary>
     /// Regresyon kilidi: RichDemoSeeder'ı ekleyen değişiklik, mevcut DemoBarberSeeder-bazlı
     /// testlerin varsaydığı "tam 6 demo shop" davranışını BOZMAMALI — bu seeder yalnız
     /// explicit çağrıldığında ek şablar üretir, DemoBarberSeeder tek başına çalıştığında hâlâ

@@ -216,6 +216,29 @@ public sealed class RichDemoSeeder(
                 await db.SaveChangesAsync(ct);
             }
         }
+        else if (demoCustomer.IsDeleted)
+        {
+            // Gerçek bug bulundu (live dev DB'de doğrulandı, 2026-08-06): bu telefon daha önce
+            // bir hesap-silme akışı testinde soft-delete edilmişse, sessizce silinmiş kullanıcıya
+            // zengin randevu/yorum/bildirim verisi bağlamak boşa gider — dev-login "Customer"
+            // User.CanLogin=false olduğu için hep 400 döner, founder hiçbir şey GÖREMEZ.
+            var restoreResult = demoCustomer.RestoreFromSoftDelete();
+            if (restoreResult.IsFailure)
+            {
+                // 30 günlük geri yükleme penceresi geçmişse (olası ama nadir) yeni bir kullanıcı
+                // YARATAMAYIZ (aynı telefon numarası unique) — en azından logla, seeder'ın geri
+                // kalanı (13 salon, faturalama, review havuzu) hâlâ değerli, sadece Demo Müşteri'nin
+                // KENDİ randevuları görünmez kalır.
+                logger.LogWarning("RichDemoSeeder: {Phone} hesabı silinmiş ve geri yüklenemedi ({Reason}) — Demo Müşteri randevuları atlanacak.",
+                    CustomerDemoPhone, restoreResult.Error.Message);
+                demoCustomer = null;
+            }
+            else
+            {
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("RichDemoSeeder: {Phone} (Demo Müşteri) soft-delete'ten geri yüklendi.", CustomerDemoPhone);
+            }
+        }
 
         var secondaryCustomers = new List<User>();
         foreach (var c in SecondaryCustomers)

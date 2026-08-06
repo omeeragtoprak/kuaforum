@@ -29,7 +29,13 @@ public sealed class GetDashboardStatsQueryHandler(IApplicationDbContext db)
     public async Task<Result<DashboardStatsDto>> Handle(GetDashboardStatsQuery request, CancellationToken ct)
     {
         var ctx = (DbContext)db;
-        var today = DateTimeOffset.UtcNow.Date;
+        // NOT (canlı sunucuda yakalanan gerçek bug, 2026-08-06 — bkz. BarberEndpoints.cs
+        // GetOwnerBookings'teki aynı desen): DateTimeOffset.UtcNow.Date bir DateTime döner,
+        // implicit dönüşüm sunucunun yerel saat dilimini kullanır ve sunucu OS'i UTC değilse
+        // (bu makinede +03:00) admin dashboard'un TodaysBookings/TodaysGmv sorgusu Npgsql
+        // "yalnız Offset=0" hatasıyla patlar — admin panelinin İLK ekranı bu yüzden potansiyel
+        // olarak her zaman kırık olabilirdi (CI/Testcontainers UTC olduğundan yakalanmamış).
+        var today = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
         var tomorrow = today.AddDays(1);
 
         var totalUsers = await ctx.Set<User>().CountAsync(u => u.DeletedAt == null, ct);
