@@ -23,7 +23,7 @@ public sealed class AddStylistCommandValidator : AbstractValidator<AddStylistCom
     }
 }
 
-public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLogger audit)
+public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLogger audit, IEntitlementService entitlements)
     : IRequestHandler<AddStylistCommand, Result<Guid>>
 {
     private static readonly TimeOnly DefaultOpen = new(9, 0);
@@ -35,6 +35,20 @@ public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLog
         var shop = await ctx.Set<BarberShop>().FirstOrDefaultAsync(s => s.Id == request.BarberShopId, cancellationToken);
         if (shop is null) return Result.Failure<Guid>(Error.NotFound("BarberShop"));
         if (shop.OwnerId != request.OwnerId) return Result.Failure<Guid>(Error.Forbidden("Bu işletmenin sahibi siz değilsiniz."));
+
+        // RFC-014 §2 D1: max_staff aktif abonelik planından okunur, koda gömülü değil.
+        // Yalnızca aktif (IsActive) çalışanlar sayılır — pasif bir çalışan kotayı işgal etmemeli.
+        var plan = await entitlements.GetAsync(shop.Id, cancellationToken);
+        if (plan.MaxStaff.HasValue)
+        {
+            var activeStaffCount = await ctx.Set<Stylist>()
+                .CountAsync(s => s.BarberShopId == request.BarberShopId && s.IsActive, cancellationToken);
+            if (activeStaffCount >= plan.MaxStaff.Value)
+            {
+                return Result.Failure<Guid>(Error.Validation(
+                    $"Mevcut abonelik planınız en fazla {plan.MaxStaff.Value} aktif çalışan eklemenize izin veriyor. Daha fazla çalışan eklemek için planınızı yükseltmeniz gerekiyor."));
+            }
+        }
 
         var createResult = Stylist.Create(request.BarberShopId, request.DisplayName, request.UserId);
         if (createResult.IsFailure) return Result.Failure<Guid>(createResult.Error);

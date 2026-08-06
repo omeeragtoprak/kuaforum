@@ -55,6 +55,9 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
     public DbSet<CommissionStatement> CommissionStatements => Set<CommissionStatement>();
     public DbSet<CommissionPayment> CommissionPayments => Set<CommissionPayment>();
+    public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
+    public DbSet<PlanEntitlement> PlanEntitlements => Set<PlanEntitlement>();
+    public DbSet<ShopSubscription> ShopSubscriptions => Set<ShopSubscription>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

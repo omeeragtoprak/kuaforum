@@ -116,6 +116,7 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
               notification_logs,
               audit_logs,
               commission_payments, commission_statements,
+              shop_subscriptions,
               barber_replies, reviews,
               refunds, payments,
               booking_items, bookings,

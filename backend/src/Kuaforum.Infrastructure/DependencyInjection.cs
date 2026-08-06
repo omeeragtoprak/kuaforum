@@ -226,6 +226,8 @@ public static class DependencyInjection
         services.AddScoped<RichDemoSeeder>();
         services.AddScoped<AdminSeeder>();
         services.AddScoped<Persistence.Seeding.PlatformSettingsSeeder>();
+        services.AddScoped<Persistence.Seeding.SubscriptionPlanSeeder>();
+        services.AddScoped<IEntitlementService, Modules.Billing.EntitlementService>();
 
         return services;
     }
@@ -276,6 +278,12 @@ public static class DependencyInjection
             var rich = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
             await rich.SeedAsync(ct);
         }
+
+        // RFC-014 §2 D1: demo/comprehensive/rich seeder'lardan SONRA çalışmalı — onlar
+        // BarberShop.Create()'i CreateBarberShopCommandHandler'ı (otomatik LAUNCH_FREE
+        // aboneliği yaratan) atlayarak doğrudan çağırır. Backfill adımı bu yüzden en son.
+        var subscriptionPlanSeeder = scope.ServiceProvider.GetRequiredService<Persistence.Seeding.SubscriptionPlanSeeder>();
+        await subscriptionPlanSeeder.SeedAsync(ct);
     }
 
     public static void RegisterRecurringJobs(IServiceProvider services)

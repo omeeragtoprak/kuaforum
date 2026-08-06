@@ -707,6 +707,48 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.ToTable("commission_statements", (string)null);
                 });
 
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.PlanEntitlement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Key")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("plan_code");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanCode", "Key")
+                        .IsUnique()
+                        .HasDatabaseName("ux_plan_entitlements_plan_key");
+
+                    b.ToTable("plan_entitlements", (string)null);
+                });
+
             modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.PlatformSettings", b =>
                 {
                     b.Property<Guid>("Id")
@@ -764,6 +806,97 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("platform_settings", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.ShopSubscription", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("BarberShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("barber_shop_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("CurrentPeriodEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("current_period_end");
+
+                    b.Property<DateTimeOffset>("CurrentPeriodStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("current_period_start");
+
+                    b.Property<string>("PlanCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("plan_code");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BarberShopId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_shop_subscriptions_shop");
+
+                    b.HasIndex("PlanCode");
+
+                    b.ToTable("shop_subscriptions", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.SubscriptionPlan", b =>
+                {
+                    b.Property<string>("Code")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("display_order");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("name");
+
+                    b.Property<long?>("PriceMinor")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_minor");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Code");
+
+                    b.ToTable("subscription_plans", (string)null);
                 });
 
             modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.Booking", b =>
@@ -1961,6 +2094,24 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_reviews_shop_status_created");
 
                     b.ToTable("reviews", (string)null);
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.PlanEntitlement", b =>
+                {
+                    b.HasOne("Kuaforum.Domain.Modules.Billing.SubscriptionPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanCode")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Kuaforum.Domain.Modules.Billing.ShopSubscription", b =>
+                {
+                    b.HasOne("Kuaforum.Domain.Modules.Billing.SubscriptionPlan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanCode")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("Kuaforum.Domain.Modules.Booking.BookingItem", b =>

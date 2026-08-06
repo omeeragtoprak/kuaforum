@@ -103,6 +103,7 @@ public sealed class OnlinePaymentsDisabledFactory : WebApplicationFactory<Progra
             TRUNCATE TABLE
               notification_logs,
               audit_logs,
+              shop_subscriptions,
               barber_replies, reviews,
               refunds, payments,
               booking_items, bookings,

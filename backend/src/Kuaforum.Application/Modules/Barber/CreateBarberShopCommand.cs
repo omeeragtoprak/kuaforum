@@ -3,6 +3,7 @@ using Kuaforum.Application.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Billing;
 using Kuaforum.Domain.Modules.Identity;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
@@ -63,6 +64,11 @@ public sealed class CreateBarberShopCommandHandler(
         if (update.IsFailure) return Result.Failure<Guid>(update.Error);
 
         ctx.Set<BarberShop>().Add(shop);
+
+        // RFC-014 §2 D1: aboneliksiz salon hiç oluşmamalı — yeni salon atomik olarak
+        // (aynı SaveChanges) LAUNCH_FREE'ye bağlanır. Bkz. ShopSubscription.CreateLaunchFreeDefault
+        // XML doc — SubscriptionPlanSeeder'ın backfill adımıyla aynı sentinel tanımını paylaşır.
+        ctx.Set<ShopSubscription>().Add(ShopSubscription.CreateLaunchFreeDefault(shop.Id));
 
         await audit.RecordAsync("barber.shop.created", nameof(BarberShop), shop.Id.ToString(),
             actorUserId: request.OwnerId, payload: new { shop.Name, shop.GenderType, RoleAfter = owner.Role.ToString() }, ct: cancellationToken);
