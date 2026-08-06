@@ -2,6 +2,11 @@ import axios, { AxiosError, AxiosInstance, InternalAxiosRequestConfig } from 'ax
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { TokenStorage } from '@/lib/secure-storage';
+import {
+  resolveInitialBaseUrl,
+  setPersistedBaseUrlOverride,
+  clearPersistedBaseUrlOverride,
+} from '@/lib/runtime-base-url';
 
 // Backend dev port is 5100. Android emulator can't reach host's localhost — needs 10.0.2.2.
 // iOS simulator and web share host networking. Override with EXPO_PUBLIC_API_BASE_URL on
@@ -12,16 +17,62 @@ const DEFAULT_DEV_BASE_URL = Platform.select({
   default: 'http://localhost:5100',
 });
 
-const API_BASE_URL =
+// Derleme anındaki (build-time) varsayılan — APK'ya gömülür, değiştirilemez.
+// Test build'lerde runtime override bunun ÜSTÜNE gelir (bkz. bootstrapApiBaseUrl).
+const BUILD_DEFAULT_BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ??
   (Constants.expoConfig?.extra as { apiBaseUrl?: string })?.apiBaseUrl ??
   DEFAULT_DEV_BASE_URL;
 
 export const apiClient: AxiosInstance = axios.create({
-  baseURL: API_BASE_URL,
+  // Bootstrap tamamlanana kadar (bkz. bootstrapApiBaseUrl) build-time varsayılanı
+  // kullanılır; app/_layout.tsx bootstrap bitmeden hiçbir isteğin atılmadığını
+  // garanti eder (AuthGate/hydrate() mount edilmez), o yüzden burada bir "geçici
+  // yanlış adres" penceresi yoktur.
+  baseURL: BUILD_DEFAULT_BASE_URL,
   timeout: 15_000,
   headers: { 'Content-Type': 'application/json' },
 });
+
+/**
+ * App açılışında (ilk istek atılmadan / `hydrate()` çağrılmadan ÖNCE) TAM OLARAK BİR
+ * KEZ çağrılmalı — `app/_layout.tsx`'teki `RootLayout` bu promise resolve olana kadar
+ * `AuthGate`'i (dolayısıyla `hydrate()`'i) mount etmeyerek yarış koşulunu engeller.
+ * Test build'de kalıcı ayarda bir override varsa `apiClient.defaults.baseURL`'i onunla
+ * değiştirir; yoksa (veya production'da) build-time varsayılanında kalır.
+ */
+export async function bootstrapApiBaseUrl(): Promise<void> {
+  const resolved = await resolveInitialBaseUrl(BUILD_DEFAULT_BASE_URL);
+  apiClient.defaults.baseURL = resolved;
+}
+
+/** O anki (bootstrap sonrası, override edilmiş olabilecek) aktif taban adres. */
+export function getApiBaseUrl(): string {
+  return (apiClient.defaults.baseURL as string | undefined) ?? BUILD_DEFAULT_BASE_URL;
+}
+
+/** APK'ya gömülü değişmez varsayılan — "Varsayılana dön" kısayolunda gösterilir/kullanılır. */
+export function getBuildDefaultApiBaseUrl(): string {
+  return BUILD_DEFAULT_BASE_URL;
+}
+
+/**
+ * Test build ekranından (server-settings.tsx) çağrılır: kalıcı ayara yazar VE
+ * axios instance'ın baseURL'ini anında günceller (uygulamayı yeniden başlatmaya
+ * gerek yok). Production'da `setPersistedBaseUrlOverride` sessiz no-op olduğu için
+ * yalnızca in-memory `apiClient.defaults.baseURL` değişir — ama bu fonksiyona zaten
+ * production'da erişilebilecek bir UI yolu yok (bkz. server-settings.tsx guard'ı).
+ */
+export async function setApiBaseUrlOverride(url: string): Promise<void> {
+  await setPersistedBaseUrlOverride(url);
+  apiClient.defaults.baseURL = url;
+}
+
+/** Kalıcı override'ı temizler ve axios instance'ı build-time varsayılanına döndürür. */
+export async function resetApiBaseUrlToDefault(): Promise<void> {
+  await clearPersistedBaseUrlOverride();
+  apiClient.defaults.baseURL = BUILD_DEFAULT_BASE_URL;
+}
 
 apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   const token = await TokenStorage.getAccessToken();
@@ -79,7 +130,10 @@ export async function refreshTokens(): Promise<boolean> {
     if (!refreshToken) return false;
 
     const res = await axios.post(
-      `${API_BASE_URL}/v1/auth/refresh`,
+      // getApiBaseUrl() — sabit değil: kullanıcı test build'de adres değiştirdiyse
+      // refresh de YENİ adrese gitmeli (raw axios.post kullanılıyor çünkü apiClient
+      // instance'ının response interceptor'ı burada özyinelemeli 401 döngüsüne yol açar).
+      `${getApiBaseUrl()}/v1/auth/refresh`,
       { refreshToken, deviceFingerprint },
       { timeout: 10_000 },
     );

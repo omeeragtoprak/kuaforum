@@ -7,10 +7,11 @@ import { Screen } from '@/components/Screen';
 import { RoleQuickLogin, DemoRole } from '@/components/RoleQuickLogin';
 import { Colors, FontSize, FontWeight, Layout, Radius, Spacing } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
-import { extractApiError } from '@/api/client';
+import { extractApiError, getApiBaseUrl } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
 import { resolvePostAuthRoute } from '@/lib/consent-gate';
 import { formatPhoneTr, isValidTrMobile, phoneToE164 } from '@/lib/format';
+import { isTestBuild } from '@/lib/runtime-base-url';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -29,6 +30,11 @@ export default function LoginScreen() {
   // edilen "test APK"sında görünür (bkz. builds/README.md). __DEV__ zaten Expo Go /
   // `expo start` geliştirme modunda true olduğu için oradaki davranış değişmiyor.
   const showQuickLogin = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_TEST_LOGIN === '1';
+  // Sunucu adresi değiştirme satırı — hızlı-giriş butonlarından DAHA DAR bir kapsam:
+  // yalnız gerçek test build (EXPO_PUBLIC_ENABLE_TEST_LOGIN=1), __DEV__ dahil değil.
+  // Neden: bu özellik özellikle derlenmiş APK'nın LAN IP değişince ölmesi sorununu
+  // çözmek için var; Expo Go'daki geliştirici zaten .env'i elle değiştirip reload atar.
+  const testBuildActive = isTestBuild();
 
   async function handleSendOtp() {
     if (!isValid) {
@@ -93,6 +99,23 @@ export default function LoginScreen() {
                   dağıtma.
                 </Text>
               </View>
+
+              {testBuildActive && (
+                <View style={styles.serverRow}>
+                  <Text style={styles.serverRowText} numberOfLines={1}>
+                    Sunucu: {getApiBaseUrl()}
+                  </Text>
+                  <Pressable
+                    onPress={() => router.push('/(auth)/server-settings' as never)}
+                    style={styles.serverChangeBtn}
+                    accessibilityRole="button"
+                    accessibilityLabel="Sunucu adresini değiştir"
+                  >
+                    <Text style={styles.serverChangeBtnText}>Değiştir</Text>
+                  </Pressable>
+                </View>
+              )}
+
               <Text style={styles.sectionTitle}>Hızlı Giriş (Demo)</Text>
               <Text style={styles.sectionHint}>
                 Geliştirme modunda — tek dokunuşla rol bazında giriş yap.
@@ -211,6 +234,33 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.semibold,
     color: Colors.text,
     textAlign: 'center',
+  },
+  serverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  serverRowText: { flex: 1, fontSize: FontSize.xs, color: Colors.textSecondary },
+  serverChangeBtn: {
+    minHeight: Layout.tapTargetMin,
+    minWidth: 44,
+    paddingHorizontal: Spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  serverChangeBtnText: {
+    color: Colors.primary,
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.bold,
+    textDecorationLine: 'underline',
   },
   sectionTitle: {
     fontSize: FontSize.lg,

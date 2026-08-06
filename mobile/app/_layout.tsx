@@ -1,4 +1,5 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, View } from 'react-native';
 import { Stack, useGlobalSearchParams, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -8,6 +9,8 @@ import { useAuthStore } from '@/store/auth-store';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
 import { isGuestAccessibleRoute, resolvePostAuthRoute } from '@/lib/consent-gate';
+import { bootstrapApiBaseUrl } from '@/api/client';
+import { Colors } from '@/lib/theme';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -84,16 +87,43 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * Bootstrap tamamlanana kadar (bkz. `bootstrapApiBaseUrl`) gösterilir — "beyaz ekran
+ * yasak" kuralı gereği düz boş View değil, temalı arkaplan + spinner.
+ */
+function BootstrapLoading() {
+  return (
+    <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: Colors.background }}>
+      <ActivityIndicator color={Colors.primary} size="large" accessibilityLabel="Uygulama başlatılıyor" />
+    </View>
+  );
+}
+
 export default function RootLayout() {
+  // Test build'de kalıcı ayarda bir API adresi override'ı varsa, `apiClient`'ın
+  // baseURL'i AuthGate mount olup `hydrate()` ilk isteği atmadan ÖNCE güncellenmeli —
+  // aksi halde ilk istek hâlâ eski (build-time) adrese gider (2026-08-06 olayının kök
+  // nedeni: LAN IP değişti, APK'daki adres ölüydü). Bootstrap resolve olana kadar
+  // AuthGate/Stack hiç MOUNT EDİLMEZ, dolayısıyla hiçbir network isteği atılamaz.
+  const [baseUrlReady, setBaseUrlReady] = useState(false);
+
+  useEffect(() => {
+    bootstrapApiBaseUrl().finally(() => setBaseUrlReady(true));
+  }, []);
+
   return (
     <AppErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
           <QueryClientProvider client={queryClient}>
             <StatusBar style="auto" />
-            <AuthGate>
-              <Stack screenOptions={{ headerShown: false }} />
-            </AuthGate>
+            {baseUrlReady ? (
+              <AuthGate>
+                <Stack screenOptions={{ headerShown: false }} />
+              </AuthGate>
+            ) : (
+              <BootstrapLoading />
+            )}
           </QueryClientProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
