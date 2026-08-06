@@ -73,9 +73,11 @@ public sealed class ProcessPaytrWebhookCommandHandler(
 
         if (request.Succeeded)
         {
+            // RFC-013 C1: booking bu arada Cancelled/NoShow olmuş olsa bile capture ARTIK sessizce
+            // yutulmuyor — orphan capture olarak booking'e bağlanır + refund job enqueue edilir
+            // (bkz. PaymentCompletionService XML doc, terminal durum matrisi).
             var completion = await completionService.CaptureAndConfirmAsync(
-                payment, $"paytr-{request.MerchantOid}", pspMdrMinor: 0,
-                confirmOnlyIfPending: true, ct: cancellationToken);
+                payment, $"paytr-{request.MerchantOid}", pspMdrMinor: 0, ct: cancellationToken);
             if (completion.IsFailure) return Result.Failure<Guid>(completion.Error);
         }
         else if (payment.Status is PaymentStatus.Initiated or PaymentStatus.Authorized)

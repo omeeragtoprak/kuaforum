@@ -54,6 +54,11 @@ public sealed class RefundFlowTests(IntegrationTestFactory factory)
     /// Admin refund succeeds and the actual refunded amount is derived from the booking's
     /// RefundPercentage (12-24h cancel tier = 50%), NOT from anything the caller sent — the
     /// request body only carries PaymentId.
+    ///
+    /// RFC-013 C2 (adversarial review): the hour-based tier only applies to a CONFIRMED booking
+    /// (Booking.ConfirmedAt set) — InitiateAndPayAsync deliberately does not auto-confirm
+    /// (RFC-013 C4), so this test explicitly confirms before forcing the 12-24h window, otherwise
+    /// the unconfirmed-cancel rule (always 100%) would fire instead of the tier this test targets.
     /// </summary>
     [Fact]
     public async Task Admin_refund_amount_is_derived_from_booking_refund_percentage()
@@ -79,6 +84,9 @@ public sealed class RefundFlowTests(IntegrationTestFactory factory)
         adminClient.SetBearer((await adminClient.DevLoginAsync("Admin")).AccessToken);
 
         var (bookingId, paymentId) = await InitiateAndPayAsync(customerClient, ownerClient, 40);
+
+        var confirm = await ownerClient.PostAsync($"/v1/bookings/{bookingId}/confirm", null);
+        Assert.Equal(HttpStatusCode.NoContent, confirm.StatusCode);
 
         // Force the booking into the 12-24h band (50% refund tier) deterministically —
         // avoids relying on wall-clock timing at test-run time.

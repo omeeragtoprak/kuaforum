@@ -132,7 +132,11 @@ public sealed class InitiateBookingCommandHandler(
             request.IsWalkIn ? BookingType.WalkIn : BookingType.Scheduled,
             paymentOptions.Value.CommissionRate,
             requiresOnlinePayment,
-            request.CustomerNote);
+            request.CustomerNote,
+            // RFC-013 M1: shop'un O ANKİ kapora oranı da booking'e snapshot'lanır — yalnız
+            // InitiatePaymentCommand'ın son-çare fallback'i için (bkz. Booking.DepositPercentSnapshot
+            // XML doc). Normal yolda hâlâ canlı shop değeri kullanılır.
+            shop.BookingPolicyDepositPercent);
 
         if (bookingResult.IsFailure) return Result.Failure<InitiateBookingResponse>(bookingResult.Error);
         var booking = bookingResult.Value;

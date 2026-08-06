@@ -63,10 +63,11 @@ public sealed class CompletePaymentCommandHandler(
         }
 
         // Capture → booking Confirm → audit ortak bloğu PaymentCompletionService'te —
-        // PayTR webhook handler'ı ile paylaşılır (RFC-006 T4, kopya bırakma).
+        // PayTR webhook handler'ı ile paylaşılır (RFC-006 T4, kopya bırakma). RFC-013 C1: booking
+        // Pending değilse artık komut düşmez — orphan capture olarak bağlanır + refund enqueue
+        // edilir (bkz. PaymentCompletionService XML doc, terminal durum matrisi).
         var completion = await completionService.CaptureAndConfirmAsync(
-            payment, verification.ProviderTransactionId, verification.PspMdrMinor,
-            confirmOnlyIfPending: false, ct: cancellationToken);
+            payment, verification.ProviderTransactionId, verification.PspMdrMinor, ct: cancellationToken);
         if (completion.IsFailure) return Result.Failure<Guid>(completion.Error);
 
         await db.SaveChangesAsync(cancellationToken);

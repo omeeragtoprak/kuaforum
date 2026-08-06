@@ -31,12 +31,35 @@ public sealed class Booking : AggregateRoot
     /// <summary>
     /// RFC-013 C4: initiate anında hesaplanıp SNAPSHOT'lanır — <c>global
     /// Payment:OnlinePaymentsEnabled &amp;&amp; shop.BookingPolicy.DepositEnabled</c>. Sonradan
-    /// flag/policy değişse bile bu booking'in davranışı değişmez (RFC-006'nın kapora-oranı
-    /// snapshot presedentiyle aynı ilke). <see cref="Infrastructure.BackgroundJobs.ExpirePendingBookingsJob"/>
-    /// bu alana göre dallanır — job'un her tick'te shop policy'sini ayrıca sorgulamasını (N+1)
-    /// engeller.
+    /// flag/policy değişse bile bu booking'in davranışı değişmez. <see
+    /// cref="Infrastructure.BackgroundJobs.ExpirePendingBookingsJob"/> bu alana göre dallanır —
+    /// job'un her tick'te shop policy'sini ayrıca sorgulamasını (N+1) engeller.
     /// </summary>
+    /// <remarks>
+    /// RFC-013 review M2: bu XML doc önceden "RFC-006'nın kapora-oranı snapshot presedentiyle
+    /// aynı ilke" diyordu — YANLIŞTI, o presedent yoktu; <see cref="DepositPercentSnapshot"/>
+    /// eklenene kadar oran hiç snapshot'lanmıyordu, her <c>InitiatePaymentCommand</c> çağrısında
+    /// canlı <c>shop.BookingPolicyDepositPercent</c>'ten okunuyordu (M1 review'ının bulduğu
+    /// "sessiz ceza" da tam bu yüzdendi). Şimdi ikisi ayrı ayrı gerçek: bu alan (bool) her zaman
+    /// snapshot'lıydı; <see cref="DepositPercentSnapshot"/> (oran) RFC-013 M1 fix'iyle eklendi —
+    /// ama yalnız FALLBACK olarak kullanılır (bkz. o alanın XML doc'u), normal yolda oran hâlâ
+    /// canlı okunur.
+    /// </remarks>
     public bool RequiresOnlinePayment { get; private set; }
+
+    /// <summary>
+    /// RFC-013 M1 (adversarial review): <c>InitiateBookingCommandHandler</c>
+    /// anında <c>shop.BookingPolicyDepositPercent</c>'in o anki değeri buraya da yazılır
+    /// (RequiresOnlinePayment true iken; aksi halde null). Normal yolda
+    /// <c>InitiatePaymentCommand</c> kapora tutarını hâlâ CANLI shop değerinden hesaplar — bu
+    /// alan yalnız şu son-çare senaryosunda devreye girer: owner booking oluşturulduktan SONRA
+    /// kaporayı kapatırsa (shop.BookingPolicyDepositEnabled=false → BookingPolicy.Create
+    /// DepositPercent'i null'a normalize eder), müşteri kaporayı ödeyemeden 409 alır ve
+    /// ExpirePendingBookingsJob 30dk sonra randevuyu sessizce iptal eder. Bu snapshot o "sessiz
+    /// ceza"yı önler: canlı değer yoksa (booking.RequiresOnlinePayment true olduğu sürece) bu
+    /// alan devreye girer — "booking'in kendi anındaki taahhüdü kazanır".
+    /// </summary>
+    public decimal? DepositPercentSnapshot { get; private set; }
 
     /// <summary>
     /// RFC-013 C4: kapora/tam-ödeme capture edildiğinde <see cref="MarkPaymentReceived"/> ile
@@ -56,7 +79,8 @@ public sealed class Booking : AggregateRoot
         BookingType bookingType,
         decimal commissionRate,
         bool requiresOnlinePayment = false,
-        string? customerNote = null)
+        string? customerNote = null,
+        decimal? depositPercentSnapshot = null)
     {
         if (services.Count == 0)
             return Result.Failure<Booking>(Error.Validation("En az bir hizmet seçilmeli."));
@@ -81,6 +105,10 @@ public sealed class Booking : AggregateRoot
             TotalAmountMinor = totalAmount,
             PlatformCommissionMinor = commission,
             RequiresOnlinePayment = requiresOnlinePayment,
+            // RFC-013 M1: yalnız requiresOnlinePayment true iken anlamlı — false iken caller ne
+            // gönderirse göndersin null'a normalize edilir (BookingPolicy.Create'in DepositEnabled
+            // false iken DepositPercent'i null'a normalize etmesiyle aynı ilke).
+            DepositPercentSnapshot = requiresOnlinePayment ? depositPercentSnapshot : null,
             CustomerNote = customerNote?.Length > 500 ? customerNote[..500] : customerNote,
         };
 
@@ -121,6 +149,42 @@ public sealed class Booking : AggregateRoot
         Touch();
 
         RaiseDomainEvent(new BookingPaymentReceivedEvent(Id, CustomerId, StylistId, ScheduledAt));
+        return Result.Success();
+    }
+
+    /// <summary>
+    /// RFC-013 C1 (adversarial review — "para sızıntısı"): PSP capture, <see
+    /// cref="MarkPaymentReceived"/>'ın Pending-guard'ından SONRA gerçekleşebilir — owner müşteri
+    /// PayTR ekranındayken reddetmiş (<see cref="Cancel"/> BarberRequested) veya
+    /// <c>ExpirePendingBookingsJob</c> 30dk'da zaten iptal etmiş (PendingTimeout) olabilir; PSP
+    /// webhook'u/mock-complete daha SONRA gelir. Eski davranış: bu durumda capture booking'e HİÇ
+    /// bağlanmıyordu (webhook yolu) veya komut tamamen düşüyordu (mock yolu) — ikisinde de
+    /// <see cref="PaymentId"/> null kalıyor, para PSP'de tahsil edilmiş ama sistemde hiçbir yere
+    /// bağlı olmadığı için <c>BookingRefundService</c> onu asla göremiyordu (yetim para, sessiz
+    /// kayıp, alarm yok).
+    ///
+    /// Bu metot capture'ı Status'ten BAĞIMSIZ olarak booking'e bağlar. Idempotent: PaymentId
+    /// zaten aynı değere eşitse no-op. <see cref="DepositPaidAt"/>'e KASITLI dokunmaz — o alan
+    /// yalnız normal/Pending yolunda ("ödeme alındı, onay bekleniyor" bildirimi) anlamlı; burada
+    /// booking zaten terminal/onaylı bir durumda, farklı bir bildirim/anlam gerektirmez.
+    ///
+    /// Çağıran taraf (<c>PaymentCompletionService</c>) her orphan capture'da bir refund job
+    /// enqueue eder — booking Cancelled/NoShow değilse veya iade tutarı 0'sa
+    /// <c>BookingRefundService</c> zaten kendi no-op'unu üretir (bkz. o sınıfın XML doc'u); bu
+    /// yüzden bu metot burada Cancelled/NoShow'a özel bir dallanma YAPMAZ — "her zaman ekle,
+    /// iade zincirine karar verdirt" ilkesiyle basit tutulur.
+    /// </summary>
+    public Result AttachOrphanPayment(Guid paymentId)
+    {
+        if (PaymentId == paymentId)
+            return Result.Success(); // idempotent no-op
+
+        if (Status == BookingStatus.Pending)
+            return Result.Failure(Error.Validation(
+                "Pending durumundaki randevu için AttachOrphanPayment kullanılmaz — MarkPaymentReceived çağrılmalı."));
+
+        PaymentId = paymentId;
+        Touch();
         return Result.Success();
     }
 
@@ -234,6 +298,18 @@ public sealed class Booking : AggregateRoot
         if (reason == BookingCancellationReason.PendingTimeout) return 100;
         if (reason == BookingCancellationReason.AdminOverride) return 100;
         if (reason == BookingCancellationReason.NoShow) return 0;
+
+        // Kalan tek olasılık: CustomerRequested (bkz. CancelBookingCommand.ResolveReasonAsync —
+        // müşteri/owner-tetikli iptalde reason server-side türetilir, müşteri kendisi
+        // BarberRequested/AdminOverride gönderemez).
+        //
+        // RFC-013 C2 (adversarial review): owner HENÜZ ONAYLAMAMIŞKEN (ConfirmedAt null) müşteri
+        // iptal ederse iade her zaman %100 — saat-bazlı kademe yalnız OwnerConfirm() ile
+        // ONAYLANMIŞ randevularda işler. Eski davranış saat farkına bakıyordu (Status'ten
+        // bağımsız): kuaför daha talebi hiç onaylamamışken bile <12h kala iptalde %0 iade
+        // üretiyordu — kabul edilmemiş bir talep için para alıkonuyordu, RFC-013'ün "kuaför
+        // onaylamadan randevu oluşmaz" ilkesiyle çelişiyordu.
+        if (ConfirmedAt is null) return 100;
 
         var hoursUntil = (ScheduledAt - DateTimeOffset.UtcNow).TotalHours;
         if (hoursUntil >= 24) return 100;

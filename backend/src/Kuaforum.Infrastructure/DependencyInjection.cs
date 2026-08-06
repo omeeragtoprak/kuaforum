@@ -59,15 +59,17 @@ public static class DependencyInjection
         services.Configure<EncryptionOptions>(configuration.GetSection(EncryptionOptions.SectionName));
         services.Configure<Persistence.Seeding.AdminSeederOptions>(configuration.GetSection(Persistence.Seeding.AdminSeederOptions.SectionName));
 
-        // RFC-006 kapora planı: komisyon + kapora oranı config-driven. DepositRate < CommissionRate
-        // startup'ta fail-fast — production'da yanlış config'le kapora'nın platform komisyonunu
-        // karşılamaması sessizce deploy edilmesin diye.
+        // RFC-013 M3 (adversarial review): eski DepositRate >= CommissionRate invariantı
+        // ANLAMSIZLAŞTI ve yanlış-pozitif boot failure üretiyordu — kaldırıldı. RFC-012 ile
+        // komisyon artık ödeme anında hiç kesilmiyor (InitiatePaymentCommand'da
+        // platformCommissionMinor sabit 0 — ay sonu CommissionStatement'a taşındı), RFC-013 C3
+        // ile kapora oranı da global DepositRate DEĞİL, per-shop shop.BookingPolicy.DepositPercent
+        // (bkz. PaymentOptions.DepositRate XML doc — artık kullanılmayan, geriye dönük alan).
+        // "Kapora, komisyonu karşılamalı" invariantının artık karşılaştıracak iki canlı değeri yok.
         services.AddOptions<PaymentOptions>()
             .Bind(configuration.GetSection(PaymentOptions.SectionName))
-            .Validate(o => o.DepositRate >= o.CommissionRate,
-                "Payment:DepositRate, Payment:CommissionRate'ten küçük olamaz (RFC-006 kapora ≥ komisyon invariantı).")
-            .Validate(o => o.CommissionRate > 0 && o.CommissionRate <= 0.5m && o.DepositRate > 0 && o.DepositRate <= 1,
-                "Payment:CommissionRate (0, 0.5] aralığında olmalı (Booking.Initiate domain guard'ı ile uyumlu); Payment:DepositRate (0, 1] aralığında olmalı.")
+            .Validate(o => o.CommissionRate > 0 && o.CommissionRate <= 0.5m,
+                "Payment:CommissionRate (0, 0.5] aralığında olmalı (Booking.Initiate domain guard'ı ile uyumlu).")
             .ValidateOnStart();
 
         services.AddHttpClient();

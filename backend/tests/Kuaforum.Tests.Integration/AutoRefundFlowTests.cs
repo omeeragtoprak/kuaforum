@@ -161,8 +161,15 @@ public sealed class AutoRefundFlowTests(IntegrationTestFactory factory)
     }
 
     /// <summary>
-    /// &lt;12h customer cancel → RefundPercentage 0 → no refund owed. The job must not create a
-    /// Refund row (and must not even call the PSP).
+    /// &lt;12h customer cancel of a CONFIRMED booking → RefundPercentage 0 → no refund owed. The
+    /// job must not create a Refund row (and must not even call the PSP).
+    ///
+    /// RFC-013 C2 (adversarial review): the hour-based scale only applies once the owner has
+    /// confirmed (Booking.ConfirmedAt set) — an unconfirmed booking's customer-cancel is always
+    /// 100% regardless of timing (see BookingTests.Cancel_CustomerRequested_NeverConfirmed_*).
+    /// This test's payment-completion helper (InitiateAndPayAsync) deliberately does NOT
+    /// auto-confirm (RFC-013 C4 — capture no longer confirms), so an explicit OwnerConfirm call
+    /// is required here to exercise the tier this test is actually about.
     /// </summary>
     [Fact]
     public async Task Cancel_less_than_12h_before_produces_no_refund()
@@ -176,6 +183,9 @@ public sealed class AutoRefundFlowTests(IntegrationTestFactory factory)
         ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
 
         var (bookingId, paymentId) = await InitiateAndPayAsync(customerClient, ownerClient, 60);
+
+        var confirm = await ownerClient.PostAsync($"/v1/bookings/{bookingId}/confirm", null);
+        Assert.Equal(HttpStatusCode.NoContent, confirm.StatusCode);
 
         // Force <12h out deterministically (avoids wall-clock flakiness).
         using (var scope = factory.Services.CreateScope())

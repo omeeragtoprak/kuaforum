@@ -820,6 +820,11 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("deposit_paid_at");
 
+                    b.Property<decimal?>("DepositPercentSnapshot")
+                        .HasPrecision(5, 4)
+                        .HasColumnType("numeric(5,4)")
+                        .HasColumnName("deposit_percent_snapshot");
+
                     b.Property<Guid?>("PaymentId")
                         .HasColumnType("uuid")
                         .HasColumnName("payment_id");

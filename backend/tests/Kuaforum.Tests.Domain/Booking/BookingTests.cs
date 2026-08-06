@@ -159,6 +159,53 @@ public class BookingTests
         Assert.Equal(expectedPct, b.RefundPercentage);
     }
 
+    // ── RFC-013 C2 (adversarial review): onaysız randevuda müşteri iptali ───
+
+    /// <summary>
+    /// Owner never called OwnerConfirm() — ConfirmedAt is null. Even though scheduled time is
+    /// under 12h away (which would be 0% for a CONFIRMED booking), the customer cancel must be
+    /// 100% — an unaccepted request can't keep the customer's money. Reviewer probe: the old
+    /// hour-only scale ignored Status entirely and returned 0% here.
+    /// </summary>
+    [Fact]
+    public void Cancel_CustomerRequested_NeverConfirmed_LessThan12h_Returns100Percent()
+    {
+        var b = Initiate(DateTimeOffset.UtcNow.AddHours(6)); // <12h, but never confirmed
+        var r = b.Cancel(BookingCancellationReason.CustomerRequested);
+        Assert.True(r.IsSuccess);
+        Assert.Equal(100, b.RefundPercentage);
+    }
+
+    [Theory]
+    [InlineData(30 * 24)] // far in the future
+    [InlineData(18)]      // would be 50% if confirmed
+    [InlineData(6)]       // would be 0% if confirmed
+    [InlineData(0.1)]     // minutes away, would be 0% if confirmed
+    public void Cancel_CustomerRequested_NeverConfirmed_AlwaysReturns100Percent_RegardlessOfTiming(double hoursOut)
+    {
+        var b = Initiate(DateTimeOffset.UtcNow.AddHours(hoursOut));
+        var r = b.Cancel(BookingCancellationReason.CustomerRequested);
+        Assert.True(r.IsSuccess);
+        Assert.Equal(100, b.RefundPercentage);
+    }
+
+    /// <summary>
+    /// Regression guard for the same fix: once OwnerConfirm() DID run, the pre-existing hour-based
+    /// scale must still apply exactly as before (this is the case the earlier
+    /// Cancel_CustomerRequested_* tests already cover with OwnerConfirm() called first — this one
+    /// makes the <12h "0%" boundary explicit alongside the never-confirmed 100% case above so the
+    /// contrast is obvious in one place).
+    /// </summary>
+    [Fact]
+    public void Cancel_CustomerRequested_Confirmed_LessThan12h_StillReturnsZeroPercent()
+    {
+        var b = Initiate(DateTimeOffset.UtcNow.AddHours(6));
+        b.OwnerConfirm();
+        var r = b.Cancel(BookingCancellationReason.CustomerRequested);
+        Assert.True(r.IsSuccess);
+        Assert.Equal(0, b.RefundPercentage);
+    }
+
     [Fact]
     public void Cancel_AfterCompleted_Fails()
     {
@@ -356,5 +403,76 @@ public class BookingTests
         Assert.Equal(BookingStatus.Confirmed, b.Status);
         Assert.Equal(paymentId, b.PaymentId); // MarkPaymentReceived'ın set ettiği değer korunuyor
         Assert.Contains(b.DomainEvents, e => e is BookingConfirmedEvent);
+    }
+
+    // ── RFC-013 C1 (adversarial review): AttachOrphanPayment — capture booking'in Pending ────
+    // ── guard'ını kaybettiği ANDAN SONRA gelirse para yetim kalmasın ─────────────────────────
+
+    [Fact]
+    public void AttachOrphanPayment_OnCancelledBooking_SetsPaymentId()
+    {
+        var b = Initiate();
+        b.Cancel(BookingCancellationReason.BarberRequested); // owner reddetti, henüz PaymentId yok
+        var paymentId = Guid.NewGuid();
+
+        var r = b.AttachOrphanPayment(paymentId);
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(paymentId, b.PaymentId);
+        Assert.Equal(BookingStatus.Cancelled, b.Status); // Status'e dokunmaz
+    }
+
+    [Fact]
+    public void AttachOrphanPayment_OnNoShowBooking_SetsPaymentId()
+    {
+        var zeroDurationService = new[] { (Guid.NewGuid(), "Hızlı Kontrol", 0, 0, 5000L) };
+        var b = Kuaforum.Domain.Modules.Booking.Booking.Initiate(
+            customerId: Guid.NewGuid(), barberShopId: Guid.NewGuid(), stylistId: Guid.NewGuid(),
+            scheduledAt: DateTimeOffset.UtcNow.AddSeconds(-30),
+            services: zeroDurationService, bookingType: BookingType.Scheduled, commissionRate: 0.10m).Value;
+        b.OwnerConfirm();
+        b.MarkNoShow();
+        var paymentId = Guid.NewGuid();
+
+        var r = b.AttachOrphanPayment(paymentId);
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(paymentId, b.PaymentId);
+    }
+
+    [Fact]
+    public void AttachOrphanPayment_OnPendingBooking_Fails()
+    {
+        // Pending'de doğru yol MarkPaymentReceived'dır — AttachOrphanPayment kasıtlı reddeder.
+        var b = Initiate();
+        var r = b.AttachOrphanPayment(Guid.NewGuid());
+        Assert.True(r.IsFailure);
+    }
+
+    [Fact]
+    public void AttachOrphanPayment_CalledTwiceWithSamePaymentId_IsIdempotentNoOp()
+    {
+        var b = Initiate();
+        b.Cancel(BookingCancellationReason.BarberRequested);
+        var paymentId = Guid.NewGuid();
+        b.AttachOrphanPayment(paymentId);
+
+        var second = b.AttachOrphanPayment(paymentId);
+
+        Assert.True(second.IsSuccess);
+        Assert.Equal(paymentId, b.PaymentId);
+    }
+
+    [Fact]
+    public void AttachOrphanPayment_DoesNotSetDepositPaidAt()
+    {
+        // DepositPaidAt yalnız normal/Pending yolunda (MarkPaymentReceived) anlamlı — orphan
+        // capture'da bilerek set edilmez (bkz. AttachOrphanPayment XML doc).
+        var b = Initiate();
+        b.Cancel(BookingCancellationReason.BarberRequested);
+
+        b.AttachOrphanPayment(Guid.NewGuid());
+
+        Assert.Null(b.DepositPaidAt);
     }
 }

@@ -108,10 +108,22 @@ public sealed class InitiatePaymentCommandHandler(
         long onlineAmountMinor;
         if (request.Kind == PaymentKind.Deposit)
         {
-            if (!shop.BookingPolicyDepositEnabled || shop.BookingPolicyDepositPercent is not { } shopDepositRate)
+            var shopDepositRate = shop.BookingPolicyDepositEnabled ? shop.BookingPolicyDepositPercent : null;
+
+            // RFC-013 M1 (adversarial review — "sessiz ceza"): canlı shop policy'si booking
+            // oluşturulduktan SONRA kapanmış olabilir (owner kaporayı kapattı). Live okuma
+            // başarısızsa ama booking'in KENDİ Initiate anındaki taahhüdü (RequiresOnlinePayment)
+            // hâlâ true ise, o anki oranın snapshot'ı (Booking.DepositPercentSnapshot) son çare
+            // olarak devreye girer — aksi halde müşteri 409 alır, ödeyemez, 30dk sonra
+            // ExpirePendingBookingsJob randevuyu sessizce iptal eder (booking'in kontrolü dışında
+            // bir owner kararı yüzünden). Şop hâlâ kapora kabul ediyorsa (normal yol) bu satıra
+            // hiç girilmez — canlı değer her zaman kazanır.
+            shopDepositRate ??= booking.RequiresOnlinePayment ? booking.DepositPercentSnapshot : null;
+
+            if (shopDepositRate is not { } rate)
                 return Result.Failure<InitiatePaymentResponse>(Error.Conflict("Bu işletme kapora ödemesi kabul etmiyor."));
 
-            onlineAmountMinor = PaymentAmounts.CalculateDepositMinor(booking.TotalAmountMinor, shopDepositRate);
+            onlineAmountMinor = PaymentAmounts.CalculateDepositMinor(booking.TotalAmountMinor, rate);
         }
         else
         {

@@ -38,6 +38,8 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         // RFC-013 C4: ödeme-sonra-onay ayrımı.
         builder.Property(x => x.RequiresOnlinePayment).HasColumnName("requires_online_payment");
         builder.Property(x => x.DepositPaidAt).HasColumnName("deposit_paid_at");
+        // RFC-013 M1: shop.BookingPolicyDepositPercent ile aynı hassasiyet (bkz. BarberConfigurations).
+        builder.Property(x => x.DepositPercentSnapshot).HasColumnName("deposit_percent_snapshot").HasPrecision(5, 4);
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");
