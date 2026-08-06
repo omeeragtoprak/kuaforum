@@ -1,0 +1,120 @@
+import {
+  BookingPolicyDraft,
+  BookingPolicyDto,
+  draftFromDto,
+  hasPolicyChanges,
+  validateBookingPolicy,
+} from '@/lib/booking-policy';
+
+const BOUNDS = { depositPercentMin: 0.05, depositPercentMax: 0.3 };
+
+const BASE_DTO: BookingPolicyDto = {
+  depositEnabled: false,
+  depositPercent: null,
+  effectiveDepositActive: false,
+  maxPendingPerCustomer: 2,
+  minDaysBetweenBookings: null,
+  maxBookingsPerMonth: null,
+  depositPercentMin: BOUNDS.depositPercentMin,
+  depositPercentMax: BOUNDS.depositPercentMax,
+};
+
+function baseDraft(overrides: Partial<BookingPolicyDraft> = {}): BookingPolicyDraft {
+  return {
+    depositEnabled: false,
+    depositPercent: null,
+    maxPendingPerCustomer: 2,
+    minDaysBetweenBookingsEnabled: false,
+    minDaysBetweenBookings: null,
+    maxBookingsPerMonthEnabled: false,
+    maxBookingsPerMonth: null,
+    ...overrides,
+  };
+}
+
+describe('validateBookingPolicy', () => {
+  it('aralık dışı kapora yüzdesi hata verir', () => {
+    const draft = baseDraft({ depositEnabled: true, depositPercent: 0.5 });
+    const errors = validateBookingPolicy(draft, BOUNDS);
+    expect(errors.depositPercent).toBe('Kapora oranı %5 ile %30 arasında olmalı.');
+  });
+
+  it('kapora kapalıyken yüzde ne olursa olsun yok sayılır (aralık dışı bile olsa hata yok)', () => {
+    const draft = baseDraft({ depositEnabled: false, depositPercent: 0.99 });
+    const errors = validateBookingPolicy(draft, BOUNDS);
+    expect(errors.depositPercent).toBeUndefined();
+  });
+
+  it('kapora açıkken yüzde girilmemişse hata verir', () => {
+    const draft = baseDraft({ depositEnabled: true, depositPercent: null });
+    const errors = validateBookingPolicy(draft, BOUNDS);
+    expect(errors.depositPercent).toBeDefined();
+  });
+
+  it('kapora aralığın tam sınırlarında (min/max) geçerlidir', () => {
+    const min = baseDraft({ depositEnabled: true, depositPercent: BOUNDS.depositPercentMin });
+    const max = baseDraft({ depositEnabled: true, depositPercent: BOUNDS.depositPercentMax });
+    expect(validateBookingPolicy(min, BOUNDS).depositPercent).toBeUndefined();
+    expect(validateBookingPolicy(max, BOUNDS).depositPercent).toBeUndefined();
+  });
+
+  it('bekleyen randevu limiti 1-3 dışındaysa hata verir (0 ve 4 için)', () => {
+    expect(validateBookingPolicy(baseDraft({ maxPendingPerCustomer: 0 }), BOUNDS).maxPendingPerCustomer).toBeDefined();
+    expect(validateBookingPolicy(baseDraft({ maxPendingPerCustomer: 4 }), BOUNDS).maxPendingPerCustomer).toBeDefined();
+    expect(validateBookingPolicy(baseDraft({ maxPendingPerCustomer: 3 }), BOUNDS).maxPendingPerCustomer).toBeUndefined();
+  });
+
+  it('min gün limiti kapalıyken 0 veya 999 girilse bile yok sayılır', () => {
+    const draft = baseDraft({ minDaysBetweenBookingsEnabled: false, minDaysBetweenBookings: 999 });
+    expect(validateBookingPolicy(draft, BOUNDS).minDaysBetweenBookings).toBeUndefined();
+  });
+
+  it('min gün limiti açıkken 366 (tavan üstü) hata verir, 365 (tavanda) geçerlidir', () => {
+    const tooHigh = baseDraft({ minDaysBetweenBookingsEnabled: true, minDaysBetweenBookings: 366 });
+    const atCeiling = baseDraft({ minDaysBetweenBookingsEnabled: true, minDaysBetweenBookings: 365 });
+    expect(validateBookingPolicy(tooHigh, BOUNDS).minDaysBetweenBookings).toBeDefined();
+    expect(validateBookingPolicy(atCeiling, BOUNDS).minDaysBetweenBookings).toBeUndefined();
+  });
+
+  it('aylık limit açıkken 101 (tavan üstü) hata verir, 100 (tavanda) geçerlidir', () => {
+    const tooHigh = baseDraft({ maxBookingsPerMonthEnabled: true, maxBookingsPerMonth: 101 });
+    const atCeiling = baseDraft({ maxBookingsPerMonthEnabled: true, maxBookingsPerMonth: 100 });
+    expect(validateBookingPolicy(tooHigh, BOUNDS).maxBookingsPerMonth).toBeDefined();
+    expect(validateBookingPolicy(atCeiling, BOUNDS).maxBookingsPerMonth).toBeUndefined();
+  });
+});
+
+describe('hasPolicyChanges', () => {
+  it('sunucudan gelenle birebir aynı draft için değişiklik yok der', () => {
+    const draft = draftFromDto(BASE_DTO);
+    expect(hasPolicyChanges(BASE_DTO, draft)).toBe(false);
+  });
+
+  it('kapora açılırsa değişiklik tespit eder', () => {
+    const draft = draftFromDto(BASE_DTO);
+    draft.depositEnabled = true;
+    draft.depositPercent = 0.15;
+    expect(hasPolicyChanges(BASE_DTO, draft)).toBe(true);
+  });
+
+  it('bekleyen randevu limiti değişirse değişiklik tespit eder', () => {
+    const draft = draftFromDto(BASE_DTO);
+    draft.maxPendingPerCustomer = 3;
+    expect(hasPolicyChanges(BASE_DTO, draft)).toBe(true);
+  });
+
+  it('kapalı bir toggle altındaki değer değişse bile (toggle kapalı kaldığı sürece) değişiklik sayılmaz', () => {
+    const draft = draftFromDto(BASE_DTO);
+    // minDaysBetweenBookingsEnabled false kalıyor ama arkadaki ham değeri değiştiriyoruz —
+    // draftToPayload bunu null'a normalize ettiği için sunucuya giden payload aynı kalır.
+    draft.minDaysBetweenBookings = 30;
+    expect(hasPolicyChanges(BASE_DTO, draft)).toBe(false);
+  });
+
+  it('float yuvarlama farkı yüzünden yanlış pozitif vermez (0.15 vs 15/100)', () => {
+    const dto: BookingPolicyDto = { ...BASE_DTO, depositEnabled: true, depositPercent: 0.15 };
+    const draft = draftFromDto(dto);
+    draft.depositPercent = 15 / 100;
+    expect(hasPolicyChanges(dto, draft)).toBe(false);
+  });
+});

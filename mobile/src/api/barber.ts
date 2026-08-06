@@ -1,4 +1,5 @@
 import { apiClient } from './client';
+import type { BookingPolicyDto, BookingPolicyPayload } from '@/lib/booking-policy';
 
 export type BarberShop = {
   id: string;
@@ -256,5 +257,15 @@ export const BarberApi = {
   },
   async deleteTimeOff(stylistId: string, timeOffId: string): Promise<void> {
     await apiClient.delete(`/v1/stylists/${stylistId}/time-offs/${timeOffId}`);
+  },
+
+  // RFC-013 C5: owner kendi shop'unun kapora + anti-spam ("randevu ayarları") politikası.
+  async getBookingPolicy(): Promise<BookingPolicyDto> {
+    const res = await apiClient.get<BookingPolicyDto>('/v1/owner/barber-shop/booking-policy');
+    return res.data;
+  },
+  async updateBookingPolicy(body: BookingPolicyPayload): Promise<BookingPolicyDto> {
+    const res = await apiClient.put<BookingPolicyDto>('/v1/owner/barber-shop/booking-policy', body);
+    return res.data;
   },
 };

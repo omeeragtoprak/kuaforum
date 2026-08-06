@@ -154,6 +154,8 @@ export default function BarberProfileScreen() {
           <Divider />
           <ListRow icon="✂️" label="Hizmetler" hint="CRUD" onPress={() => router.push('/(barber)/services')} />
           <Divider />
+          <ListRow icon="💳" label="Randevu Ayarları" hint="Kapora & limitler" onPress={() => router.push('/(barber)/booking-settings')} />
+          <Divider />
           <ListRow icon="💬" label="Yorumlar" hint="Görüntüle & cevapla" onPress={() => router.push('/(barber)/reviews')} />
         </Card>
 
