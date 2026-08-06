@@ -2,6 +2,15 @@
 
 > Bu rehber, mobil uygulamayı yerel makinede ve telefondan test edebilmek için tüm adımları içerir.
 
+## Kısayol: tek komutla backend + Docker
+
+Repo kökünde `./dev-up.sh` — Docker dev servislerini (Postgres, Redis, Meilisearch,
+Seq) ayağa kaldırır, LAN IP'ni büyük punto basar, backend'i `0.0.0.0:5100`'de
+başlatır ve OTP kodlarını ("MOCK SMS...") ayrı renkli satırda akıtır. Ctrl+C ile
+backend durur (Docker AYAKTA kalır). Tamamen kapatmak için `./dev-down.sh`. Aşağıdaki
+2. ve 3. bölümler bu script'in elle yaptığı adımların dökümüdür — script'i kullanmak
+istemezsen veya bir adım patlarsa oraya bak.
+
 ## 1. Önkoşullar (sen yapacaksın)
 
 ```bash

@@ -80,5 +80,8 @@ logs/
 # Lokal compose override'ları (port remap vb. makineye özel)
 infra/docker-compose.override.yml
 
+# dev-up.sh / dev-down.sh çalışma zamanı state'i
+.dev-up.pid
+
 # Manuel Android APK build çıktıları (README.md hariç — o versiyonlanır)
 builds/*.apk

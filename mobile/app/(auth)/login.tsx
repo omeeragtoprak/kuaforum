@@ -5,7 +5,7 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Screen } from '@/components/Screen';
 import { RoleQuickLogin, DemoRole } from '@/components/RoleQuickLogin';
-import { Colors, FontSize, FontWeight, Layout, Spacing } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Layout, Radius, Spacing } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
@@ -23,6 +23,12 @@ export default function LoginScreen() {
   const [quickRole, setQuickRole] = useState<DemoRole | null>(null);
 
   const isValid = isValidTrMobile(phone);
+
+  // Test kolaylığı: normal/store build'de (env yok) hızlı-giriş GİZLİ kalır — mevcut
+  // güvenlik davranışı korunur. Yalnız `EXPO_PUBLIC_ENABLE_TEST_LOGIN=1` ile prebuild
+  // edilen "test APK"sında görünür (bkz. builds/README.md). __DEV__ zaten Expo Go /
+  // `expo start` geliştirme modunda true olduğu için oradaki davranış değişmiyor.
+  const showQuickLogin = __DEV__ || process.env.EXPO_PUBLIC_ENABLE_TEST_LOGIN === '1';
 
   async function handleSendOtp() {
     if (!isValid) {
@@ -78,9 +84,15 @@ export default function LoginScreen() {
           <Text style={styles.tagline}>Türkiye'nin kuaför pazaryeri</Text>
         </View>
 
-        {__DEV__ && (
+        {showQuickLogin && (
           <>
             <View style={styles.section}>
+              <View style={styles.testBuildBanner} accessibilityRole="text">
+                <Text style={styles.testBuildBannerText}>
+                  ⚠️ TEST BUILD — bu ekran yalnız iç test için. Gerçek kullanıcıya
+                  dağıtma.
+                </Text>
+              </View>
               <Text style={styles.sectionTitle}>Hızlı Giriş (Demo)</Text>
               <Text style={styles.sectionHint}>
                 Geliştirme modunda — tek dokunuşla rol bazında giriş yap.
@@ -185,6 +197,21 @@ const styles = StyleSheet.create({
   logo: { fontSize: FontSize.display, fontWeight: FontWeight.bold, color: Colors.primary, letterSpacing: -1 },
   tagline: { fontSize: FontSize.md, color: Colors.textSecondary, marginTop: 4 },
   section: { marginBottom: Spacing.xl },
+  testBuildBanner: {
+    backgroundColor: Colors.warningSoft,
+    borderRadius: Radius.md,
+    borderWidth: 1,
+    borderColor: Colors.warning,
+    paddingVertical: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    marginBottom: Spacing.md,
+  },
+  testBuildBannerText: {
+    fontSize: FontSize.xs,
+    fontWeight: FontWeight.semibold,
+    color: Colors.text,
+    textAlign: 'center',
+  },
   sectionTitle: {
     fontSize: FontSize.lg,
     fontWeight: FontWeight.semibold,
