@@ -88,6 +88,42 @@
 
 ---
 
+## G10. Test APK'sındaki API adresi derleme anında gömülü — ağ değişince uygulama tümüyle ölüyor
+
+**Kanıt (canlı, 2026-08-06):** Geliştirme makinesinin LAN IP'si `192.168.2.15` → `192.168.1.11` olarak değişti (router/ağ değişimi). `EXPO_PUBLIC_API_URL` JS bundle'a derleme anında gömüldüğü için founder'ın telefonundaki APK'nın **tüm ekranları** "sunucuya ulaşılamadı" vermeye başladı. Aynı gün içinde ikinci kez yaşandı (ilki Android cleartext engeliydi, `bc388cb` ile çözüldü).
+
+**Etki:** Orta — yalnız test sürecini vurur, üretimi değil (üretimde sabit HTTPS alan adı olacak). Ama founder'ın elle test döngüsünü tamamen durdurduğu için pratik maliyeti yüksek: her ağ değişiminde ~75 MB'lık APK yeniden derlenip aktarılmalı.
+
+**Çözüm:** Test build'lerinde (`EXPO_PUBLIC_ENABLE_TEST_LOGIN=1`) API taban adresi çalışma zamanında değiştirilebilir olmalı — kalıcı ayar → derleme varsayılanı öncelik zinciri, giriş ekranından erişilebilen adres ekranı, "bağlantıyı test et", emülatör için `10.0.2.2` kısayolu. Production build'lerinde kalıcı ayar **okunmamalı** (aksi halde saldırgan kontrolündeki bir sunucuya yönlendirme primitifi doğar).
+
+**Durum:** Çözüm 2026-08-06'da uygulandı (`mobile/src/lib/runtime-base-url.ts`, `mobile/app/(auth)/server-settings.tsx`). Bu madde tarihçe ve regresyon uyarısı olarak duruyor: **bu davranışın production'a sızmadığını doğrulayan jest testi silinmemeli.**
+
+---
+
+## G11. Yükleme durumlarında iskelet (skeleton) yerine düz "Yükleniyor..." metni
+
+**Kanıt (emülatör, 2026-08-06):** Kuaför detay ekranı yüklenirken ekranın tamamı boş, ortada tek satır "Yükleniyor..." metni görünüyor. Direktif E4 teslim kriteri açıkça "skeleton — spinner değil" diyor; düz metin ikisinden de zayıf.
+
+**Etki:** Düşük-Orta — işlevi bozmuyor ama algılanan hızı düşürüyor ve "yapay zekâ ürünü gibi görünme" riskini artırıyor (direktif E3).
+
+**Çözüm:** Liste/detay ekranları için içerik iskeletleri. Önce en çok görülen üç ekran: kuaför detay, keşfet listesi, randevularım.
+
+**Efor:** 0.5 gün.
+
+---
+
+## G12. "Bulunamadı" ile "sunucuya ulaşılamadı" aynı ekranda birleşiyor
+
+**Kanıt (emülatör, 2026-08-06):** Backend yeniden başlatılırken açılan kuaför detayında ekran "**Bulunamadı** — Bu kuaför yüklenemedi" gösterdi. Oysa kuaför silinmemişti; sunucu geçici olarak erişilemezdi. Kullanıcıya yanlış zihinsel model veriyor: "bu kuaför artık yok" sanıp geri dönüyor, oysa doğru aksiyon "tekrar dene".
+
+**Etki:** Orta — yanlış hata mesajı, kullanıcıyı yanlış aksiyona yönlendiriyor. `docs/GAP-ANALYSIS.md` P2-14'te "404 disambiguation" olarak kayıtlıydı; bu madde **canlı tekrar üretim kanıtını** ekliyor ve önceliği yükseltiyor.
+
+**Çözüm:** Hata durumunu üçe ayır: (a) 404 → "Bu kuaför artık yayında değil" + listeye dön, (b) ağ/5xx → "Bağlantı kurulamadı" + **tekrar dene** butonu, (c) çevrimdışı → çevrimdışı durumu. Direktif E4 zaten üçünü de zorunlu kılıyor.
+
+**Efor:** 0.5 gün (tüm ekranlarda ortak hata bileşeni olarak).
+
+---
+
 ## Özet Tablo
 
 | # | Başlık | Etki | Efor |
@@ -101,6 +137,9 @@
 | G7 | "Stylist" policy/rol isimlendirmesi yanıltıcı — founder kararı bekliyor | Düşük | 1 saat (karar) + değişken |
 | G8 | Bildirim idempotency merkezi değil (kısmi doğrulama) | Düşük `[unverified]` | 2-3 saat audit |
 | G9 | PSP iade retry-tükenince alarm mekanizması doğrulanmadı | Orta `[unverified]` | 1-2 saat doğrulama |
+| G10 | Test APK'sında API adresi derleme anında gömülü (ağ değişince ölüyor) | Orta | ✅ çözüldü 2026-08-06 |
+| G11 | Yükleme durumlarında skeleton yerine düz "Yükleniyor..." metni | Düşük-Orta | 0.5 gün |
+| G12 | "Bulunamadı" ile "sunucuya ulaşılamadı" ayrışmıyor | Orta | 0.5 gün |
 
 ---
 
