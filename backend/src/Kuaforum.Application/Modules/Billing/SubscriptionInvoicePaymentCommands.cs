@@ -153,11 +153,30 @@ public sealed class CompleteSubscriptionInvoicePaymentCommandHandler(
             return Result.Failure<Guid>(Error.Validation(verification.FailureReason ?? "Ödeme başarısız oldu."));
         }
 
-        var captureResult = invoicePayment.Capture(verification.ProviderTransactionId);
-        if (captureResult.IsFailure) return Result.Failure<Guid>(captureResult.Error);
-
         var invoice = await ctx.Set<SubscriptionInvoice>().FirstOrDefaultAsync(s => s.Id == invoicePayment.SubscriptionInvoiceId, ct);
         if (invoice is null) return Result.Failure<Guid>(Error.NotFound("SubscriptionInvoice"));
+
+        // Review fix (2026-08-07): stale-session tutar koruması — RFC-006'nın
+        // ProcessPaytrWebhookCommand'ındaki "webhook tutarı payment.GrossAmountMinor'la
+        // uyuşmuyorsa capture etme" desenin aynısı, burada invoice tarafı için. invoicePayment.
+        // AmountMinor Initiate anında invoice.AmountMinor'dan SNAPSHOT'landı (bkz.
+        // InitiateSubscriptionInvoicePaymentCommandHandler); checkout açıkken admin
+        // AdjustSubscriptionInvoiceAmountCommand ile tutarı değiştirmiş olabilir. PSP zaten o
+        // ESKİ snapshot tutarını doğruladı (verification.Succeeded) — ama invoice bu arada
+        // değiştiyse capture'ı invoice'a Paid olarak yazmak, tahsil edilen tutarın invoice'un
+        // GÜNCEL beklentisiyle eşleştiği yanılsamasını yaratır. Fail-closed: tamamlama reddedilir.
+        if (invoicePayment.AmountMinor != invoice.AmountMinor)
+        {
+            invoicePayment.Fail("Fatura tutarı ödeme başlatıldıktan sonra değişti — stale-session koruması.");
+            await audit.RecordAsync("owner.subscription_invoice_payment.stale_amount_rejected", nameof(SubscriptionInvoicePayment), invoicePayment.Id.ToString(),
+                payload: new { invoiceId = invoice.Id, paymentAmountMinor = invoicePayment.AmountMinor, currentInvoiceAmountMinor = invoice.AmountMinor },
+                ct: ct);
+            await db.SaveChangesAsync(ct);
+            return Result.Failure<Guid>(Error.Conflict("Fatura tutarı ödeme sırasında değişti, bu ödeme tamamlanamadı. Lütfen yeniden başlatın."));
+        }
+
+        var captureResult = invoicePayment.Capture(verification.ProviderTransactionId);
+        if (captureResult.IsFailure) return Result.Failure<Guid>(captureResult.Error);
 
         // RFC-012 madde 4: online tahsilat PSP tarafından doğrulandığı için fatura Paid'e
         // geçer — ama BarberShop.Reactivate() burada da ÇAĞRILMAZ, admin ayrı aksiyon alır

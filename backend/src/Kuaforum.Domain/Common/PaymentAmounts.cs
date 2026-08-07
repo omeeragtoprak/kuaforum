@@ -15,9 +15,11 @@ namespace Kuaforum.Domain.Common;
 /// SubscriptionInvoice tutarı doğrudan SubscriptionPlan.PriceMinor'dır (bkz. SubscriptionInvoice.
 /// Create), oran×matrah hesabı yok. Bu metod yalnızca Booking.PlatformCommissionMinor (vestigial
 /// alan, hiçbir faturaya taşınmaz — bkz. Booking.cs XML doc, InitiatePaymentCommand'ın
-/// platformCommissionMinor'ı sabit 0 göndermesi) için PaymentOptions.CommissionRate config'i
-/// üzerinden hâlâ çağrılıyor; kaldırılmadı çünkü Booking aggregate'i ve ona bağlı pin testleri bu
-/// paketin kapsamı dışında.
+/// platformCommissionMinor'ı sabit 0 göndermesi) için çağrılıyor; kaldırılmadı çünkü Booking
+/// aggregate'i ve ona bağlı pin testleri bu paketin kapsamı dışında. Review fix (2026-08-07):
+/// çağıran taraf (InitiateBookingCommand) artık config'ten DEĞİL sabit 0m literalinden
+/// besleniyor — eski Payment:CommissionRate config anahtarı kaldırıldı (bkz. Infrastructure.
+/// DependencyInjection.AddInfrastructure yorumu), yani pratikte bu metod artık hep 0 üretir.
 ///
 /// Precondition: totalMinor >= 0 (negatifte ceil/round yön değiştirir).
 /// </summary>

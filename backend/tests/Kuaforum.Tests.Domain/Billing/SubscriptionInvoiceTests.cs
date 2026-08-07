@@ -262,6 +262,31 @@ public class SubscriptionInvoiceTests
         Assert.True(result.IsFailure);
     }
 
+    // Review fix (2026-08-07): 0'a çekilen fatura asla tahsil edilemez ama önceden "geçerli"
+    // sayılıyordu (validator GreaterThanOrEqualTo(0) + domain `< 0` guard'ı — ikisi de 0'ı
+    // kabul ediyordu). Domain, Application validator'ının tek savunma hattı olamayacağı için
+    // burada da reddediyor.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(-100_00)]
+    public void AdjustAmount_ZeroOrNegative_Fails(long newAmountMinor)
+    {
+        var invoice = Create();
+        var result = invoice.AdjustAmount(newAmountMinor, "Yeterince uzun bir gerekçe metni.");
+        Assert.True(result.IsFailure);
+        Assert.Equal(invoice.PlanPriceMinor, invoice.AmountMinor); // reddedilince tutar DEĞİŞMEMİŞ olmalı
+    }
+
+    [Fact]
+    public void AdjustAmount_PositiveAmount_Succeeds()
+    {
+        var invoice = Create();
+        var result = invoice.AdjustAmount(1, "Yeterince uzun bir gerekçe metni.");
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, invoice.AmountMinor);
+    }
+
     [Fact]
     public void ExtendDueDate_LaterDate_Succeeds()
     {

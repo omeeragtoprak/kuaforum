@@ -297,8 +297,11 @@ public sealed class PostPaymentApprovalTests(IntegrationTestFactory factory)
 
         Assert.Equal(0, payment.PlatformCommissionMinor);
         Assert.Equal(payment.GrossAmountMinor, payment.NetToBarberMinor + payment.PspMdrMinor); // komisyon kesilmedi — tamamı kuaföre (PSP MDR hariç)
-        // Booking.PlatformCommissionMinor vestigial alan olarak kalır (M18 faturalama bundan beslenmiyor) — sıfır DEĞİLDİR, ama payment'a hiç taşınmaz.
-        Assert.True(booking.PlatformCommissionMinor > 0);
+        // Review fix (2026-08-07): Payment:CommissionRate config'i kaldırıldı — Booking.
+        // PlatformCommissionMinor vestigial alanı (M18/M23 faturalama bundan hiç beslenmedi)
+        // artık her zaman 0 yazılır (önceden sıfırdan farklıydı, payment'a hiç taşınmasa da
+        // "platform geliri" gibi görünen yanıltıcı bir kolon üretiyordu).
+        Assert.Equal(0, booking.PlatformCommissionMinor);
     }
 
     // ── (8) Per-shop yüzde: %25 ayarlı shop'ta kapora = ceil(total×0.25) ────────────────────

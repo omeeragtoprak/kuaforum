@@ -283,4 +283,68 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory) : IAsync
         var draftSubmissions = await db.KycSubmissions.AsNoTracking().Where(k => k.BarberShopId == draftShop.Id).ToListAsync();
         Assert.Empty(draftSubmissions);
     }
+
+    /// <summary>
+    /// Review bulgusu (2026-08-07): yerel saat ≤08:40 iken (mesai açılışına çok yakın)
+    /// dev-login owner şablonunun "bugün" Confirmed/Pending imleci (stylist0Slot/stylist1Slot,
+    /// bkz. RichDemoSeeder Step 9) doğrudan 0'dan başlıyordu — ama o stiliste ZATEN slot 0'da
+    /// (stylist 0) veya Math.Min(pastIdxToday,4)'te (stylist 1) bir Completed randevu (todayCompleted1/2)
+    /// yerleştirilmişti. ex_bookings_stylist_slot EXCLUDE constraint'i (bkz. M15 migration,
+    /// predicate yalnız status IN (Pending, Confirmed, Started)) Completed'ı kapsamadığı için
+    /// bu çakışma veritabanı tarafından REDDEDİLMİYORDU — sessizce çakışan demo verisi üretiliyordu.
+    /// Fix: stylist imleci artık o stiliste bugün zaten yerleştirilmiş randevunun bittiği slotun
+    /// ötesinden başlıyor (bkz. RichDemoSeeder.SeedAsync — stylist0OccupiedUntil/stylist1OccupiedUntil).
+    ///
+    /// SeedAsync artık test-only bir <c>nowOverride</c> parametresi kabul ediyor (production/dev
+    /// davranışı değişmedi — null iken gerçek UtcNow kullanılır) ki bu test günün beş farklı
+    /// saatinde (mesai öncesi/açılışa çok yakın/öğle/kapanışa yakın/gece) sabit zaman enjekte
+    /// ederek çalıştırabilsin. Europe/Istanbul 2016'dan beri yaz saati uygulamıyor (sabit UTC+3),
+    /// bu yüzden nowOverride'ı doğrudan +03:00 offset'iyle kurmak IstanbulTz dönüşümüyle birebir eşleşir.
+    ///
+    /// Assertion status'tan BAĞIMSIZ (Completed dahil) — Confirmed/Pending-Confirmed/Pending
+    /// çakışmaları zaten EXCLUDE constraint'i tarafından SaveChangesAsync sırasında exception
+    /// olarak yakalanır (bu test o durumda da fail eder, ama farklı bir yoldan); bu test'in asıl
+    /// hedefi constraint'in KAPSAMADIĞI Completed-vs-yeni-randevu çakışmasını yakalamak.
+    /// </summary>
+    [Theory]
+    [InlineData(3, 0)]   // gece — mesai çok uzakta
+    [InlineData(8, 0)]   // mesai açılışına yakın ama henüz açık değil (orijinal bug pencere)
+    [InlineData(13, 0)]  // öğle — mesai ortası
+    [InlineData(18, 30)] // kapanışa yakın
+    [InlineData(23, 0)]  // gece geç — kapanış çoktan geçmiş
+    public async Task SeedAsync_AtVariousLocalHours_NeverProducesOverlappingBookingsForSameStylistToday(int localHour, int localMinute)
+    {
+        await factory.ResetDatabaseAsync();
+        // Europe/Istanbul sabit UTC+3 (2016'dan beri DST yok) — bkz. metod XML doc.
+        var nowOverride = new DateTimeOffset(2026, 8, 10, localHour, localMinute, 0, TimeSpan.FromHours(3));
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var adminSeeder = scope.ServiceProvider.GetRequiredService<Kuaforum.Infrastructure.Persistence.Seeding.AdminSeeder>();
+            await adminSeeder.SeedAsync(default);
+
+            var seeder = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
+            await seeder.SeedAsync(default, nowOverride);
+        }
+
+        using var db = factory.Services.CreateScope().ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var devOwner = await db.Users.AsNoTracking().FirstAsync(u => u.PhoneE164 == DevLoginOwnerPhone);
+        var devShop = await db.BarberShops.AsNoTracking().FirstAsync(s => s.OwnerId == devOwner.Id);
+
+        var devBookings = await db.Bookings.AsNoTracking()
+            .Where(b => b.BarberShopId == devShop.Id)
+            .ToListAsync();
+        Assert.NotEmpty(devBookings);
+
+        var overlaps = (
+            from a in devBookings
+            from b in devBookings
+            where a.Id != b.Id && a.StylistId == b.StylistId
+                  && a.ScheduledAt < b.ScheduledEndsAt && b.ScheduledAt < a.ScheduledEndsAt
+            select $"{a.Id}({a.Status})@{a.ScheduledAt:O}..{a.ScheduledEndsAt:O} vs {b.Id}({b.Status})@{b.ScheduledAt:O}..{b.ScheduledEndsAt:O}")
+            .ToList();
+
+        Assert.True(overlaps.Count == 0, $"nowOverride={nowOverride:O} — çakışan randevu(lar): {string.Join(" | ", overlaps)}");
+    }
 }

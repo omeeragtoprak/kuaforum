@@ -80,7 +80,18 @@ public sealed class RichDemoSeeder(
         "+905002000005", "+905002000006", "+905002000007",
     };
 
-    public async Task SeedAsync(CancellationToken ct = default)
+    /// <param name="ct">İptal token'ı.</param>
+    /// <param name="nowOverride">
+    /// Test-only: bugünkü randevu yerleşimini süren "now" referansını sabitler (bkz.
+    /// <see cref="NextSlotIndexAfterNow"/>/<see cref="PastSlotIndexBeforeNow"/>/<see
+    /// cref="RealisticSlotUtc"/>). Null iken gerçek <see cref="DateTimeOffset.UtcNow"/>
+    /// kullanılır (production/dev davranışı değişmez). Regresyon testi bunu günün farklı
+    /// saatlerinde (mesai açılışına çok yakın dahil) çakışan randevu üretilmediğini
+    /// doğrulamak için enjekte eder — review bulgusu (2026-08-07): saat ≤08:40 iken
+    /// stylist slot imleci 0'dan başlıyor ve o stiliste ZATEN yerleştirilmiş bir Completed
+    /// randevuyla (aynı gün, aynı stilist) çakışıyordu.
+    /// </param>
+    public async Task SeedAsync(CancellationToken ct = default, DateTimeOffset? nowOverride = null)
     {
         var alreadySeeded = await db.Users.AnyAsync(u => u.PhoneE164 == RichShopOwnerPhones[0], ct);
         if (alreadySeeded)
@@ -302,7 +313,14 @@ public sealed class RichDemoSeeder(
             .GroupBy(s => s.BarberShopId)
             .ToDictionary(g => g.Key, g => g.ToList());
 
-        var now = DateTimeOffset.UtcNow;
+        // `now`dan türetilen değerler (placeholder randevu saatleri, imleçler) doğrudan DB'ye
+        // yazılıyor ve Npgsql `timestamptz` kolonuna YALNIZ offset 0 kabul ediyor. Çağıran
+        // taraf yerel offset'li bir değer verirse (testler nowOverride'ı Europe/Istanbul
+        // +03:00 ile kuruyor ki iş-saati hesabıyla birebir eşleşsin) kayıt anında
+        // "Cannot write DateTimeOffset with Offset=03:00:00" ile patlıyordu. Giriş noktasında
+        // UTC'ye normalize ediyoruz; iş-saati hesapları zaten kendi içinde IstanbulTz'e
+        // çeviriyor, dolayısıyla davranış değişmiyor.
+        var now = (nowOverride ?? DateTimeOffset.UtcNow).ToUniversalTime();
 
         // Kusur 2 fix (2026-08-06, elle test bulgusu): "todayLocal" + "daysSinceMonday"
         // aşağıdaki RealisticSlotUtc çağrılarının VE dev-login owner'ın "bu hafta/geçen hafta"
@@ -677,9 +695,41 @@ public sealed class RichDemoSeeder(
 
                 var placeholderFuture = now.AddHours(1); // Initiate()'in "geçmişte olamaz" guard'ını geçmek için — hepsi aşağıda backdate edilecek.
 
+                // Kusur fix (2026-08-07, RichDemoSeederTests.SeedAsync_AtVariousLocalHours_...
+                // regresyonu): "bugünün" VE gelecek 14 gün + bu hafta/geçen hafta geçmiş
+                // verisinin TÜM randevu yerleşimleri artık STYLIST+GÜN başına PAYLAŞILAN tek bir
+                // slot imleci (ReserveDevSlot) üzerinden geçer. Önceki sürüm her randevu grubunu
+                // (Completed1/Completed2/Confirmed/Pending/kapora/geçmiş hafta/gelecek 14 gün)
+                // BAĞIMSIZ slot hesaplarıyla yerleştiriyordu; aynı stiliste aynı gün çakışan
+                // randevular sessizce üretiliyordu — çünkü ex_bookings_stylist_slot EXCLUDE
+                // constraint'i (M15 migration) yalnız status IN (Pending, Confirmed, Started)
+                // predicate'ine sahip, Completed KAPSAM DIŞI, yani DB bu hatayı hiç yakalamıyordu
+                // (canlı örnek: aynı 155dk'lık hizmet iki Completed randevuya aynı anda atanmıştı).
+                // ReserveDevSlot her çağrıda o (gün, stylist) ikilisi için "şu ana kadar dolu olan
+                // son slot"un ÖTESİNDEN başlar ve hizmet süresi + tampon kadar ilerletir; iş
+                // saatleri penceresine SIĞMAYAN bir randevu için null döner — çağıran taraf (mevcut
+                // null-kontrolü kalıbıyla) o randevuyu üretmez: çakışan üretmektense eksik üretmek
+                // yeğdir. windowMinutes/slotCount hesabı bilerek RealisticSlotUtc'nin kendi
+                // formülüyle birebir aynıdır (bkz. orada) — aksi halde fit-check burada geçer ama
+                // RealisticSlotUtc kendi slotCount'una göre modulo ile SESSİZCE farklı bir saate
+                // "sarardı" (wrap), iki farklı süreli hizmet aynı slot indeksini FARKLI gerçek
+                // saatlere haritalayabilirdi.
+                var devStylistDaySlots = new Dictionary<(DateOnly Day, Guid StylistId), int>();
+                int? ReserveDevSlot(DateOnly day, Guid stylistId, int minSlotIndex, int durationMinutes)
+                {
+                    var windowMinutes = (int)(DefaultCloseTime.ToTimeSpan() - DefaultOpenTime.ToTimeSpan()).TotalMinutes;
+                    var key = (day, stylistId);
+                    var start = Math.Max(Math.Max(minSlotIndex, 0), devStylistDaySlots.GetValueOrDefault(key, 0));
+                    if (start * 15 + durationMinutes > windowMinutes) return null; // sığmıyor
+                    devStylistDaySlots[key] = start + SlotsForService(durationMinutes);
+                    return start;
+                }
+
                 // 1) BUGÜN — 2 Completed (gerçekten geçmişte, mümkün olduğunca iş saatleri içinde).
                 var pastIdxToday = PastSlotIndexBeforeNow(now);
-                var todayCompleted1 = MakeDevBooking(0, 0, placeholderFuture);
+                var completed1Duration = devServices[0 % devServices.Count].DurationMinutes;
+                var completed1Slot = ReserveDevSlot(todayLocal, devStylists[0 % devStylists.Count].Id, 0, completed1Duration);
+                var todayCompleted1 = completed1Slot is null ? null : MakeDevBooking(0, 0, placeholderFuture);
                 if (todayCompleted1 is not null)
                 {
                     var payment = CreateAndCapturePayment(todayCompleted1, todayCompleted1.CustomerId, devShop.Id);
@@ -688,7 +738,7 @@ public sealed class RichDemoSeeder(
                     todayCompleted1.Start();
                     todayCompleted1.Complete();
                     payment.MarkSettled();
-                    var target = RealisticSlotUtc(todayLocal, 0, devServices[0 % devServices.Count].DurationMinutes);
+                    var target = RealisticSlotUtc(todayLocal, completed1Slot!.Value, completed1Duration);
                     var shift = target - todayCompleted1.ScheduledAt;
                     BackdateBooking(todayCompleted1, shift, confirmed: true, started: true, completed: true, cancelled: false);
                     BackdatePayment(payment, shift);
@@ -697,7 +747,9 @@ public sealed class RichDemoSeeder(
                     devReviewCandidates.Add(todayCompleted1);
                 }
 
-                var todayCompleted2 = MakeDevBooking(1, 1, placeholderFuture);
+                var completed2Duration = devServices[1 % devServices.Count].DurationMinutes;
+                var completed2Slot = ReserveDevSlot(todayLocal, devStylists[1 % devStylists.Count].Id, Math.Min(pastIdxToday, 4), completed2Duration);
+                var todayCompleted2 = completed2Slot is null ? null : MakeDevBooking(1, 1, placeholderFuture);
                 if (todayCompleted2 is not null)
                 {
                     var payment = CreateAndCapturePayment(todayCompleted2, todayCompleted2.CustomerId, devShop.Id);
@@ -706,7 +758,7 @@ public sealed class RichDemoSeeder(
                     todayCompleted2.Start();
                     todayCompleted2.Complete();
                     payment.MarkSettled();
-                    var target = RealisticSlotUtc(todayLocal, Math.Min(pastIdxToday, 4), devServices[1 % devServices.Count].DurationMinutes);
+                    var target = RealisticSlotUtc(todayLocal, completed2Slot!.Value, completed2Duration);
                     var shift = target - todayCompleted2.ScheduledAt;
                     BackdateBooking(todayCompleted2, shift, confirmed: true, started: true, completed: true, cancelled: false);
                     BackdatePayment(payment, shift);
@@ -715,16 +767,13 @@ public sealed class RichDemoSeeder(
                     devReviewCandidates.Add(todayCompleted2);
                 }
 
-                // 2) BUGÜN — 2 Confirmed (ilerleyen saatler) + 1 Pending (onay bekliyor). Gerçek
-                // iş-saati slotu "now"dan önceyse (öğleden sonra/akşam seed edilirse hemen her
-                // zaman böyle) doğrudan "şimdiden X dk sonra"ya düşülür — ama stylist-bazlı bir
-                // KURSÖRLE sıralı ilerletilir ki iki randevu ASLA çakışmasın (bir önceki sürüm
-                // bağımsız fallback'ler kullanıyordu: 150dk'lık bir hizmet 17:20'de başlayıp
-                // 19:50'de bitip aynı stilistin 19:05'teki randevusuyla çakışıyordu —
-                // ex_bookings_stylist_slot EXCLUDE constraint'i canlı DB'de bunu yakaladı).
-                // En kısa 3 hizmet seçilir (uzun bir Boyama/Röfle 150dk'lık hizmet günün geç
-                // saatinde seed edilince kapanış saatini rahatça aşabilirdi) — kalan iş-saati
-                // penceresine sığma ihtimalini maksimize eder.
+                // 2) BUGÜN — 2 Confirmed (ilerleyen saatler) + 1 Pending (onay bekliyor). Alt sınır
+                // NextSlotIndexAfterNow(now) — "şimdiden X dk sonra"dan ÖNCE olamaz. ReserveDevSlot
+                // bu alt sınırı, o stiliste BUGÜN ZATEN yerleştirilmiş randevuların (Completed1/2
+                // dahil) kursörüyle otomatik birleştirir (max) — ayrı bir "OccupiedUntil" hesabına
+                // artık gerek yok. En kısa 3 hizmet seçilir (uzun bir Boyama/Röfle 150dk'lık hizmet
+                // günün geç saatinde seed edilince kapanış saatini rahatça aşabilirdi) — kalan
+                // iş-saati penceresine sığma ihtimalini maksimize eder.
                 var shortServiceIdx = devServices
                     .Select((s, idx) => (s.DurationMinutes, idx))
                     .OrderBy(x => x.DurationMinutes)
@@ -734,30 +783,29 @@ public sealed class RichDemoSeeder(
                 var shortIdx1 = shortServiceIdx.Count > 1 ? shortServiceIdx[1] : 0;
                 var shortIdx2 = shortServiceIdx.Count > 2 ? shortServiceIdx[2] : shortIdx0;
 
-                // İmleçler SLOT İNDEKSİ (saat değil) — bkz. NextSlotIndexAfterNow doc'u.
-                var stylist0Slot = NextSlotIndexAfterNow(now);
-                var stylist1Slot = stylist0Slot;
+                var nextSlot = NextSlotIndexAfterNow(now);
 
                 var dur1 = devServices[shortIdx0].DurationMinutes;
-                var todayConfirmed1 = MakeDevBooking(0, shortIdx0, RealisticSlotUtc(todayLocal, stylist0Slot, dur1));
+                var confirmed1Slot = ReserveDevSlot(todayLocal, devStylists[0 % devStylists.Count].Id, nextSlot, dur1);
+                var todayConfirmed1 = confirmed1Slot is null ? null : MakeDevBooking(0, shortIdx0, RealisticSlotUtc(todayLocal, confirmed1Slot.Value, dur1));
                 if (todayConfirmed1 is not null)
                 {
                     todayConfirmed1.OwnerConfirm();
                     devBookings.Add(todayConfirmed1);
                 }
-                stylist0Slot += SlotsForService(dur1);
 
                 var dur5 = devServices[shortIdx1].DurationMinutes;
-                var todayConfirmed2 = MakeDevBooking(1, shortIdx1, RealisticSlotUtc(todayLocal, stylist1Slot, dur5));
+                var confirmed2Slot = ReserveDevSlot(todayLocal, devStylists[1 % devStylists.Count].Id, nextSlot, dur5);
+                var todayConfirmed2 = confirmed2Slot is null ? null : MakeDevBooking(1, shortIdx1, RealisticSlotUtc(todayLocal, confirmed2Slot.Value, dur5));
                 if (todayConfirmed2 is not null)
                 {
                     todayConfirmed2.OwnerConfirm();
                     devBookings.Add(todayConfirmed2);
                 }
-                stylist1Slot += SlotsForService(dur5);
 
                 var dur6 = devServices[shortIdx2].DurationMinutes;
-                var todayPending = MakeDevBooking(0, shortIdx2, RealisticSlotUtc(todayLocal, stylist0Slot, dur6));
+                var pendingSlot = ReserveDevSlot(todayLocal, devStylists[0 % devStylists.Count].Id, nextSlot, dur6);
+                var todayPending = pendingSlot is null ? null : MakeDevBooking(0, shortIdx2, RealisticSlotUtc(todayLocal, pendingSlot.Value, dur6));
                 if (todayPending is not null) devBookings.Add(todayPending);
 
                 // 3) Kapora ödenmiş Pending (+5 gün) — owner "ödenmiş, onay bekliyor" akışını
@@ -767,7 +815,10 @@ public sealed class RichDemoSeeder(
                     var devPolicy = BookingPolicy.Create(true, 0.15m, 2, null, null, settings.DepositPercentMin, settings.DepositPercentMax);
                     if (devPolicy.IsSuccess) devShop.SetBookingPolicy(devPolicy.Value);
                 }
-                var devDeposit = MakeDevBooking(0, 3, RealisticSlotUtc(todayLocal.AddDays(5), 12, devServices[3 % devServices.Count].DurationMinutes), requiresOnlinePayment: true, depositSnapshot: 0.15m);
+                var depositDay = todayLocal.AddDays(5);
+                var depositDuration = devServices[3 % devServices.Count].DurationMinutes;
+                var depositSlot = ReserveDevSlot(depositDay, devStylists[0 % devStylists.Count].Id, 12, depositDuration);
+                var devDeposit = depositSlot is null ? null : MakeDevBooking(0, 3, RealisticSlotUtc(depositDay, depositSlot.Value, depositDuration), requiresOnlinePayment: true, depositSnapshot: 0.15m);
                 if (devDeposit is not null)
                 {
                     var depositMinor = Kuaforum.Domain.Common.PaymentAmounts.CalculateDepositMinor(devDeposit.TotalAmountMinor, 0.15m);
@@ -789,7 +840,10 @@ public sealed class RichDemoSeeder(
                 foreach (var f in future)
                 {
                     var duration = devServices[f.ServiceIdx % devServices.Count].DurationMinutes;
-                    var slotAt = RealisticSlotUtc(todayLocal.AddDays(f.DayOffset), f.SlotIdx, duration);
+                    var day = todayLocal.AddDays(f.DayOffset);
+                    var slot = ReserveDevSlot(day, devStylists[f.StylistIdx % devStylists.Count].Id, f.SlotIdx, duration);
+                    if (slot is null) continue;
+                    var slotAt = RealisticSlotUtc(day, slot.Value, duration);
                     var b = MakeDevBooking(f.StylistIdx, f.ServiceIdx, slotAt);
                     if (b is null) continue;
                     if (f.Confirm) b.OwnerConfirm();
@@ -824,6 +878,15 @@ public sealed class RichDemoSeeder(
                 {
                     var stylistIdx = idx % 2;
                     var serviceIdx = idx % devServices.Count;
+                    var duration = devServices[serviceIdx].DurationMinutes;
+                    var day = todayLocal.AddDays(dayOffset);
+                    // dayOffset 0 (bugün — daysSinceMonday==0 iken, yani Pazartesi seed edilirse
+                    // olur) BUGÜNÜN kendi kursörüyle (devStylistDaySlots) AYNI anahtarı bilerek
+                    // paylaşır: aksi halde bu geçmiş kaydı todayCompleted1/2'nin/Confirmed'lerin
+                    // ÜZERİNE sessizce yazılırdı (canlı örnek: idx=0 → stylist0/slot0, tam olarak
+                    // todayCompleted1'in yerleştiği slot — bkz. ReserveDevSlot doc'u).
+                    var slot = ReserveDevSlot(day, devStylists[stylistIdx % devStylists.Count].Id, 0, duration);
+                    if (slot is null) return; // sığmıyor — bu geçmiş kaydı atlanır
                     var b = MakeDevBooking(stylistIdx, serviceIdx, now.AddHours(1));
                     if (b is null) return;
                     var payment = CreateAndCapturePayment(b, b.CustomerId, devShop.Id);
@@ -832,7 +895,7 @@ public sealed class RichDemoSeeder(
                     b.Start();
                     b.Complete();
                     payment.MarkSettled();
-                    var target = RealisticSlotUtc(todayLocal.AddDays(dayOffset), idx * 5, devServices[serviceIdx].DurationMinutes);
+                    var target = RealisticSlotUtc(day, slot.Value, duration);
                     var shift = target - b.ScheduledAt;
                     BackdateBooking(b, shift, confirmed: true, started: true, completed: true, cancelled: false);
                     BackdatePayment(payment, shift);

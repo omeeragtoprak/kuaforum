@@ -104,7 +104,10 @@ public sealed class AdjustSubscriptionInvoiceAmountCommandValidator : AbstractVa
     {
         RuleFor(x => x.AdminUserId).NotEmpty();
         RuleFor(x => x.InvoiceId).NotEmpty();
-        RuleFor(x => x.NewAmountMinor).GreaterThanOrEqualTo(0);
+        // Review fix (2026-08-07): GreaterThanOrEqualTo(0) 0 TL'yi kabul ediyordu — curl ile 0
+        // gönderen biri faturayı tahsil edilemez hale getirip 204 alabiliyordu. GreaterThan(0)
+        // + Domain.SubscriptionInvoice.AdjustAmount'daki ikinci savunma hattı (bkz. orada) birlikte kapatır.
+        RuleFor(x => x.NewAmountMinor).GreaterThan(0);
         RuleFor(x => x.Reason).NotEmpty().MinimumLength(8).MaximumLength(500);
     }
 }

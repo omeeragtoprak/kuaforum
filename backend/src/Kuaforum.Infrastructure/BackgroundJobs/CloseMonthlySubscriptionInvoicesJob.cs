@@ -39,11 +39,22 @@ public sealed class CloseMonthlySubscriptionInvoicesJob(
             .ToListAsync(ct);
         var alreadyClosedSet = alreadyClosedShopIds.ToHashSet();
 
-        // Yalnız Cancelled OLMAYAN abonelikler + fiyatı gerçekten pozitif olan planlar faturalanır.
+        // Yalnız Cancelled OLMAYAN abonelikler + fiyatı gerçekten pozitif VE hâlâ AKTİF olan
+        // planlar faturalanır. Review fix (2026-08-07): plan.IsActive önceden hiç okunmuyordu —
+        // fiyatı olan bir plan admin tarafından pasifleştirilse (satıştan kaldırılsa) bile o
+        // plandaki mevcut salonlar sonsuza dek faturalanmaya devam ediyordu. NOT: bu filtre
+        // RichDemoSeeder'ın DEMO_PAID_QA'sını (bilerek IsActive=false, bkz. o seeder'ın XML
+        // doc'u) SESSİZCE dokunmaz — o seeder'ın 4 demo faturası bu job'dan değil doğrudan
+        // seeder'ın kendisinden gelir (sabit geçmiş dönemler için SubscriptionInvoice.Create
+        // doğrudan çağrılır), yani owner/admin faturalama ekranları bu değişiklikten
+        // ETKİLENMEZ — yalnız job'un GELECEKTE bu plana yeni dönem faturası ÜRETMESİ engellenir
+        // (zaten istenen davranış: pasif bir demo/QA planın canlı job tarafından
+        // "gerçek" gibi yeniden üretilmemesi).
         var billable = await (
             from sub in ctx.Set<ShopSubscription>().AsNoTracking()
             join plan in ctx.Set<SubscriptionPlan>().AsNoTracking() on sub.PlanCode equals plan.Code
             where sub.Status != ShopSubscriptionStatus.Cancelled
+                  && plan.IsActive
                   && plan.PriceMinor != null && plan.PriceMinor > 0
                   && !alreadyClosedSet.Contains(sub.BarberShopId)
             select new { sub.BarberShopId, plan.Code, PriceMinor = plan.PriceMinor!.Value })

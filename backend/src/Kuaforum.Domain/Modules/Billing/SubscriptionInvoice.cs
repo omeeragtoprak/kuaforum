@@ -152,8 +152,11 @@ public sealed class SubscriptionInvoice : AggregateRoot
     {
         if (Status == SubscriptionInvoiceStatus.Paid)
             return Result.Failure(Error.Validation("Ödenmiş fatura tutarı düzeltilemez."));
-        if (newAmountMinor < 0)
-            return Result.Failure(Error.Validation("Tutar negatif olamaz."));
+        // Review fix (2026-08-07): İKİNCİ savunma hattı — validator (Application katmanı) tek
+        // savunma olamaz. Önceden `< 0` idi, yani 0 kabul ediliyordu; 0'a çekilen bir fatura
+        // asla tahsil edilemez ama "geçerli" görünüyordu (204 dönüyordu).
+        if (newAmountMinor <= 0)
+            return Result.Failure(Error.Validation("Tutar sıfırdan büyük olmalı."));
         if (string.IsNullOrWhiteSpace(reason) || reason.Length < 8)
             return Result.Failure(Error.Validation("Düzeltme gerekçesi en az 8 karakter olmalı."));
 

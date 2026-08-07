@@ -64,16 +64,19 @@ public static class DependencyInjection
         // komisyon artık ödeme anında hiç kesilmiyor (InitiatePaymentCommand'da
         // platformCommissionMinor sabit 0), RFC-013 C3 ile kapora oranı da global DepositRate
         // DEĞİL, per-shop shop.BookingPolicy.DepositPercent (bkz. PaymentOptions.DepositRate
-        // XML doc — artık kullanılmayan, geriye dönük alan). RFC-014 §2 D1 ile gelir modeli
-        // tamamen sabit aylık aboneliğe (SubscriptionInvoice) geçti — CommissionRate artık
-        // hiçbir faturayı beslemiyor, yalnızca Booking.PlatformCommissionMinor vestigial
-        // alanını doldurur (bkz. PaymentOptions.CommissionRate XML doc). "Kapora, komisyonu
-        // karşılamalı" invariantının artık karşılaştıracak iki canlı değeri yok.
+        // XML doc — artık kullanılmayan, geriye dönük alan).
+        //
+        // Review fix (2026-08-07): Payment:CommissionRate config anahtarı + burada ValidateOnStart
+        // ile ZORUNLU kılınması TAMAMEN kaldırıldı. RFC-014 §2 D1 ile gelir modeli sabit aylık
+        // aboneliğe (SubscriptionInvoice) geçtiğinden bu oran hiçbir faturayı beslemiyordu; tek
+        // etkisi InitiateBookingCommand üzerinden her booking'e (booking.PlatformCommissionMinor)
+        // sıfırdan farklı bir tutar yazmaktı — para yoluna hiç girmeyen ama DB'de "platform
+        // geliri" gibi görünen bir kolon (ileride rapor yazan biri için tuzak). Kolonu migration'la
+        // kaldırmak bu paketin kapsamı dışında (Booking aggregate'i + pin testleri ayrı bir iş) —
+        // bunun yerine InitiateBookingCommand artık sabit 0m literal geçiyor (bkz. orada), yani
+        // yeni bookinglerde bu kolon hep 0. Config anahtarı appsettings.json'dan da kaldırıldı.
         services.AddOptions<PaymentOptions>()
-            .Bind(configuration.GetSection(PaymentOptions.SectionName))
-            .Validate(o => o.CommissionRate > 0 && o.CommissionRate <= 0.5m,
-                "Payment:CommissionRate (0, 0.5] aralığında olmalı (Booking.Initiate domain guard'ı ile uyumlu).")
-            .ValidateOnStart();
+            .Bind(configuration.GetSection(PaymentOptions.SectionName));
 
         services.AddHttpClient();
         services.AddSingleton<IJwtTokenService, JwtTokenService>();

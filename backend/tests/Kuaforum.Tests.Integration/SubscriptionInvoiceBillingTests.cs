@@ -89,14 +89,14 @@ public sealed class SubscriptionInvoiceBillingTests(IntegrationTestFactory facto
     }
 
     /// <summary>Idempotent test plan — subscription_plans ResetDatabaseAsync'in TRUNCATE listesinde YOK (bkz. EntitlementServiceTests), o yüzden yalnız bir kez oluşturulur.</summary>
-    private async Task BindShopToPaidPlanAsync(Guid shopId, string planCode = TestPlanCode, long priceMinor = TestPlanPriceMinor)
+    private async Task BindShopToPaidPlanAsync(Guid shopId, string planCode = TestPlanCode, long priceMinor = TestPlanPriceMinor, bool isActive = true)
     {
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
 
         if (!await db.Set<SubscriptionPlan>().AnyAsync(p => p.Code == planCode))
         {
-            db.Set<SubscriptionPlan>().Add(SubscriptionPlan.Create(planCode, planCode, priceMinor, isActive: true, displayOrder: 50).Value);
+            db.Set<SubscriptionPlan>().Add(SubscriptionPlan.Create(planCode, planCode, priceMinor, isActive: isActive, displayOrder: 50).Value);
             await db.SaveChangesAsync();
         }
 
@@ -254,6 +254,28 @@ public sealed class SubscriptionInvoiceBillingTests(IntegrationTestFactory facto
         Assert.Equal(1, adminPage.TotalCount);
     }
 
+    // Review fix (2026-08-07): plan.IsActive önceden hiç okunmuyordu — admin bir planı
+    // satıştan kaldırsa (IsActive=false) bile o plandaki mevcut salonlar faturalanmaya
+    // devam ediyordu.
+    [Fact]
+    public async Task CloseMonthlySubscriptionInvoicesJob_InactivePlanShop_ProducesNoInvoice()
+    {
+        var f = await SeedShopAndAuthAsync();
+        await BindShopToPaidPlanAsync(f.ShopId, isActive: false);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var job = scope.ServiceProvider.GetRequiredService<CloseMonthlySubscriptionInvoicesJob>();
+            await job.RunAsync(default);
+        }
+
+        var page = await f.OwnerClient.GetJson<OwnerInvoicesPage>("/v1/owner/billing/statements");
+        Assert.Empty(page.Items);
+
+        var adminPage = await f.AdminClient.GetJson<AdminInvoicesPage>("/v1/admin/billing/statements");
+        Assert.Equal(0, adminPage.TotalCount);
+    }
+
     [Fact]
     public async Task CloseMonthlySubscriptionInvoicesJob_CancelledSubscription_IsSkipped()
     {
@@ -385,6 +407,42 @@ public sealed class SubscriptionInvoiceBillingTests(IntegrationTestFactory facto
         Assert.Equal(newDueDate, invoice.DueDate);
     }
 
+    // ── Review fix (2026-08-07): fatura tutarı 0/negatife çekilemez ─────
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task AdjustSubscriptionInvoiceAmount_ZeroOrNegative_Returns400_AndAmountUnchanged(long newAmountMinor)
+    {
+        var f = await SeedShopAndAuthAsync();
+        await BindShopToPaidPlanAsync(f.ShopId);
+        var invoiceId = await CreateNotifiedInvoiceAsync(f);
+
+        var adjust = await f.AdminClient.PostAsJsonAsync($"/v1/admin/billing/statements/{invoiceId}/adjust",
+            new { newAmountMinor, reason = "Curl ile denenen kötü niyetli tutar." });
+        Assert.Equal(HttpStatusCode.BadRequest, adjust.StatusCode);
+
+        var invoice = (await f.AdminClient.GetJson<AdminInvoicesPage>("/v1/admin/billing/statements?pageSize=50"))
+            .Items.Single(s => s.Id == invoiceId);
+        Assert.Equal(TestPlanPriceMinor, invoice.AmountMinor); // reddedilince tutar DEĞİŞMEMİŞ
+    }
+
+    [Fact]
+    public async Task AdjustSubscriptionInvoiceAmount_Positive_Succeeds()
+    {
+        var f = await SeedShopAndAuthAsync();
+        await BindShopToPaidPlanAsync(f.ShopId);
+        var invoiceId = await CreateNotifiedInvoiceAsync(f);
+
+        var adjust = await f.AdminClient.PostAsJsonAsync($"/v1/admin/billing/statements/{invoiceId}/adjust",
+            new { newAmountMinor = 5_000L, reason = "Müşteri iadesi düşüldü, dekont ekte." });
+        Assert.Equal(HttpStatusCode.NoContent, adjust.StatusCode);
+
+        var invoice = (await f.AdminClient.GetJson<AdminInvoicesPage>("/v1/admin/billing/statements?pageSize=50"))
+            .Items.Single(s => s.Id == invoiceId);
+        Assert.Equal(5_000, invoice.AmountMinor);
+    }
+
     // ── C2: SubscriptionInvoicePayment iskeleti — Mock provider ─────────
 
     [Fact]
@@ -427,6 +485,43 @@ public sealed class SubscriptionInvoiceBillingTests(IntegrationTestFactory facto
 
         var initiateResp = await f.OwnerClient.PostAsync($"/v1/owner/billing/statements/{invoiceId}/pay/initiate", null);
         Assert.False(initiateResp.IsSuccessStatusCode);
+    }
+
+    // Review fix (2026-08-07): stale-session tutar koruması. Owner checkout'u başlatır (tutar
+    // o anki invoice.AmountMinor'dan SNAPSHOT'lanır) — checkout ekranı AÇIKKEN admin faturayı
+    // düzeltirse (AdjustSubscriptionInvoiceAmountCommand), eski snapshot'la gelen "complete"
+    // çağrısı REDDEDİLMELİ; aksi halde fatura yanlış (eski) tutarla Paid'e geçerdi.
+    [Fact]
+    public async Task SubscriptionInvoicePayment_Complete_WhenInvoiceAmountChangedAfterInitiate_IsRejected()
+    {
+        var f = await SeedShopAndAuthAsync();
+        await BindShopToPaidPlanAsync(f.ShopId);
+        var invoiceId = await CreateNotifiedInvoiceAsync(f);
+
+        var initiateResp = await f.OwnerClient.PostAsync($"/v1/owner/billing/statements/{invoiceId}/pay/initiate", null);
+        Assert.Equal(HttpStatusCode.OK, initiateResp.StatusCode);
+        var initiated = (await initiateResp.Content.ReadFromJsonAsync<InitiateInvoicePaymentResp>(TestHelpers.Json))!;
+        Assert.Equal(TestPlanPriceMinor, initiated.AmountMinor);
+
+        // Admin, checkout açıkken tutarı düzeltiyor (ör. müşteri iadesi düşülüyor).
+        var adjust = await f.AdminClient.PostAsJsonAsync($"/v1/admin/billing/statements/{invoiceId}/adjust",
+            new { newAmountMinor = 5_000L, reason = "Checkout açıkken tutar düzeltmesi." });
+        Assert.Equal(HttpStatusCode.NoContent, adjust.StatusCode);
+
+        // Eski (stale) snapshot'la gelen tamamlama çağrısı reddedilmeli.
+        var completeResp = await f.OwnerClient.GetAsync($"/v1/owner/billing/subscription-invoice-payments/mock/complete?token={initiated.ProviderToken}");
+        Assert.Equal(HttpStatusCode.BadRequest, completeResp.StatusCode);
+
+        var invoice = (await f.OwnerClient.GetJson<OwnerInvoicesPage>("/v1/owner/billing/statements"))
+            .Items.Single(s => s.Id == invoiceId);
+        Assert.Equal(SubscriptionInvoiceStatus.Notified, invoice.Status); // Paid'e GEÇMEDİ
+        Assert.Equal(5_000, invoice.AmountMinor); // admin'in düzeltmesi korunuyor
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var payment = await db.Set<SubscriptionInvoicePayment>().AsNoTracking().FirstAsync(p => p.SubscriptionInvoiceId == invoiceId);
+        Assert.Equal(SubscriptionInvoicePaymentStatus.Failed, payment.Status);
+        Assert.Equal(TestPlanPriceMinor, payment.AmountMinor); // ödeme satırı kendi ESKİ snapshot'ını korur
     }
 
     // ── (d) komisyon artık kapora/ödeme tutarından düşülmüyor ───────────

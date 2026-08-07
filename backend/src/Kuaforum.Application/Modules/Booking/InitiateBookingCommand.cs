@@ -130,7 +130,13 @@ public sealed class InitiateBookingCommandHandler(
             request.ScheduledAt,
             orderedServices,
             request.IsWalkIn ? BookingType.WalkIn : BookingType.Scheduled,
-            paymentOptions.Value.CommissionRate,
+            // Review fix (2026-08-07): Payment:CommissionRate config'i KALDIRILDI (bkz.
+            // Infrastructure.DependencyInjection.AddInfrastructure yorumu) — komisyon RFC-012'den
+            // beri ödeme anında hiç kesilmiyor ve RFC-014 ile hiçbir faturayı beslemiyor. Booking.
+            // PlatformCommissionMinor vestigial alanı (Booking aggregate'i bu paketin kapsamı
+            // dışında olduğu için silinmedi) artık sabit 0 yazılır — "platform geliri" gibi
+            // görünen ama para yoluna hiç girmeyen bir kolon üretmemek için.
+            commissionRate: 0m,
             requiresOnlinePayment,
             request.CustomerNote,
             // RFC-013 M1: shop'un O ANKİ kapora oranı da booking'e snapshot'lanır — yalnız

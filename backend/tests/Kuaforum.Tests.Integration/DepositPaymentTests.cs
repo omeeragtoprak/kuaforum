@@ -18,8 +18,12 @@ namespace Kuaforum.Tests.Integration;
 /// için booking toplamını DEĞİL kaporayı iade eder — üçüncü test bunu kilitliyor.
 ///
 /// Bilinen tutar (200 TL) için owner API'siyle test-özel bir servis yaratılır — seed
-/// servislerinin fiyat/sıralamasına bağımlılık yok. Beklenenler (DepositRate 0.15,
-/// CommissionRate 0.10): deposit = ceil(20000 × 0.15) = 3000, komisyon = 2000.
+/// servislerinin fiyat/sıralamasına bağımlılık yok. Beklenen (DepositRate 0.15):
+/// deposit = ceil(20000 × 0.15) = 3000.
+///
+/// Review fix (2026-08-07): Payment:CommissionRate config'i KALDIRILDI (bkz. Infrastructure.
+/// DependencyInjection.AddInfrastructure yorumu) — InitiateBookingCommand artık booking.
+/// PlatformCommissionMinor'a sabit 0 yazıyor (vestigial alan, hiçbir faturaya taşınmıyordu zaten).
 /// </summary>
 [Collection(nameof(IntegrationTestCollection))]
 public sealed class DepositPaymentTests(IntegrationTestFactory factory)
@@ -35,7 +39,6 @@ public sealed class DepositPaymentTests(IntegrationTestFactory factory)
 
     private const long KnownTotalMinor = 200_00;
     private const long ExpectedDepositMinor = 30_00;   // ceil(20000 × 0.15)
-    private const long ExpectedCommissionMinor = 20_00; // round(20000 × 0.10)
 
     [Fact]
     public async Task Deposit_initiate_charges_ceil_15_percent_and_persists_kind()
@@ -69,7 +72,7 @@ public sealed class DepositPaymentTests(IntegrationTestFactory factory)
         Assert.Equal(PaymentKind.Deposit, payment.Kind);
         Assert.Equal(ExpectedDepositMinor, payment.GrossAmountMinor);
         Assert.Equal(KnownTotalMinor, booking.TotalAmountMinor);
-        Assert.Equal(ExpectedCommissionMinor, booking.PlatformCommissionMinor); // vestigial alan — M18 faturalama bundan beslenmiyor
+        Assert.Equal(0, booking.PlatformCommissionMinor); // vestigial alan, artık her zaman 0 — bkz. sınıf XML doc (Payment:CommissionRate kaldırıldı)
         Assert.Equal(0, payment.PlatformCommissionMinor); // RFC-012: komisyon artık ödeme anında kesilmiyor, kapora tamamen kuaföre akar
     }
 
