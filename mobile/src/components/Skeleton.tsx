@@ -161,6 +161,51 @@ export function SkeletonBarberDetail() {
   );
 }
 
+/**
+ * G15 fix (booking/[id].tsx): randevu detay ekranı yüklenirken artık düz
+ * "Yükleniyor…" metni değil, hedef içeriğin gerçek şekline (başlık+durum rozeti
+ * + detay satırları + hizmet satırları + aksiyon butonları) yakın bir iskelet
+ * gösteriyor. `SkeletonBarberDetail` ile aynı container/section stillerini
+ * paylaşır — yeni ağır bağımlılık yok.
+ */
+export function SkeletonBookingDetail() {
+  return (
+    <View style={styles.detailContainer}>
+      <View style={styles.detailHero}>
+        <Skeleton width={90} height={22} radius={Radius.full} />
+        <Skeleton width={'55%'} height={22} style={{ marginTop: Spacing.md }} />
+        <Skeleton width={'40%'} height={14} style={{ marginTop: 8 }} />
+      </View>
+      <View style={styles.detailSection}>
+        <Skeleton width={60} height={16} />
+        {[0, 1, 2, 3].map((i) => (
+          <View key={i} style={styles.detailServiceRow}>
+            <Skeleton width={'35%'} height={13} />
+            <View style={{ flex: 1 }} />
+            <Skeleton width={'25%'} height={13} />
+          </View>
+        ))}
+      </View>
+      <View style={styles.detailSection}>
+        <Skeleton width={80} height={16} />
+        {[0, 1].map((i) => (
+          <View key={i} style={styles.detailServiceRow}>
+            <View style={{ flex: 1, gap: 6 }}>
+              <Skeleton width={'55%'} height={14} />
+              <Skeleton width={'30%'} height={11} />
+            </View>
+            <Skeleton width={50} height={14} />
+          </View>
+        ))}
+      </View>
+      <View style={{ gap: Spacing.sm, marginTop: Spacing.sm }}>
+        <Skeleton width={'100%'} height={48} radius={Radius.md} />
+        <Skeleton width={'100%'} height={48} radius={Radius.md} />
+      </View>
+    </View>
+  );
+}
+
 export function SkeletonList({ count, render }: { count: number; render: (i: number) => React.ReactNode }) {
   return (
     <View style={{ gap: Spacing.md }}>

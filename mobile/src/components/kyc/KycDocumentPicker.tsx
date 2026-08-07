@@ -150,6 +150,10 @@ export function KycDocumentPicker({ documentType, required, value, onUploaded, o
       </View>
 
       {status === 'uploading' ? (
+        // G15: bu kart tek bir belge yükleme aksiyonunu temsil ediyor (sabit, küçük
+        // boyut) — bir skeleton placeholder burada abartı olur, gösterilecek hedef
+        // "şekil" zaten sabit. ActivityIndicator + metin zaten tutarlı bir yükleme
+        // göstergesi (düz metin DEĞİL); bu yüzden aynen korunuyor.
         <View style={styles.centerRow}>
           <ActivityIndicator color={Colors.primary} />
           <Text style={styles.hint}>Yükleniyor…</Text>

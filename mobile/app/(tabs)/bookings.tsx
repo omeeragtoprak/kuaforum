@@ -9,7 +9,7 @@ import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { AuthPrompt } from '@/components/AuthPrompt';
-import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
+import { Skeleton, SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
 import { useAuthStore } from '@/store/auth-store';
@@ -62,9 +62,13 @@ export default function BookingsScreen() {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Text style={styles.title}>Randevularım</Text>
-        <Text style={styles.subtitle}>
-          {query.isLoading ? 'Yükleniyor…' : `${all.length} randevu`}
-        </Text>
+        {query.isLoading ? (
+          // G15 fix: gövde artık SkeletonBookingRow gösteriyor; başlık altındaki bu
+          // tali metin de düz "Yükleniyor…" yerine aynı iskelet diline geçti.
+          <Skeleton width={90} height={13} style={{ marginTop: 2 }} />
+        ) : (
+          <Text style={styles.subtitle}>{`${all.length} randevu`}</Text>
+        )}
       </View>
 
       {all.length > 0 ? (

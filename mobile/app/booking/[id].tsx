@@ -6,7 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
-import { EmptyState } from '@/components/EmptyState';
+import { ErrorState } from '@/components/ErrorState';
+import { SkeletonBookingDetail } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
 import { PaymentApi, PaymentKind } from '@/api/payment';
@@ -226,17 +227,25 @@ export default function BookingDetailScreen() {
   }
 
   if (query.isLoading) {
-    return <SafeAreaView style={styles.container}><EmptyState title="Yükleniyor…" /></SafeAreaView>;
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <SkeletonBookingDetail />
+      </SafeAreaView>
+    );
   }
   if (query.isError || !query.data) {
+    // G15 fix: 404 (randevu gerçekten yok/silinmiş) ile geçici sunucu/ağ hatası
+    // artık aynı "Bulunamadı" metnine düşmüyor — bkz. src/components/ErrorState.tsx.
     return (
       <SafeAreaView style={styles.container}>
-        <EmptyState
-          emoji="⚠️"
-          title="Bulunamadı"
-          description="Bu randevu yüklenemedi."
-          actionLabel="Geri dön"
-          onAction={() => router.back()}
+        <ErrorState
+          error={query.error}
+          onRetry={() => query.refetch()}
+          notFoundEmoji="🚫"
+          notFoundTitle="Bu randevu bulunamadı"
+          notFoundDescription="Bu randevu silinmiş veya artık mevcut olmayabilir."
+          notFoundActionLabel="Geri dön"
+          onNotFoundAction={() => router.back()}
         />
       </SafeAreaView>
     );

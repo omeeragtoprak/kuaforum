@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { SkeletonShopCard } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { apiClient } from '@/api/client';
 import { BarberApi, Stylist } from '@/api/barber';
@@ -100,9 +101,9 @@ export default function BarberProfileScreen() {
             ) : null}
           </Card>
         ) : shopQuery.isLoading ? (
-          <Card>
-            <Text style={styles.muted}>Yükleniyor…</Text>
-          </Card>
+          // G15 fix: "Salonum" kartı düz "Yükleniyor…" yerine gerçek karta yakın
+          // şekilli bir iskelet gösteriyor (isim + adres + rozet satırı).
+          <SkeletonShopCard />
         ) : (
           <Card>
             <Text style={styles.emptyTitle}>Henüz salonun yok</Text>
