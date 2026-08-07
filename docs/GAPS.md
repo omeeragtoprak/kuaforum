@@ -162,7 +162,13 @@ G11/G12 düzeltmesi yalnız üç ekranı kapsadı (kuaför detay, keşfet, rande
 - `mobile/app/(barber)/profile.tsx:104` ve `mobile/src/components/kyc/KycDocumentPicker.tsx:155` — düz "Yükleniyor…" metni.
 - `mobile/app/(tabs)/bookings.tsx:65` — başlık altındaki tali "Yükleniyor…" metni (ana gövde artık skeleton).
 
-**Efor:** 2-3 saat (bileşenler hazır, sadece uygulanacak).
+**Durum:** ✅ **Kapatıldı 2026-08-07** (`9f19550`). Randevu detayı `ErrorState` + `SkeletonBookingDetail` kullanıyor; randevu listesi başlığı ve kuaför profili salon kartı skeleton'a geçti. `KycDocumentPicker` bilerek değiştirilmedi (göstergesi zaten `ActivityIndicator`'lı; sabit boyutlu tek-aksiyon kart, skeleton abartı olurdu — gerekçe koda yazıldı).
+
+**Kalan tek örnek (kapsam dışı, zararsız):** `mobile/app/(barber)/booking-settings.tsx` aynı `isError || !data` kalıbını kullanıyor ama her zaman "bağlantı hatası" diyor — yani "kayıt yok" yalanını söylemiyor. Paylaşılan bileşeni kullanmayan bir tutarsızlık, davranışsal kusur değil.
+
+**Bilinen test borcu:** `booking/[id].tsx` için ekran seviyesinde RNTL testi yok. Ayrım mantığı merkezî olarak test ediliyor (`classify-error` 13 test + `ErrorState` 4 test, "404'te retry yok / ağ hatasında var ve basınca çağrılır" dahil); ekrandaki bağlama (wiring) kod incelemesiyle doğrulandı. Repo'nun `jest.config.js`'i şu an bilinçli olarak yalnız saf mantık testlerini hedefliyor — ekran seviyesi harness ayrı bir iş.
+
+**Efor:** 2-3 saat (bileşenler hazır, sadece uygulanacak). → harcanan: ~1 saat.
 
 ---
 
@@ -200,7 +206,7 @@ G11/G12 düzeltmesi yalnız üç ekranı kapsadı (kuaför detay, keşfet, rande
 | G12 | "Bulunamadı" ile "sunucuya ulaşılamadı" ayrışmıyor | Orta | 0.5 gün |
 | G13 | Entitlement kota kontrolünde yarış koşulu (ödemeli plan öncesi kapatılmalı) | Düşük→Orta | 3-5 saat |
 | G14 | Gerçek çevrimdışı algısı yok (native bağımlılık gerekiyor, bilinçli erteleme) | Düşük | 3-4 saat |
-| G15 | G11/G12 düzeltmesi kapsam dışı ekranlarda uygulanmadı (randevu detayı öncelikli) | Orta | 2-3 saat |
+| G15 | G11/G12 düzeltmesi kapsam dışı ekranlarda uygulanmadı (randevu detayı öncelikli) | Orta | ✅ kapatıldı 2026-08-07 |
 | G16 | DTO alan adı değişince gövde sessizce sıfırlanıyor (kalıpsal para riski) | Yüksek → tekil düzeltildi | 2-3 saat (admin-only katı mod) |
 
 ---
