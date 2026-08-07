@@ -188,6 +188,29 @@ G11/G12 düzeltmesi yalnız üç ekranı kapsadı (kuaför detay, keşfet, rande
 
 ---
 
+## G17. Demo verisi bir gecede bayatlıyordu — founder her sabah boş panel görüyordu
+
+**Kanıt (canlı, 2026-08-07):** `RichDemoSeeder` demo verisini üretiyor ama idempotent kapısı yüzünden ikinci kez çalışmıyordu. Verinin bir kısmı "bugüne" çapalı: kuaförün bugünkü randevuları, haftalık ciro, faturalama dönemi. Ertesi sabah:
+```
+GET /v1/owner/barber-shop/bookings  → 5 randevu, en erkeni 2026-08-08 (bugün 08-07 — bugüne HİÇBİRİ yok)
+GET /v1/owner/billing/statements    → {"items":[]}
+```
+Faturalar ayrıca `M23` migration'ı eski tabloları DROP ettiği için tamamen boşalmıştı.
+
+**Etki:** Yüksek (süreç). Founder bu ortamı elle test ediyor; her sabah "Bugün boş" ve boş faturalama ekranı görmek, hem test döngüsünü durduruyor hem de **gerçek bir ürün hatası mı yoksa bayat veri mi** ayrımını imkânsızlaştırıyordu — yanlış hata avına yol açar.
+
+**Çözüm (uygulandı, `dd0b3d1`):** İki katman:
+1. **Otomatik bayatlama tespiti** — her açılışta dev-login kuaförünün bugüne (Europe/Istanbul) ait randevusu var mı diye bakılır; yoksa demo verisi TRUNCATE edilip seeder zinciri "şimdi"ye göre yeniden çalışır.
+2. **Dev-only `POST /v1/dev/reseed-demo`** — yeniden başlatmadan anlık tazeleme (Admin token + `IsDevelopment()`).
+
+Coğrafya (81 il/ilçe/mahalle) ve plan tanımlarına dokunulmaz — yeniden üretmeleri pahalı.
+
+**Production güvenliği (üç bağımsız katman, hepsi testli):** (a) resetter servisi `IsProduction()` ise exception atar — çağıran kim olursa olsun; (b) tek çağıran taraf kendi ortam kontrolüyle bloğu hiç devreye sokmaz; (c) endpoint Production'da **hiç map edilmez** — 404, yani yetkisiz değil, fiziksel olarak yok. Bu bir veri silme yolu; sızması felaket olurdu.
+
+**Kalan bilinen sınır:** Randevu tarihleri doğası gereği mutlak; "çapasız veri" mümkün değil. Geniş pencere üretmek yerine otomatik tespit seçildi — "kaç gün dayanır" sorusunu ortadan kaldırıyor. Demo IBAN'ı gerçek bir IBAN değil (checksum doğrulanmadı), yalnız görsel amaçlı.
+
+---
+
 ## Özet Tablo
 
 | # | Başlık | Etki | Efor |
@@ -208,6 +231,7 @@ G11/G12 düzeltmesi yalnız üç ekranı kapsadı (kuaför detay, keşfet, rande
 | G14 | Gerçek çevrimdışı algısı yok (native bağımlılık gerekiyor, bilinçli erteleme) | Düşük | 3-4 saat |
 | G15 | G11/G12 düzeltmesi kapsam dışı ekranlarda uygulanmadı (randevu detayı öncelikli) | Orta | ✅ kapatıldı 2026-08-07 |
 | G16 | DTO alan adı değişince gövde sessizce sıfırlanıyor (kalıpsal para riski) | Yüksek → tekil düzeltildi | 2-3 saat (admin-only katı mod) |
+| G17 | Demo verisi bir gecede bayatlıyordu (founder her sabah boş panel) | Yüksek (süreç) | ✅ kapatıldı 2026-08-07 |
 
 ---
 
