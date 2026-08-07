@@ -16,6 +16,7 @@ import { MockCheckoutCard } from '@/components/payment/MockCheckoutCard';
 import { CheckoutWebView } from '@/components/payment/CheckoutWebView';
 import { PaymentResultCard } from '@/components/payment/PaymentResultCard';
 import { resolvePaymentPollOutcome } from '@/lib/payment-poll';
+import { resolvePaymentSuccessMessage } from '@/lib/booking-confirm';
 
 // RFC-013 C4: 'success' artık YALNIZ booking gerçekten Confirmed olduğunda kullanılır
 // (owner ödeme sırasında/hemen sonra onaylamış — nadir ama mümkün bir yarış). Kapora/tam
@@ -102,6 +103,12 @@ export default function PaymentScreen() {
       : 'Ödeme bilgisi eksik geldi. Randevunu Randevularım sayfasından bulup ödemeyi tekrar başlatabilirsin.',
   );
   const [mockLoading, setMockLoading] = useState(false);
+  // RFC-014 §2 D2 madde 3/5: 'confirmed' fazına auto-confirm sayesinde mi (owner hiç aksiyon
+  // almadı) yoksa nadir bir yarışta owner'ın gerçekten OwnerConfirm bastığı için mi düşüldüğünü
+  // ayırt etmek için poll'daki booking'in autoConfirmEnabled'ı burada saklanıyor — "kuaförün
+  // onayladı" demek auto-confirm açık salonlarda YANLIŞ bir atıf olurdu (bkz. backend
+  // Booking.MarkPaymentReceived: bu durumda owner'a hiç bildirim gitmiyor).
+  const [autoConfirmedAtSuccess, setAutoConfirmedAtSuccess] = useState(false);
 
   // 'verifying' fazı: booking'e ödeme yansıyana kadar 2sn arayla poll et (max 8 deneme ≈ 14sn).
   // Webhook/mock complete asenkron çalıştığı için bu yansıma anlık olmayabilir. RFC-013 C4'ten
@@ -127,6 +134,7 @@ export default function PaymentScreen() {
           queryClient.invalidateQueries({ queryKey: ['booking', bookingId] });
           queryClient.invalidateQueries({ queryKey: ['my-bookings'] });
           Haptics.success();
+          if (outcome === 'confirmed') setAutoConfirmedAtSuccess(booking.autoConfirmEnabled);
           setPhase(outcome === 'confirmed' ? 'success' : 'paidPendingApproval');
           return;
         }
@@ -263,8 +271,8 @@ export default function PaymentScreen() {
               title="Randevun onaylandı"
               message={
                 kind === 'Deposit' && !!remaining && remaining > 0
-                  ? `Ödemen alındı ve kuaförün onayladı.\n\nSalonda ödenecek: ${formatTry(remaining)}`
-                  : 'Ödemen alındı ve kuaförün onayladı.'
+                  ? `${resolvePaymentSuccessMessage(autoConfirmedAtSuccess)}\n\nSalonda ödenecek: ${formatTry(remaining)}`
+                  : resolvePaymentSuccessMessage(autoConfirmedAtSuccess)
               }
               primaryLabel="Randevuya git"
               onPrimary={goToBookingDetail}

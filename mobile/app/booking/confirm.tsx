@@ -11,12 +11,12 @@ import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/the
 import { BookingApi } from '@/api/booking';
 import { PaymentApi, PaymentKind, InitiatePaymentResponse } from '@/api/payment';
 import { extractApiError } from '@/api/client';
-import { formatDateTime, formatDuration, formatTry } from '@/lib/format';
+import { formatDateTime, formatDuration, formatTry, isBookingConfirmed } from '@/lib/format';
 import { estimateDepositMinor, remainingAtShopMinor } from '@/lib/deposit';
 import { Haptics } from '@/lib/haptics';
 import { ErrorReporter } from '@/lib/error-reporter';
 import { useAuthStore } from '@/store/auth-store';
-import { resolveBookingConfirmMode } from '@/lib/booking-confirm';
+import { resolveBookingConfirmMode, resolveBookingPromise } from '@/lib/booking-confirm';
 import { buildRedirectPath } from '@/lib/consent-gate';
 
 export default function ConfirmBookingScreen() {
@@ -29,6 +29,7 @@ export default function ConfirmBookingScreen() {
     totalAmount?: string;
     totalDuration?: string;
     shopName?: string;
+    autoConfirmEnabled?: string;
   }>();
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -38,6 +39,14 @@ export default function ConfirmBookingScreen() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const onlinePaymentsEnabled = useAuthStore((s) => s.user?.onlinePaymentsEnabled);
   const confirmMode = resolveBookingConfirmMode(onlinePaymentsEnabled);
+  // barber/[id].tsx shop verisinden taşıyor — param eksik/bozuksa fail-closed false (RFC-013'ün
+  // varsayılan "her randevuda kuaför onayı" davranışına düşer, hiçbir zaman yanlışlıkla "anında
+  // kesinleşir" göstermez).
+  const shopAutoConfirmEnabled = params.autoConfirmEnabled === 'true';
+  const bookingPromise = resolveBookingPromise({
+    autoConfirmEnabled: shopAutoConfirmEnabled,
+    requiresPayment: confirmMode === 'online-payment',
+  });
 
   const serviceIds = params.services?.split(',').filter(Boolean) ?? [];
   const total = params.totalAmount ? parseInt(params.totalAmount, 10) : undefined;
@@ -83,9 +92,14 @@ export default function ConfirmBookingScreen() {
       // "ödeme başlatılamadı" hata dalı bu senaryoda hiç devreye girmez.
       if (confirmMode === 'salon-payment') {
         Haptics.success();
+        // RFC-014 §2 D2 madde 6: bu moda ödeme hiç girmiyor, yani auto-confirm açıksa booking
+        // Initiate anında doğrudan Confirmed döner (bkz. backend Booking.Initiate
+        // immediateAutoConfirm) — "onay bekleniyor" denmez, gerçek sonuç server'ın döndüğü
+        // status'a göre belirlenir (isBookingConfirmed her iki serileştirme biçimini de kapsar).
+        const alreadyConfirmed = isBookingConfirmed(booking.status);
         Alert.alert(
-          '✅ Randevu talebin alındı',
-          'Kuaför onaylayınca bildirim alacaksın.',
+          alreadyConfirmed ? '✅ Randevun kesinleşti!' : '✅ Randevu talebin alındı',
+          resolveBookingPromise({ autoConfirmEnabled: booking.autoConfirmEnabled, requiresPayment: false }),
           [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
         );
         return;
@@ -229,29 +243,47 @@ export default function ConfirmBookingScreen() {
             <Text style={styles.policySub}>
               Kesin tutar ödeme adımında gösterilir. 30 dk içinde ödenmeyen randevu otomatik iptal olur.
             </Text>
-            {/* RFC-013 C4: ödeme booking'i OTOMATİK onaylamaz — backend Booking.MarkPaymentReceived
-                Status'u Pending'de bırakır, onay ayrı bir owner adımıdır (OwnerConfirm, FullOnline
-                dahil). Bu kart, "ödedim = randevum kesin" yanılgısını daha ödeme adımına gelmeden
-                önler. */}
+            {/* RFC-013 C4 + RFC-014 §2 D2: ödeme booking'i tek başına asla otomatik onaylamaz —
+                bu kart "ödedim = randevum kesin" yanılgısını ödeme adımına gelmeden önler. Salon
+                auto-confirm AÇTIYSA (madde 3) ödeme kuaför onayını atlar (ödemeyi atlamaz) — o
+                durumda "kuaför onaylamazsa iade" uyarısı geçersiz/yanıltıcı olur, bu yüzden metin
+                dallanıyor. Metin kaynağı: lib/booking-confirm.ts resolveBookingPromise. */}
             <View
               style={styles.approvalNote}
               accessible
-              accessibilityLabel="Ödeme, randevuyu otomatik onaylamaz. Talebin kuaföre iletilir; kuaför onayladığında randevun kesinleşir. Kuaför onaylamazsa kaporan tam olarak iade edilir."
+              accessibilityLabel={
+                shopAutoConfirmEnabled
+                  ? `Bu salonda otomatik onay açık. ${bookingPromise}`
+                  : 'Ödeme, randevuyu otomatik onaylamaz. Talebin kuaföre iletilir; kuaför onayladığında randevun kesinleşir. Kuaför onaylamazsa kaporan tam olarak iade edilir.'
+              }
             >
               <Text style={styles.approvalNoteText}>
-                ℹ️ Ödeme randevuyu otomatik onaylamaz. Kaporanı ödediğinde talebin kuaföre
+                {shopAutoConfirmEnabled ? (
+                  `⚡ ${bookingPromise} Ödemeni tamamlamazsan randevu talebin süresi dolunca kendiliğinden iptal olur.`
+                ) : (
+                  `ℹ️ Ödeme randevuyu otomatik onaylamaz. Kaporanı ödediğinde talebin kuaföre
                 iletilir; kuaför onayladığında randevun kesinleşir ve bildirim alırsın. Kuaför
                 onaylamazsa (ya da randevu saatine kadar yanıt vermezse) ödediğin tutar tam olarak
-                iade edilir — iade, ödeme sağlayıcına bağlı olarak birkaç iş günü sürebilir.
+                iade edilir — iade, ödeme sağlayıcına bağlı olarak birkaç iş günü sürebilir.`
+                )}
               </Text>
             </View>
           </Card>
         ) : (
           <Card style={{ gap: 4 }}>
-            <View accessible accessibilityLabel="Randevu kuaför onayına gönderilecek, ödeme salonda yapılır">
-              <Text style={styles.policyTitle}>💈 Randevu kuaför onayına gönderilecek</Text>
+            <View
+              accessible
+              accessibilityLabel={
+                shopAutoConfirmEnabled
+                  ? `Randevun anında kesinleşecek, ödeme salonda yapılır. ${bookingPromise}`
+                  : 'Randevu kuaför onayına gönderilecek, ödeme salonda yapılır'
+              }
+            >
+              <Text style={styles.policyTitle}>
+                {shopAutoConfirmEnabled ? '⚡ Randevun anında kesinleşecek' : '💈 Randevu kuaför onayına gönderilecek'}
+              </Text>
               <Text style={styles.policySub}>
-                Ödeme salonda yapılır. Kuaför onaylayınca bildirim alacaksın.
+                Ödeme salonda yapılır. {bookingPromise}
               </Text>
             </View>
           </Card>

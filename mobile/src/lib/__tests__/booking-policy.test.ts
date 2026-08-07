@@ -2,6 +2,7 @@ import {
   BookingPolicyDraft,
   BookingPolicyDto,
   draftFromDto,
+  draftToPayload,
   hasPolicyChanges,
   parseDecimalOrNull,
   sanitizeDecimalText,
@@ -17,6 +18,7 @@ const BASE_DTO: BookingPolicyDto = {
   maxPendingPerCustomer: 2,
   minDaysBetweenBookings: null,
   maxBookingsPerMonth: null,
+  autoConfirmEnabled: false,
   depositPercentMin: BOUNDS.depositPercentMin,
   depositPercentMax: BOUNDS.depositPercentMax,
 };
@@ -30,6 +32,7 @@ function baseDraft(overrides: Partial<BookingPolicyDraft> = {}): BookingPolicyDr
     minDaysBetweenBookings: null,
     maxBookingsPerMonthEnabled: false,
     maxBookingsPerMonth: null,
+    autoConfirmEnabled: false,
     ...overrides,
   };
 }
@@ -134,6 +137,31 @@ describe('hasPolicyChanges', () => {
     draft.maxBookingsPerMonthEnabled = true;
     draft.maxBookingsPerMonth = null;
     expect(hasPolicyChanges(BASE_DTO, draft)).toBe(true);
+  });
+
+  it('RFC-014 §2 D2: autoConfirmEnabled açılırsa değişiklik tespit eder', () => {
+    const draft = draftFromDto(BASE_DTO);
+    draft.autoConfirmEnabled = true;
+    expect(hasPolicyChanges(BASE_DTO, draft)).toBe(true);
+  });
+});
+
+describe('autoConfirmEnabled (RFC-014 §2 D2)', () => {
+  it('draftFromDto sunucudaki değeri olduğu gibi taşır', () => {
+    expect(draftFromDto({ ...BASE_DTO, autoConfirmEnabled: true }).autoConfirmEnabled).toBe(true);
+    expect(draftFromDto({ ...BASE_DTO, autoConfirmEnabled: false }).autoConfirmEnabled).toBe(false);
+  });
+
+  it('draftToPayload sunucuya doğru değeri gönderir — diğer alanlardan farklı olarak normalize edilmez (altında bir sayı yok)', () => {
+    const draft = baseDraft({ autoConfirmEnabled: true });
+    expect(draftToPayload(draft).autoConfirmEnabled).toBe(true);
+  });
+
+  it('kapora açıkken de autoConfirmEnabled bağımsız çalışır (ikisi ayrı toggle)', () => {
+    const draft = baseDraft({ depositEnabled: true, depositPercent: 0.15, autoConfirmEnabled: true });
+    const payload = draftToPayload(draft);
+    expect(payload.depositEnabled).toBe(true);
+    expect(payload.autoConfirmEnabled).toBe(true);
   });
 });
 

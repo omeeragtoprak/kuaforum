@@ -8,6 +8,7 @@ import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { DepositSection } from '@/components/booking-policy/DepositSection';
+import { AutoConfirmSection } from '@/components/booking-policy/AutoConfirmSection';
 import { BookingRulesSection } from '@/components/booking-policy/BookingRulesSection';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
@@ -203,6 +204,12 @@ export default function BookingSettingsScreen() {
             percentError={touched.has('depositPercent') ? errors.depositPercent : undefined}
             bounds={bounds}
             showMasterSwitchNotice={showMasterSwitchNotice}
+          />
+
+          <AutoConfirmSection
+            autoConfirmEnabled={draft.autoConfirmEnabled}
+            onToggle={(value) => updateDraft({ autoConfirmEnabled: value })}
+            depositEnabled={draft.depositEnabled}
           />
 
           <BookingRulesSection

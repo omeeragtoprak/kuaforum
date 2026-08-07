@@ -121,6 +121,9 @@ export default function BarberDetailScreen() {
         totalAmount: String(totalAmount),
         totalDuration: String(totalDuration),
         shopName: shop.name,
+        // RFC-014 §2 D2 madde 6: confirm.tsx randevu öncesi doğru vaadi göstermek için buna
+        // ihtiyaç duyuyor (shop verisini kendi başına fetch etmiyor, tüm seçimler param'la taşınıyor).
+        autoConfirmEnabled: String(shop.autoConfirmEnabled),
       },
     });
   }

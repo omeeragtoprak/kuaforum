@@ -17,6 +17,8 @@ export type BarberShop = {
   latitude?: number;
   longitude?: number;
   commissionTier?: string;
+  /** RFC-014 §2 D2 — müşteri özet ekranının randevu ÖNCESİ doğru vaadi göstermesi için (bkz. lib/booking-confirm.ts). */
+  autoConfirmEnabled: boolean;
 };
 
 export type Stylist = {

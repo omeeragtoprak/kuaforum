@@ -44,6 +44,14 @@ export type Booking = {
   paymentKind?: PaymentKind | null;
   paidOnlineMinor?: number | null;
   remainingAtShopMinor?: number;
+  /**
+   * RFC-014 §2 D2 madde 6 — salonun O ANKİ (canlı) auto-confirm ayarı. Status ile birlikte
+   * okunur: Status Pending iken bu true olması "kuaför onayı bekleniyor" DEĞİL, "ödeme
+   * bekleniyor" anlamına gelir (auto-confirm kuaför onayını atlar, ödemeyi atlamaz — bkz.
+   * lib/booking-confirm.ts resolveBookingPromise). Backend Booking.AutoConfirmSnapshot XML
+   * doc'undaki aynı çıkarım kuralı.
+   */
+  autoConfirmEnabled: boolean;
 };
 
 /** Backend InitiateBookingCommand.cs → InitiateBookingResponse record ile birebir (camelCase). */
@@ -53,6 +61,9 @@ export type InitiateBookingResponse = {
   scheduledEndsAt: string;
   totalAmountMinor: number;
   currency: string;
+  /** RFC-014 §2 D2 madde 6 — bkz. Booking.autoConfirmEnabled yorumu, aynı çıkarım kuralı. */
+  status: BookingStatus;
+  autoConfirmEnabled: boolean;
 };
 
 export const BookingApi = {

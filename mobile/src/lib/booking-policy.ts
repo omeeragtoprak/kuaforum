@@ -21,6 +21,8 @@ export type BookingPolicyDto = {
   maxPendingPerCustomer: number;
   minDaysBetweenBookings: number | null;
   maxBookingsPerMonth: number | null;
+  /** RFC-014 §2 D2 — varsayılan false. Kapora'nın aksine global bir master-switch'e tabi değil. */
+  autoConfirmEnabled: boolean;
   depositPercentMin: number;
   depositPercentMax: number;
 };
@@ -42,6 +44,8 @@ export type BookingPolicyDraft = {
   minDaysBetweenBookings: number | null;
   maxBookingsPerMonthEnabled: boolean;
   maxBookingsPerMonth: number | null;
+  /** RFC-014 §2 D2 — toggle kendi başına anlamlı (opsiyonel limitlerin aksine altında bir sayı yok, ayrı bir "enabled" state gerekmiyor). */
+  autoConfirmEnabled: boolean;
 };
 
 /** Backend'deki BookingPolicy sabitleriyle pin'li (bkz. dosya başı yorum). */
@@ -58,6 +62,7 @@ export function draftFromDto(dto: BookingPolicyDto): BookingPolicyDraft {
     minDaysBetweenBookings: dto.minDaysBetweenBookings,
     maxBookingsPerMonthEnabled: dto.maxBookingsPerMonth !== null,
     maxBookingsPerMonth: dto.maxBookingsPerMonth,
+    autoConfirmEnabled: dto.autoConfirmEnabled,
   };
 }
 
@@ -68,6 +73,7 @@ export type BookingPolicyPayload = {
   maxPendingPerCustomer: number | null;
   minDaysBetweenBookings: number | null;
   maxBookingsPerMonth: number | null;
+  autoConfirmEnabled: boolean;
 };
 
 export function draftToPayload(draft: BookingPolicyDraft): BookingPolicyPayload {
@@ -77,6 +83,7 @@ export function draftToPayload(draft: BookingPolicyDraft): BookingPolicyPayload 
     maxPendingPerCustomer: draft.maxPendingPerCustomer,
     minDaysBetweenBookings: draft.minDaysBetweenBookingsEnabled ? draft.minDaysBetweenBookings : null,
     maxBookingsPerMonth: draft.maxBookingsPerMonthEnabled ? draft.maxBookingsPerMonth : null,
+    autoConfirmEnabled: draft.autoConfirmEnabled,
   };
 }
 
@@ -194,7 +201,8 @@ export function hasPolicyChanges(original: BookingPolicyDto, draft: BookingPolic
     !percentEquals(a.depositPercent, b.depositPercent) ||
     a.maxPendingPerCustomer !== b.maxPendingPerCustomer ||
     a.minDaysBetweenBookings !== b.minDaysBetweenBookings ||
-    a.maxBookingsPerMonth !== b.maxBookingsPerMonth
+    a.maxBookingsPerMonth !== b.maxBookingsPerMonth ||
+    a.autoConfirmEnabled !== b.autoConfirmEnabled
   );
 }
 
