@@ -110,17 +110,23 @@ export default function BarberDetailScreen() {
       .filter((s) => selectedServices.has(s.id))
       .map((s) => s.name)
       .join(' · ');
+    // RFC-014 §2 D4: confirm.tsx'in ön-kontrol (check-conflict) çağırabilmesi için seçili
+    // slotun bitişi lazım — uygunluk sorgusundan dönen SlotDto{startsAt,endsAt} zaten elimizde,
+    // süreyi hizmetlerden yeniden hesaplamıyoruz (backend'in kendi hesabıyla tutarsızlık riski).
+    const selectedSlotEndsAt = (slotsQuery.data ?? []).find((s) => s.startsAt === selectedSlot)?.endsAt;
     router.push({
       pathname: '/booking/confirm',
       params: {
         stylistId: selectedStylist,
         stylistName,
         scheduledAt: selectedSlot,
+        scheduledEndsAt: selectedSlotEndsAt,
         services: Array.from(selectedServices).join(','),
         serviceLabels,
         totalAmount: String(totalAmount),
         totalDuration: String(totalDuration),
         shopName: shop.name,
+        barberShopId: shop.id,
         // RFC-014 §2 D2 madde 6: confirm.tsx randevu öncesi doğru vaadi göstermek için buna
         // ihtiyaç duyuyor (shop verisini kendi başına fetch etmiyor, tüm seçimler param'la taşınıyor).
         autoConfirmEnabled: String(shop.autoConfirmEnabled),

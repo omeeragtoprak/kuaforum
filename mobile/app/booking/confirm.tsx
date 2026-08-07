@@ -8,7 +8,7 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { AuthPrompt } from '@/components/AuthPrompt';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
-import { BookingApi } from '@/api/booking';
+import { BookingApi, ConflictingBooking } from '@/api/booking';
 import { PaymentApi, PaymentKind, InitiatePaymentResponse } from '@/api/payment';
 import { extractApiError } from '@/api/client';
 import { formatDateTime, formatDuration, formatTry, isBookingConfirmed } from '@/lib/format';
@@ -16,7 +16,12 @@ import { estimateDepositMinor, remainingAtShopMinor } from '@/lib/deposit';
 import { Haptics } from '@/lib/haptics';
 import { ErrorReporter } from '@/lib/error-reporter';
 import { useAuthStore } from '@/store/auth-store';
-import { resolveBookingConfirmMode, resolveBookingPromise } from '@/lib/booking-confirm';
+import {
+  resolveBookingConfirmMode,
+  resolveBookingPromise,
+  formatConflictConfirmMessage,
+  formatConflictAfterCreateMessage,
+} from '@/lib/booking-confirm';
 import { buildRedirectPath } from '@/lib/consent-gate';
 
 export default function ConfirmBookingScreen() {
@@ -24,11 +29,13 @@ export default function ConfirmBookingScreen() {
     stylistId: string;
     stylistName?: string;
     scheduledAt: string;
+    scheduledEndsAt?: string;
     services: string;
     serviceLabels?: string;
     totalAmount?: string;
     totalDuration?: string;
     shopName?: string;
+    barberShopId?: string;
     autoConfirmEnabled?: string;
   }>();
   const router = useRouter();
@@ -62,11 +69,13 @@ export default function ConfirmBookingScreen() {
       stylistId: params.stylistId,
       stylistName: params.stylistName,
       scheduledAt: params.scheduledAt,
+      scheduledEndsAt: params.scheduledEndsAt,
       services: params.services,
       serviceLabels: params.serviceLabels,
       totalAmount: params.totalAmount,
       totalDuration: params.totalDuration,
       shopName: params.shopName,
+      barberShopId: params.barberShopId,
     });
     return (
       <AuthPrompt
@@ -76,7 +85,37 @@ export default function ConfirmBookingScreen() {
     );
   }
 
+  // RFC-014 §2 D4 madde 3: ön-kontrol TAVSİYE niteliğinde — ağ hatasında (veya gerekli
+  // param'lar eksikse, örn. eski bir deep-link) randevu oluşturma akışı ASLA bloklanmaz,
+  // sessizce devam edilir (log yeterli).
+  async function checkConflictSafely(): Promise<ConflictingBooking | null> {
+    if (!params.barberShopId || !params.scheduledAt || !params.scheduledEndsAt) return null;
+    try {
+      return await BookingApi.checkConflict(params.barberShopId, params.scheduledAt, params.scheduledEndsAt);
+    } catch (err) {
+      ErrorReporter.capture(err, { tag: 'booking.confirm.check-conflict' });
+      return null;
+    }
+  }
+
   async function handleConfirm() {
+    setLoading(true);
+    const conflict = await checkConflictSafely();
+    if (conflict) {
+      setLoading(false);
+      // Onay diyaloğu — "emin misiniz?" değil, NE OLACAĞINI yazar (formatConflictConfirmMessage).
+      // ENGELLEME YOK: "Yine de devam et" her zaman sunulur, "Vazgeç" hiçbir şey oluşturmadan
+      // özet ekranında kalır.
+      Alert.alert('Randevu çakışması', formatConflictConfirmMessage(conflict), [
+        { text: 'Vazgeç', style: 'cancel' },
+        { text: 'Yine de devam et', onPress: () => createBooking() },
+      ]);
+      return;
+    }
+    await createBooking();
+  }
+
+  async function createBooking() {
     setLoading(true);
     try {
       const booking = await BookingApi.initiate(
@@ -86,6 +125,12 @@ export default function ConfirmBookingScreen() {
         note || undefined,
         false,
       );
+
+      // RFC-014 §2 D4: ön-kontrol temiz çıkmış olsa bile oluşturma yanıtı yarış nedeniyle
+      // çakışma dönebilir (bkz. backend InitiateBookingCommand.cs "son söz" yorumu). Randevu
+      // ZATEN oluştu — burada soru sorulmaz, yalnız bilgilendirilir.
+      const raceConflict = booking.conflictingBooking;
+      const conflictSuffix = raceConflict ? `\n\n${formatConflictAfterCreateMessage(raceConflict)}` : '';
 
       // RFC-009 ücretsiz büyüme modu: flag kapalıyken ödeme adımı hiç başlatılmaz — randevu
       // Pending kalır, kuaför OwnerConfirm ile onaylar. PaymentApi.initiate çağrılmadığı için
@@ -99,7 +144,7 @@ export default function ConfirmBookingScreen() {
         const alreadyConfirmed = isBookingConfirmed(booking.status);
         Alert.alert(
           alreadyConfirmed ? '✅ Randevun kesinleşti!' : '✅ Randevu talebin alındı',
-          resolveBookingPromise({ autoConfirmEnabled: booking.autoConfirmEnabled, requiresPayment: false }),
+          resolveBookingPromise({ autoConfirmEnabled: booking.autoConfirmEnabled, requiresPayment: false }) + conflictSuffix,
           [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
         );
         return;
@@ -113,24 +158,33 @@ export default function ConfirmBookingScreen() {
         Haptics.warning();
         Alert.alert(
           'Randevun oluştu',
-          'Randevun oluştu ama ödeme başlatılamadı. Randevularım\'dan ödemeyi tamamlayabilirsin.',
+          'Randevun oluştu ama ödeme başlatılamadı. Randevularım\'dan ödemeyi tamamlayabilirsin.' + conflictSuffix,
           [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
         );
         return;
       }
       Haptics.success();
-      router.replace({
-        pathname: '/booking/payment',
-        params: {
-          paymentId: pay.paymentId,
-          checkoutUrl: pay.checkoutUrl,
-          amountMinor: String(pay.amountMinor),
-          remainingAtShopMinor: String(pay.remainingAtShopMinor),
-          kind: pay.kind,
-          bookingId: booking.bookingId,
-          expiresAt: pay.expiresAt,
-        },
-      });
+      const goToPayment = () =>
+        router.replace({
+          pathname: '/booking/payment',
+          params: {
+            paymentId: pay.paymentId,
+            checkoutUrl: pay.checkoutUrl,
+            amountMinor: String(pay.amountMinor),
+            remainingAtShopMinor: String(pay.remainingAtShopMinor),
+            kind: pay.kind,
+            bookingId: booking.bookingId,
+            expiresAt: pay.expiresAt,
+          },
+        });
+      if (raceConflict) {
+        // Diyalog değil, tek butonlu bilgilendirme — "iş bitti", sadece not düşülüyor.
+        Alert.alert('Randevun oluştu', formatConflictAfterCreateMessage(raceConflict), [
+          { text: 'Tamam', onPress: goToPayment },
+        ]);
+      } else {
+        goToPayment();
+      }
     } catch (err) {
       Haptics.error();
       Alert.alert('Hata', extractApiError(err));

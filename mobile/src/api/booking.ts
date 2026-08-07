@@ -54,6 +54,18 @@ export type Booking = {
   autoConfirmEnabled: boolean;
 };
 
+/**
+ * RFC-014 §2 D4 — müşterinin AYNI zaman aralığına BAŞKA bir salondan çakışan
+ * (Pending/Confirmed/Started) randevusu. Backend `ConflictingBookingDto` ile birebir.
+ * Founder kararı: yalnız BİLGİLENDİRME amaçlı, randevu oluşturmayı ENGELLEMEZ.
+ */
+export type ConflictingBooking = {
+  bookingId: string;
+  barberShopName: string;
+  scheduledAt: string;
+  scheduledEndsAt: string;
+};
+
 /** Backend InitiateBookingCommand.cs → InitiateBookingResponse record ile birebir (camelCase). */
 export type InitiateBookingResponse = {
   bookingId: string;
@@ -64,6 +76,12 @@ export type InitiateBookingResponse = {
   /** RFC-014 §2 D2 madde 6 — bkz. Booking.autoConfirmEnabled yorumu, aynı çıkarım kuralı. */
   status: BookingStatus;
   autoConfirmEnabled: boolean;
+  /**
+   * RFC-014 §2 D4 — "son söz". Ön-kontrol (checkConflict) ile bu yanıt arasında geçen sürede
+   * araya başka bir randevu girebilir (yarış); bu alan doluysa randevu YİNE DE oluşturulmuştur,
+   * yalnız bilgilendirme amaçlıdır.
+   */
+  conflictingBooking: ConflictingBooking | null;
 };
 
 export const BookingApi = {
@@ -82,6 +100,22 @@ export const BookingApi = {
       customerNote,
     });
     return res.data;
+  },
+  /**
+   * RFC-014 §2 D4 madde 1 — özet ekranının oluşturmadan ÖNCE çağırdığı ön-kontrol. Tavsiye
+   * niteliğinde: ağ hatasında caller randevu oluşturmayı BLOKLAMAMALI (bkz. booking-confirm.ts
+   * kullanım yeri) — bu yüzden burada hata yutulmuyor, sorumluluk caller'da.
+   */
+  async checkConflict(
+    barberShopId: string,
+    scheduledAt: string,
+    scheduledEndsAt: string,
+  ): Promise<ConflictingBooking | null> {
+    const res = await apiClient.post<{ conflictingBooking: ConflictingBooking | null }>(
+      '/v1/bookings/check-conflict',
+      { barberShopId, scheduledAt, scheduledEndsAt },
+    );
+    return res.data.conflictingBooking;
   },
   async getMine(status?: number): Promise<Booking[]> {
     const params = status !== undefined ? { status } : undefined;

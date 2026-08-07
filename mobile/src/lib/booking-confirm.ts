@@ -1,3 +1,8 @@
+import { formatDateTime } from '@/lib/format';
+// `import type` — yalnız derleme zamanı, booking.ts'i çalışma zamanında import etmiyoruz
+// (döngüsel bağımlılık riski yok: booking.ts bu dosyayı hiç import etmiyor zaten).
+import type { ConflictingBooking } from '@/api/booking';
+
 export type BookingConfirmMode = 'online-payment' | 'salon-payment';
 
 /**
@@ -56,4 +61,31 @@ export function resolvePaymentSuccessMessage(autoConfirmEnabled: boolean): strin
   return autoConfirmEnabled
     ? 'Ödemen alındı, randevun otomatik onaylandı.'
     : 'Ödemen alındı ve kuaförün onayladı.';
+}
+
+/**
+ * RFC-014 §2 D4 madde 1 — özet ekranında "randevuyu oluştur" öncesi ön-kontrol çakışma
+ * bulursa gösterilecek onay diyaloğunun metni. Direktif kuralı: "emin misiniz?" DEMEZ, NE
+ * OLACAĞINI yazar — kullanıcı hangi salonda, ne zaman zaten randevusu olduğunu görür, sonra
+ * karar verir. Saf fonksiyon — tarih/saat formatlaması dahil, JSX'e gömülmez (bu projede aynı
+ * hata bir kez düzeltildi, bkz. resolveBookingPromise yorumu).
+ *
+ * ENGELLEME YOK: bu metin bir bariyer değil, bilgilendirme + onay diyaloğu içindir — "Vazgeç"
+ * dışında "Yine de devam et" her zaman sunulur (bkz. booking/confirm.tsx handleConfirm).
+ */
+export function formatConflictConfirmMessage(conflict: ConflictingBooking): string {
+  return (
+    `Bu saatte ${conflict.barberShopName}'de randevun var (${formatDateTime(conflict.scheduledAt)}). ` +
+    'Yine de bu randevuyu almak istiyor musun?'
+  );
+}
+
+/**
+ * RFC-014 §2 D4 — ön-kontrol temiz çıkmış ama oluşturma yanıtında (InitiateBookingResponse.
+ * conflictingBooking) yarış nedeniyle çakışma çıkarsa gösterilecek metin. Randevu ZATEN
+ * oluştu — burada soru sorulmaz ("iptal etmek ister misin?" ayrı bir aksiyon), yalnız bilgi
+ * verilir.
+ */
+export function formatConflictAfterCreateMessage(conflict: ConflictingBooking): string {
+  return `Bu saatte ${conflict.barberShopName}'de de bir randevun var (${formatDateTime(conflict.scheduledAt)}).`;
 }
