@@ -18,10 +18,20 @@ public enum BookingType { Scheduled = 0, WalkIn = 1 }
 
 Direktifin (BÖLÜM D3) beklediği `REJECTED` ve `EXPIRED` **ayrı statü olarak yok** — ikisi de `Cancelled` durumunun altında `CancellationReason` ile ayrıştırılıyor (`BarberRequested` = ret, `PendingTimeout` = süre doldu). Bu, `docs/ASSUMPTIONS.md` §"Direktif ↔ Mevcut durum eşlemesi" satır D3'te zaten "semantik fark" olarak işaretli — burada kod kanıtıyla doğrulandı, tekrar karar gerektirmiyor (founder onayı istenirse: statü sayısını azaltmak mı, yoksa iki statüyü ayırmak için migration mı — bu DOMAIN.md'nin kapsamı dışında, ayrı bir RFC konusu).
 
+> **Güncelleme 2026-08-07 (RFC-014 §2 D2 — `auto_confirm`):** Salon başına "otomatik onay" ayarı eklendi (`BookingPolicy.AutoConfirmEnabled`, **varsayılan false**). Açıkken `Pending` **atlanabilir**:
+>
+> - `auto_confirm = true` **ve** ödeme gerekmiyor → `Initiate` doğrudan **`Confirmed`** yaratır, `Pending` hiç oluşmaz.
+> - `auto_confirm = true` **ve** kapora/ödeme gerekiyor → randevu yine `Pending` başlar; **ödeme alındığında** kuaför onayı beklenmeden `Confirmed`'a geçer (`Booking.MarkPaymentReceived`). Yani otomatik onay **kuaförün onayını atlar, ÖDEMEYİ ATLAMAZ**.
+> - Karar `Initiate` anında `Booking.AutoConfirmSnapshot`'a **donar**: kuaför ayarı sonradan değiştirse bile mevcut randevunun yolu değişmez. `BookingDto.AutoConfirmEnabled` bu snapshot'ı döner (salonun canlı ayarını değil — `2028bb0`).
+> - Anti-spam kuralları (RFC-013) otomatik onaydan **etkilenmez**: `Initiate` çağrılmadan önce çalışır, ihlalde randevu hiç oluşmaz.
+> - Bildirim metni dallanır: otomatik onaylıda kuaföre "onayınızı bekliyor" değil "otomatik onaylandı" gider.
+
 ```mermaid
 stateDiagram-v2
     [*] --> Pending: Initiate (owner onayı bekliyor — RFC-013 "önce ödeme, sonra onay")
+    [*] --> Confirmed: Initiate (auto_confirm AÇIK + ödeme gerekmiyor — RFC-014 D2)
     Pending --> Confirmed: Owner onaylar
+    Pending --> Confirmed: Ödeme alındı + auto_confirm snapshot true (kuaför onayı beklenmez)
     Pending --> Cancelled: Customer iptal / ExpirePendingBookingsJob (PendingTimeout) / PaymentFailed
     Confirmed --> Started: Owner start eder
     Confirmed --> Cancelled: Customer/Owner/Admin iptal
