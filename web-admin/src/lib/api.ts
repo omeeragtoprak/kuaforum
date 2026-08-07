@@ -259,11 +259,18 @@ export type UsersAdminPage = {
 };
 
 // ---------------------------------------------------------------------------
-// RFC-012 faturalama / tahsilat
+// RFC-014 abonelik faturalama / tahsilat
+//
+// RFC-012'nin ciro-komisyonu modeli (matrah × oran) KALDIRILDI; gelir artık salonun
+// bağlı olduğu planın sabit aylık ücreti. Route yolları RFC-012'den değişmedi
+// (/v1/admin/billing/statements ...), yalnız gövde alanları değişti:
+//   basisAmountMinor + rateApplied → planCode + planPriceMinor
+//   amountDueMinor                 → amountMinor
+// Kaynak: backend/src/Kuaforum.Application/Modules/Billing/SubscriptionInvoiceQueries.cs
 // ---------------------------------------------------------------------------
 
-/** Backend CommissionStatementStatus (Open=0 … SuspensionApplied=4). */
-export type CommissionStatementStatusName =
+/** Backend SubscriptionInvoiceStatus (Open=0 … SuspensionApplied=4). */
+export type SubscriptionInvoiceStatusName =
   | 'Open'
   | 'Notified'
   | 'Paid'
@@ -272,8 +279,11 @@ export type CommissionStatementStatusName =
 
 export type PlatformSettingsDto = {
   id: string;
-  /** 0-1 arası decimal (backend doğrulaması: >0 ve <=0.5). UI yüzde gösterir. */
-  commissionRateGlobal: number;
+  /**
+   * Platformun tahsilat hesabı. Alan adları RFC-012'den kalma "commission" önekini
+   * taşıyor (backend PlatformSettingsDto ile birebir) ama artık abonelik ücretinin
+   * havale edileceği hesabı ifade ediyor.
+   */
   commissionPaymentIban?: string | null;
   commissionPaymentBankName?: string | null;
   commissionPaymentAccountHolderName?: string | null;
@@ -282,48 +292,59 @@ export type PlatformSettingsDto = {
    * ama PUT tüm satırı yazdığı için okunup geri gönderilmeleri gerekir — aksi halde 0'a
    * düşer ve backend validasyonu (GreaterThan(0)) 400 döner.
    */
-  depositPercentMin?: number;
-  depositPercentMax?: number;
+  depositPercentMin: number;
+  depositPercentMax: number;
 };
 
 export type UpdatePlatformSettingsBody = {
-  commissionRateGlobal: number;
   commissionPaymentIban: string | null;
   commissionPaymentBankName: string | null;
   commissionPaymentAccountHolderName: string | null;
   // Bkz. PlatformSettingsDto: GET'ten okunan değerler aynen geri yazılır (kaybolmasın diye).
-  depositPercentMin?: number;
-  depositPercentMax?: number;
+  depositPercentMin: number;
+  depositPercentMax: number;
 };
 
-export type AdminCommissionStatementDto = {
+/**
+ * PUT /settings yanıtı. Kapora aralığı daraltıldığında aralık DIŞINDA kalan salonlar
+ * otomatik clamp EDİLMEZ (backend kararı) — bu sayı yalnız admin'e görünürlük verir.
+ */
+export type UpdatePlatformSettingsResult = {
+  outOfRangeShopCount: number;
+};
+
+/** backend AdminSubscriptionInvoiceItemDto ile birebir. */
+export type AdminSubscriptionInvoiceDto = {
   id: string;
   barberShopId: string;
   barberShopName: string;
   /** DateOnly — "2026-07-01" formatında gelir. */
   periodStart: string;
   periodEnd: string;
-  amountDueMinor: number;
+  /** Kapanış anında snapshot'lanan plan kodu (ör. "STARTER"). */
+  planCode: string;
+  /** Kapanış anında snapshot'lanan plan fiyatı (kuruş) — sonraki fiyat değişikliğinden etkilenmez. */
+  planPriceMinor: number;
+  /** Fiilen tahsil edilecek tutar (kuruş). Başlangıçta planPriceMinor'a eşit, admin düzeltebilir. */
+  amountMinor: number;
   dueDate: string;
   // JsonStringEnumConverter → "Notified"; sayı da tolere edilir (String(status) ile okunur).
   status: number | string;
   isDisputed: boolean;
-  // Admin kuyruk DTO'su (AdminCommissionStatementItemDto) şu an matrah/oran taşımıyor.
-  // Backend eklediğinde tablo otomatik doldurur — o güne kadar "—" gösterilir.
-  basisAmountMinor?: number;
-  rateApplied?: number;
 };
 
-export type AdminCommissionStatementsPage = {
-  items: AdminCommissionStatementDto[];
+export type AdminSubscriptionInvoicesPage = {
+  items: AdminSubscriptionInvoiceDto[];
   page: number;
   pageSize: number;
   totalCount: number;
 };
 
-export type AdminStatementsQuery = {
-  status?: CommissionStatementStatusName;
+export type AdminSubscriptionInvoicesQuery = {
+  status?: SubscriptionInvoiceStatusName;
   disputedOnly?: boolean;
+  /** DateOnly "yyyy-MM-01" — backend TAM eşitlik arar (faturaların PeriodStart'ı hep ayın 1'i). */
+  periodStart?: string;
   page?: number;
   pageSize?: number;
 };
@@ -442,51 +463,52 @@ export const adminApi = {
     return apiFetch<AuditLogPage>(`/v1/admin/audit-logs?${qs}`);
   },
 
-  // --- RFC-012 faturalama -------------------------------------------------
+  // --- RFC-014 abonelik faturalama ----------------------------------------
   async platformSettings(): Promise<PlatformSettingsDto> {
     return apiFetch<PlatformSettingsDto>('/v1/admin/billing/settings');
   },
   /**
    * PUT tüm alanları birlikte yazar (banka bilgisi kısmi güncellenmez) — çağıran taraf
-   * yüklediği mevcut değerleri geri göndermeli. commissionRateGlobal 0-1 arası decimal.
+   * yüklediği mevcut değerleri geri göndermeli.
+   * Yanıt: kapora sınırı daraltılınca aralık dışında kalan salon sayısı (otomatik clamp YOK).
    */
-  async updatePlatformSettings(body: UpdatePlatformSettingsBody): Promise<void> {
-    await apiFetch<void>('/v1/admin/billing/settings', {
+  async updatePlatformSettings(body: UpdatePlatformSettingsBody): Promise<UpdatePlatformSettingsResult> {
+    return apiFetch<UpdatePlatformSettingsResult>('/v1/admin/billing/settings', {
       method: 'PUT',
       body: JSON.stringify(body),
     });
   },
-  /** rateOverride: 0-1 arası decimal, null → override kaldırılır (global orana döner). */
-  async setBarberShopCommissionRate(shopId: string, rateOverride: number | null): Promise<void> {
-    await apiFetch<void>(`/v1/admin/billing/barber-shops/${shopId}/commission-rate`, {
-      method: 'PUT',
-      body: JSON.stringify({ rateOverride }),
-    });
-  },
-  async listCommissionStatements(params: AdminStatementsQuery = {}): Promise<AdminCommissionStatementsPage> {
+  async listSubscriptionInvoices(params: AdminSubscriptionInvoicesQuery = {}): Promise<AdminSubscriptionInvoicesPage> {
     const qs = new URLSearchParams();
     // Enum query binding Enum.TryParse üzerinden — isim birebir doğru yazılmalı ("Notified").
     if (params.status) qs.set('status', params.status);
     if (params.disputedOnly) qs.set('disputedOnly', 'true');
+    if (params.periodStart) qs.set('periodStart', params.periodStart);
     qs.set('page', String(params.page ?? 1));
     qs.set('pageSize', String(params.pageSize ?? 25));
-    return apiFetch<AdminCommissionStatementsPage>(`/v1/admin/billing/statements?${qs}`);
+    return apiFetch<AdminSubscriptionInvoicesPage>(`/v1/admin/billing/statements?${qs}`);
   },
-  async markStatementPaid(statementId: string, reason: string): Promise<void> {
-    await apiFetch<void>(`/v1/admin/billing/statements/${statementId}/mark-paid`, {
+  async markInvoicePaid(invoiceId: string, reason: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/billing/statements/${invoiceId}/mark-paid`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     });
   },
-  async adjustStatementAmount(statementId: string, newAmountDueMinor: number, reason: string): Promise<void> {
-    await apiFetch<void>(`/v1/admin/billing/statements/${statementId}/adjust`, {
+  /**
+   * Alan adı `newAmountMinor` — backend AdjustAmountRequest(long NewAmountMinor, string Reason).
+   * DİKKAT: backend validator tutarı `>= 0` kabul ettiği ve System.Text.Json eksik alanı
+   * sessizce 0'a düşürdüğü için YANLIŞ alan adı 204 döner ama faturayı 0 TL'ye çeker.
+   * Bu yüzden isim backend record'uyla birebir kalmalı; çağıran taraf ayrıca > 0 doğrular.
+   */
+  async adjustInvoiceAmount(invoiceId: string, newAmountMinor: number, reason: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/billing/statements/${invoiceId}/adjust`, {
       method: 'POST',
-      body: JSON.stringify({ newAmountDueMinor, reason }),
+      body: JSON.stringify({ newAmountMinor, reason }),
     });
   },
   /** newDueDate: DateOnly — "2026-09-15" (yyyy-MM-dd). */
-  async extendStatementDueDate(statementId: string, newDueDate: string, reason: string): Promise<void> {
-    await apiFetch<void>(`/v1/admin/billing/statements/${statementId}/extend-due`, {
+  async extendInvoiceDueDate(invoiceId: string, newDueDate: string, reason: string): Promise<void> {
+    await apiFetch<void>(`/v1/admin/billing/statements/${invoiceId}/extend-due`, {
       method: 'POST',
       body: JSON.stringify({ newDueDate, reason }),
     });

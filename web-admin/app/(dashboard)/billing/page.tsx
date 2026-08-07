@@ -6,9 +6,8 @@ import {
   ApiClientError,
   formatDateOnly,
   formatTry,
-  rateToPercentText,
-  type AdminCommissionStatementDto,
-  type CommissionStatementStatusName,
+  type AdminSubscriptionInvoiceDto,
+  type SubscriptionInvoiceStatusName,
 } from '@/lib/api';
 import { BillingSettingsCard } from '@/components/billing/BillingSettingsCard';
 import {
@@ -17,7 +16,7 @@ import {
   MarkPaidModal,
 } from '@/components/billing/StatementActionModals';
 
-// Backend CommissionStatementStatus JsonStringEnumConverter ile "Notified" olarak gelir;
+// Backend SubscriptionInvoiceStatus JsonStringEnumConverter ile "Notified" olarak gelir;
 // eski istemci/kayıt ihtimaline karşı sayısal anahtarlar da haritada (repo kalıbı).
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string }> = {
   '0': { label: 'Açık', color: '#525252', bg: '#E5E5E5' },
@@ -32,7 +31,7 @@ const STATUS_LABEL: Record<string, { label: string; color: string; bg: string }>
   SuspensionApplied: { label: 'Askı uygulandı', color: '#991B1B', bg: '#FEE2E2' },
 };
 
-const STATUS_OPTIONS: Array<{ value: CommissionStatementStatusName; label: string }> = [
+const STATUS_OPTIONS: Array<{ value: SubscriptionInvoiceStatusName; label: string }> = [
   { value: 'Open', label: 'Açık' },
   { value: 'Notified', label: 'Bildirildi' },
   { value: 'Paid', label: 'Ödendi' },
@@ -43,24 +42,30 @@ const STATUS_OPTIONS: Array<{ value: CommissionStatementStatusName; label: strin
 const PAGE_SIZE = 25;
 
 // Enum karşılaştırmaları HER ZAMAN String(...) üzerinden — sayı/isim ikiliği bug'ı için.
-const statusName = (s: AdminCommissionStatementDto) => String(s.status);
-const isPaid = (s: AdminCommissionStatementDto) => statusName(s) === '2' || statusName(s) === 'Paid';
+const statusName = (s: AdminSubscriptionInvoiceDto) => String(s.status);
+const isPaid = (s: AdminSubscriptionInvoiceDto) => statusName(s) === '2' || statusName(s) === 'Paid';
 /** MarkPaid domain kuralı: yalnız Notified | Overdue | SuspensionApplied. */
-const canMarkPaid = (s: AdminCommissionStatementDto) =>
+const canMarkPaid = (s: AdminSubscriptionInvoiceDto) =>
   ['1', 'Notified', '3', 'Overdue', '4', 'SuspensionApplied'].includes(statusName(s));
 
 type ActionModal =
-  | { kind: 'mark-paid' | 'adjust' | 'extend'; statement: AdminCommissionStatementDto }
+  | { kind: 'mark-paid' | 'adjust' | 'extend'; invoice: AdminSubscriptionInvoiceDto }
   | null;
 
 type ToastState = { kind: 'success' | 'error'; msg: string } | null;
 
+/** <input type="month"> "2026-08" verir; backend DateOnly ve ayın 1'i ile TAM eşitlik arar. */
+function monthInputToPeriodStart(value: string): string | undefined {
+  return /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : undefined;
+}
+
 export default function BillingPage() {
-  const [items, setItems] = useState<AdminCommissionStatementDto[]>([]);
+  const [items, setItems] = useState<AdminSubscriptionInvoiceDto[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState<CommissionStatementStatusName | ''>('');
+  const [statusFilter, setStatusFilter] = useState<SubscriptionInvoiceStatusName | ''>('');
   const [disputedOnly, setDisputedOnly] = useState(false);
+  const [periodMonth, setPeriodMonth] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
@@ -70,9 +75,10 @@ export default function BillingPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await adminApi.listCommissionStatements({
+      const res = await adminApi.listSubscriptionInvoices({
         status: statusFilter === '' ? undefined : statusFilter,
         disputedOnly: disputedOnly || undefined,
+        periodStart: monthInputToPeriodStart(periodMonth),
         page,
         pageSize: PAGE_SIZE,
       });
@@ -84,7 +90,7 @@ export default function BillingPage() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, disputedOnly, page]);
+  }, [statusFilter, disputedOnly, periodMonth, page]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -105,7 +111,7 @@ export default function BillingPage() {
   return (
     <div>
       <h1 style={styles.h1}>Faturalama</h1>
-      <p style={styles.subtitle}>Aylık komisyon statement&apos;ları ve tahsilat kuyruğu (RFC-012).</p>
+      <p style={styles.subtitle}>Aylık abonelik faturaları ve tahsilat kuyruğu (RFC-014).</p>
 
       <BillingSettingsCard onToast={(kind, msg) => setToast({ kind, msg })} />
 
@@ -116,7 +122,7 @@ export default function BillingPage() {
         <select
           value={statusFilter}
           onChange={(e) => {
-            setStatusFilter(e.target.value as CommissionStatementStatusName | '');
+            setStatusFilter(e.target.value as SubscriptionInvoiceStatusName | '');
             setPage(1);
           }}
           style={styles.select}
@@ -135,9 +141,21 @@ export default function BillingPage() {
           />
           Yalnız itirazlılar
         </label>
-        <span style={styles.filterHint}>
-          Dönem filtresi backend&apos;de yok — kayıtlar vadeye göre sıralı, dönem sütunundan okunur.
-        </span>
+        <label style={styles.checkboxLabel}>
+          Dönem
+          <input
+            type="month"
+            value={periodMonth}
+            onChange={(e) => { setPeriodMonth(e.target.value); setPage(1); }}
+            style={styles.monthInput}
+            aria-label="Dönem filtresi (ay)"
+          />
+        </label>
+        {periodMonth ? (
+          <button style={styles.clearBtn} onClick={() => { setPeriodMonth(''); setPage(1); }}>
+            Dönem filtresini temizle
+          </button>
+        ) : null}
       </div>
 
       {error ? <div style={styles.error}>{error}</div> : null}
@@ -154,9 +172,9 @@ export default function BillingPage() {
           <div style={styles.emptyEmoji}>🧾</div>
           <div style={styles.emptyTitle}>Kayıt yok</div>
           <div style={styles.emptyDesc}>
-            {statusFilter || disputedOnly
-              ? 'Bu filtreyle eşleşen statement yok — filtreyi değiştir.'
-              : 'Henüz komisyon statement’ı kapanmamış (aylık kapanış job’u ayın sonunda üretir).'}
+            {statusFilter || disputedOnly || periodMonth
+              ? 'Bu filtreyle eşleşen abonelik faturası yok — filtreyi değiştir.'
+              : 'Henüz abonelik faturası kapanmamış (aylık kapanış job’u ayın sonunda üretir; ücretsiz planlar için fatura üretilmez).'}
           </div>
         </div>
       ) : (
@@ -166,9 +184,9 @@ export default function BillingPage() {
               <tr style={styles.thead}>
                 <th style={styles.th}>Salon</th>
                 <th style={styles.th}>Dönem</th>
-                <th style={styles.th}>Matrah</th>
-                <th style={styles.th}>Oran</th>
-                <th style={styles.th}>Borç</th>
+                <th style={styles.th}>Plan</th>
+                <th style={styles.th}>Plan fiyatı</th>
+                <th style={styles.th}>Tutar</th>
                 <th style={styles.th}>Vade</th>
                 <th style={styles.th}>Durum</th>
                 <th style={styles.thRight}>Aksiyon</th>
@@ -183,7 +201,7 @@ export default function BillingPage() {
                     <td style={styles.td}>
                       <div style={styles.shopName}>{s.barberShopName}</div>
                       {s.isDisputed ? (
-                        <span style={styles.disputeChip} title="Kuaför bu statement&apos;a itiraz etti">
+                        <span style={styles.disputeChip} title="Kuaför bu faturaya itiraz etti">
                           ⚑ İtirazlı
                         </span>
                       ) : null}
@@ -193,16 +211,15 @@ export default function BillingPage() {
                       <div style={styles.subtext}>– {formatDateOnly(s.periodEnd)}</div>
                     </td>
                     <td style={styles.td}>
-                      {s.basisAmountMinor !== undefined ? formatTry(s.basisAmountMinor) : (
-                        <span style={styles.muted} title="Admin kuyruk API'si matrahı dönmüyor">—</span>
-                      )}
+                      <span style={styles.planCode}>{s.planCode}</span>
                     </td>
                     <td style={styles.td}>
-                      {s.rateApplied !== undefined ? `%${rateToPercentText(s.rateApplied)}` : (
-                        <span style={styles.muted} title="Admin kuyruk API'si uygulanan oranı dönmüyor">—</span>
-                      )}
+                      {formatTry(s.planPriceMinor)}
+                      {s.amountMinor !== s.planPriceMinor ? (
+                        <div style={styles.subtext} title="Admin tutarı düzeltmiş">düzeltildi</div>
+                      ) : null}
                     </td>
-                    <td style={styles.tdAmount}>{formatTry(s.amountDueMinor)}</td>
+                    <td style={styles.tdAmount}>{formatTry(s.amountMinor)}</td>
                     <td style={styles.td}>{formatDateOnly(s.dueDate)}</td>
                     <td style={styles.td}>
                       <span style={{ ...styles.badge, color: badge.color, background: badge.bg }}>
@@ -215,23 +232,23 @@ export default function BillingPage() {
                           style={{ ...styles.btnPaid, opacity: canMarkPaid(s) ? 1 : 0.4 }}
                           disabled={!canMarkPaid(s)}
                           title={canMarkPaid(s) ? 'Havale onayı' : 'Bu durumda ödendi işaretlenemez'}
-                          onClick={() => setModal({ kind: 'mark-paid', statement: s })}
+                          onClick={() => setModal({ kind: 'mark-paid', invoice: s })}
                         >
                           Ödendi işaretle
                         </button>
                         <button
                           style={{ ...styles.btnSecondary, opacity: paid ? 0.4 : 1 }}
                           disabled={paid}
-                          title={paid ? 'Ödenmiş statement tutarı düzeltilemez' : 'Tutar düzelt'}
-                          onClick={() => setModal({ kind: 'adjust', statement: s })}
+                          title={paid ? 'Ödenmiş fatura tutarı düzeltilemez' : 'Tutar düzelt'}
+                          onClick={() => setModal({ kind: 'adjust', invoice: s })}
                         >
                           Tutar düzelt
                         </button>
                         <button
                           style={{ ...styles.btnSecondary, opacity: paid ? 0.4 : 1 }}
                           disabled={paid}
-                          title={paid ? 'Ödenmiş statement vadesi uzatılamaz' : 'Vade uzat'}
-                          onClick={() => setModal({ kind: 'extend', statement: s })}
+                          title={paid ? 'Ödenmiş fatura vadesi uzatılamaz' : 'Vade uzat'}
+                          onClick={() => setModal({ kind: 'extend', invoice: s })}
                         >
                           Vade uzat
                         </button>
@@ -265,7 +282,7 @@ export default function BillingPage() {
 
       {modal?.kind === 'mark-paid' ? (
         <MarkPaidModal
-          statement={modal.statement}
+          invoice={modal.invoice}
           onClose={() => setModal(null)}
           onDone={afterAction}
           onError={(msg) => setToast({ kind: 'error', msg })}
@@ -273,7 +290,7 @@ export default function BillingPage() {
       ) : null}
       {modal?.kind === 'adjust' ? (
         <AdjustAmountModal
-          statement={modal.statement}
+          invoice={modal.invoice}
           onClose={() => setModal(null)}
           onDone={afterAction}
           onError={(msg) => setToast({ kind: 'error', msg })}
@@ -281,7 +298,7 @@ export default function BillingPage() {
       ) : null}
       {modal?.kind === 'extend' ? (
         <ExtendDueModal
-          statement={modal.statement}
+          invoice={modal.invoice}
           onClose={() => setModal(null)}
           onDone={afterAction}
           onError={(msg) => setToast({ kind: 'error', msg })}
@@ -301,7 +318,14 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#fff', cursor: 'pointer', minWidth: 180,
   },
   checkboxLabel: { display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: '#475569', cursor: 'pointer' },
-  filterHint: { fontSize: 11, color: '#9B9B9B' },
+  monthInput: {
+    padding: '9px 10px', border: '1px solid #E5E5E5', borderRadius: 8, fontSize: 13,
+    background: '#fff', fontFamily: 'inherit',
+  },
+  clearBtn: {
+    background: '#F1F5F9', color: '#475569', border: 'none',
+    padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer',
+  },
   tableWrap: {
     background: '#fff', borderRadius: 12, border: '1px solid #E5E5E5',
     overflow: 'auto', maxWidth: '100%',
@@ -322,7 +346,11 @@ const styles: Record<string, React.CSSProperties> = {
   tdRight: { padding: '14px 16px', fontSize: 13, textAlign: 'right' as const },
   shopName: { fontWeight: 600, fontSize: 14 },
   subtext: { fontSize: 11, color: '#9B9B9B', marginTop: 2 },
-  muted: { color: '#9B9B9B' },
+  planCode: {
+    display: 'inline-block', padding: '3px 8px', background: '#F1F5F9', color: '#334155',
+    borderRadius: 6, fontSize: 11, fontWeight: 700, letterSpacing: 0.3,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+  },
   disputeChip: {
     display: 'inline-block', marginTop: 4, padding: '2px 8px', background: '#FEF3C7',
     color: '#92400E', borderRadius: 999, fontSize: 11, fontWeight: 700,

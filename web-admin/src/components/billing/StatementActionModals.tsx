@@ -6,11 +6,11 @@ import {
   formatDateOnly,
   formatTry,
   parseTryToMinor,
-  type AdminCommissionStatementDto,
+  type AdminSubscriptionInvoiceDto,
 } from '@/lib/api';
 
 type ModalProps = {
-  statement: AdminCommissionStatementDto;
+  invoice: AdminSubscriptionInvoiceDto;
   onClose: () => void;
   onDone: (msg: string) => void;
   onError: (msg: string) => void;
@@ -51,7 +51,7 @@ function Shell({
   );
 }
 
-function StatementSummary({ s }: { s: AdminCommissionStatementDto }) {
+function InvoiceSummary({ s }: { s: AdminSubscriptionInvoiceDto }) {
   return (
     <div style={styles.summary}>
       <div><strong>{s.barberShopName}</strong></div>
@@ -59,14 +59,17 @@ function StatementSummary({ s }: { s: AdminCommissionStatementDto }) {
         Dönem: {formatDateOnly(s.periodStart)} – {formatDateOnly(s.periodEnd)}
       </div>
       <div style={styles.summaryLine}>
-        Borç: <strong>{formatTry(s.amountDueMinor)}</strong> · Vade: {formatDateOnly(s.dueDate)}
+        Plan: <strong>{s.planCode}</strong> · Plan fiyatı: {formatTry(s.planPriceMinor)}
+      </div>
+      <div style={styles.summaryLine}>
+        Tutar: <strong>{formatTry(s.amountMinor)}</strong> · Vade: {formatDateOnly(s.dueDate)}
       </div>
     </div>
   );
 }
 
-/** Havale/EFT onayı. Backend gerekçe için min 5 karakter ister (MarkCommissionStatementPaidCommandValidator). */
-export function MarkPaidModal({ statement, onClose, onDone, onError }: ModalProps) {
+/** Havale/EFT onayı. Backend gerekçe için min 5 karakter ister (MarkSubscriptionInvoicePaidCommandValidator). */
+export function MarkPaidModal({ invoice, onClose, onDone, onError }: ModalProps) {
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const valid = reason.trim().length >= 5;
@@ -75,8 +78,8 @@ export function MarkPaidModal({ statement, onClose, onDone, onError }: ModalProp
     if (!valid) return;
     setSubmitting(true);
     try {
-      await adminApi.markStatementPaid(statement.id, reason.trim());
-      onDone(`${statement.barberShopName} dönem borcu ödendi olarak işaretlendi.`);
+      await adminApi.markInvoicePaid(invoice.id, reason.trim());
+      onDone(`${invoice.barberShopName} abonelik faturası ödendi olarak işaretlendi.`);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'İşlem başarısız.');
     } finally {
@@ -93,7 +96,7 @@ export function MarkPaidModal({ statement, onClose, onDone, onError }: ModalProp
       disabled={!valid}
       onSubmit={submit}
     >
-      <StatementSummary s={statement} />
+      <InvoiceSummary s={invoice} />
       <div style={styles.warn}>
         Bu işlem hesabı otomatik aktifleştirmez — salon askıya alınmışsa Salonlar sayfasından
         ayrıca aktifleştirin.
@@ -113,14 +116,22 @@ export function MarkPaidModal({ statement, onClose, onDone, onError }: ModalProp
   );
 }
 
-/** Tutar düzeltme — backend gerekçe için min 8 karakter ister, tutar kuruş cinsinden gider. */
-export function AdjustAmountModal({ statement, onClose, onDone, onError }: ModalProps) {
-  const [amount, setAmount] = useState((statement.amountDueMinor / 100).toFixed(2).replace('.', ','));
+/**
+ * Tutar düzeltme — backend gerekçe için min 8 karakter ister, tutar kuruş cinsinden gider.
+ *
+ * DİKKAT (para hatası koruması): backend validator tutarı `>= 0` kabul ediyor, yani 0 TL
+ * geçerli sayılıp fatura tahsil edilemez hâle geliyor ve 204 döndüğü için ekranda hiçbir
+ * uyarı çıkmıyor. İstemci tarafında tutarı `> 0` şartına bağlıyoruz; sıfırlama gerekiyorsa
+ * bu ekran değil, faturayı iptal eden ayrı bir akış kullanılmalı.
+ */
+export function AdjustAmountModal({ invoice, onClose, onDone, onError }: ModalProps) {
+  const [amount, setAmount] = useState((invoice.amountMinor / 100).toFixed(2).replace('.', ','));
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const minor = parseTryToMinor(amount);
-  const amountValid = minor !== null && minor >= 0;
+  const amountParsed = minor !== null;
+  const amountValid = minor !== null && minor > 0;
   const reasonValid = reason.trim().length >= 8;
   const valid = amountValid && reasonValid;
 
@@ -128,8 +139,8 @@ export function AdjustAmountModal({ statement, onClose, onDone, onError }: Modal
     if (!valid || minor === null) return;
     setSubmitting(true);
     try {
-      await adminApi.adjustStatementAmount(statement.id, minor, reason.trim());
-      onDone(`${statement.barberShopName} borcu ${formatTry(minor)} olarak güncellendi.`);
+      await adminApi.adjustInvoiceAmount(invoice.id, minor, reason.trim());
+      onDone(`${invoice.barberShopName} fatura tutarı ${formatTry(minor)} olarak güncellendi.`);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'İşlem başarısız.');
     } finally {
@@ -146,7 +157,7 @@ export function AdjustAmountModal({ statement, onClose, onDone, onError }: Modal
       disabled={!valid}
       onSubmit={submit}
     >
-      <StatementSummary s={statement} />
+      <InvoiceSummary s={invoice} />
       <label style={styles.label} htmlFor="adjust-amount">Yeni tutar (₺)</label>
       <input
         id="adjust-amount"
@@ -159,8 +170,10 @@ export function AdjustAmountModal({ statement, onClose, onDone, onError }: Modal
       />
       <span style={amountValid ? styles.helper : styles.helperError}>
         {amountValid
-          ? `Backend'e ${minor} kuruş olarak gönderilir.`
-          : 'Geçerli bir tutar gir (örn: 1.250,00 veya 1250).'}
+          ? `Backend'e ${minor} kuruş olarak gönderilir (plan fiyatı: ${formatTry(invoice.planPriceMinor)}).`
+          : amountParsed
+            ? 'Tutar 0 TL olamaz — sıfırlanacaksa fatura iptal edilmeli, tutarı düşürülmemeli.'
+            : 'Geçerli bir tutar gir (örn: 1.250,00 veya 1250).'}
       </span>
       <label style={{ ...styles.label, marginTop: 14 }} htmlFor="adjust-reason">
         Gerekçe (zorunlu, en az 8 karakter)
@@ -169,7 +182,7 @@ export function AdjustAmountModal({ statement, onClose, onDone, onError }: Modal
         id="adjust-reason"
         value={reason}
         onChange={(e) => setReason(e.target.value)}
-        placeholder="örn: İptal edilen 3 randevu matrahtan düşüldü"
+        placeholder="örn: Ay ortasında plan düşürüldü, fark iade edildi"
         style={styles.textarea}
         rows={3}
         maxLength={500}
@@ -182,13 +195,13 @@ export function AdjustAmountModal({ statement, onClose, onDone, onError }: Modal
 }
 
 /** Vade uzatma — yeni vade mevcut vadeden İLERİ olmalı (domain kuralı), gerekçe min 8 karakter. */
-export function ExtendDueModal({ statement, onClose, onDone, onError }: ModalProps) {
+export function ExtendDueModal({ invoice, onClose, onDone, onError }: ModalProps) {
   const [dueDate, setDueDate] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   // DateOnly stringleri "yyyy-MM-dd" — sözlüksel karşılaştırma kronolojik sıraya eşit.
-  const dateValid = dueDate !== '' && dueDate > statement.dueDate;
+  const dateValid = dueDate !== '' && dueDate > invoice.dueDate;
   const reasonValid = reason.trim().length >= 8;
   const valid = dateValid && reasonValid;
 
@@ -196,8 +209,8 @@ export function ExtendDueModal({ statement, onClose, onDone, onError }: ModalPro
     if (!valid) return;
     setSubmitting(true);
     try {
-      await adminApi.extendStatementDueDate(statement.id, dueDate, reason.trim());
-      onDone(`${statement.barberShopName} vadesi ${formatDateOnly(dueDate)} tarihine uzatıldı.`);
+      await adminApi.extendInvoiceDueDate(invoice.id, dueDate, reason.trim());
+      onDone(`${invoice.barberShopName} vadesi ${formatDateOnly(dueDate)} tarihine uzatıldı.`);
     } catch (err) {
       onError(err instanceof Error ? err.message : 'İşlem başarısız.');
     } finally {
@@ -214,7 +227,7 @@ export function ExtendDueModal({ statement, onClose, onDone, onError }: ModalPro
       disabled={!valid}
       onSubmit={submit}
     >
-      <StatementSummary s={statement} />
+      <InvoiceSummary s={invoice} />
       <div style={styles.info}>
         Vade uzatma, gecikme sayacını durduran tek mekanizmadır. Gecikmiş (Overdue) bir kayıt,
         yeni vade bugünden ileriyse otomatik olarak &quot;Bildirildi&quot; durumuna geri döner.
@@ -224,14 +237,14 @@ export function ExtendDueModal({ statement, onClose, onDone, onError }: ModalPro
         id="extend-date"
         type="date"
         value={dueDate}
-        min={statement.dueDate}
+        min={invoice.dueDate}
         onChange={(e) => setDueDate(e.target.value)}
         style={{ ...styles.input, ...(dueDate === '' || dateValid ? {} : styles.inputInvalid) }}
         aria-invalid={dueDate !== '' && !dateValid}
         autoFocus
       />
       <span style={dueDate === '' || dateValid ? styles.helper : styles.helperError}>
-        Mevcut vade: {formatDateOnly(statement.dueDate)} — yeni vade bu tarihten ileri olmalı.
+        Mevcut vade: {formatDateOnly(invoice.dueDate)} — yeni vade bu tarihten ileri olmalı.
       </span>
       <label style={{ ...styles.label, marginTop: 14 }} htmlFor="extend-reason">
         Gerekçe (zorunlu, en az 8 karakter)
