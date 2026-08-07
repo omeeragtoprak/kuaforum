@@ -34,6 +34,7 @@ public sealed class AutoConfirmBookingPolicyTests(IntegrationTestFactory factory
         Guid PaymentId, string CheckoutUrl, string? ProviderToken, DateTimeOffset ExpiresAt,
         long AmountMinor, long RemainingAtShopMinor, string Kind);
     private sealed record BookingStatusOnly(string Status);
+    private sealed record BookingSnapshotDto(Guid Id, string Status, bool AutoConfirmEnabled);
     private sealed record NotificationItemDto(Guid Id, string TemplateKey, string Subject, string Body, bool IsRead, DateTimeOffset? ReadAt, DateTimeOffset CreatedAt, Guid? RelatedBookingId);
     private sealed record NotificationFeedDto(int UnreadCount, IReadOnlyList<NotificationItemDto> Items);
 
@@ -194,6 +195,71 @@ public sealed class AutoConfirmBookingPolicyTests(IntegrationTestFactory factory
         var ownerFeed = await ownerClient.GetJson<NotificationFeedDto>("/v1/notifications");
         var notification = Assert.Single(ownerFeed.Items, i => i.RelatedBookingId == initiated.BookingId && i.TemplateKey == "booking.confirmed.barber");
         Assert.Equal("Yeni randevu", notification.Subject);
+    }
+
+    // ── (6) AutoConfirmSnapshot randevunun kendi kaderidir — salonun SONRADAN değişen canlı
+    // ayarından etkilenmez. Regresyon testi: 2028bb0 BookingDto.AutoConfirmEnabled'i canlı
+    // shop ayarından randevunun kendi Booking.AutoConfirmSnapshot'ına çevirdi ama davranışı
+    // kilitleyen bir test eklenmemişti — bu boşluğu kapatıyor (3 okuma yüzeyinin hepsi:
+    // GET /v1/bookings/{id}, GET /v1/bookings, GET /v1/owner/barber-shop/bookings).
+
+    [Fact]
+    public async Task AutoConfirmSnapshot_True_SurvivesShopDisablingAutoConfirmLater()
+    {
+        var (customerClient, ownerClient) = await LoginClientsAsync();
+        using var _c = customerClient;
+        using var _o = ownerClient;
+        await SetBookingPolicyAsync(ownerClient, depositEnabled: false, depositPercent: null, autoConfirmEnabled: true);
+
+        var initiated = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+        Assert.True(initiated.AutoConfirmEnabled);
+
+        // Salon ayarı SONRADAN kapatılıyor — booking zaten oluşturuldu, snapshot'ı donmuş kalmalı.
+        await SetBookingPolicyAsync(ownerClient, depositEnabled: false, depositPercent: null, autoConfirmEnabled: false);
+
+        var detail = await customerClient.GetJson<BookingSnapshotDto>($"/v1/bookings/{initiated.BookingId}");
+        Assert.True(detail.AutoConfirmEnabled);
+
+        var myBookings = await customerClient.GetJson<IReadOnlyList<BookingSnapshotDto>>("/v1/bookings");
+        var mine = Assert.Single(myBookings, b => b.Id == initiated.BookingId);
+        Assert.True(mine.AutoConfirmEnabled);
+
+        var fromIso = DateTimeOffset.UtcNow.ToString("o");
+        var toIso = DateTimeOffset.UtcNow.AddDays(60).ToString("o");
+        var ownerBookings = await ownerClient.GetJson<IReadOnlyList<BookingSnapshotDto>>(
+            $"/v1/owner/barber-shop/bookings?from={Uri.EscapeDataString(fromIso)}&to={Uri.EscapeDataString(toIso)}");
+        var fromOwner = Assert.Single(ownerBookings, b => b.Id == initiated.BookingId);
+        Assert.True(fromOwner.AutoConfirmEnabled);
+    }
+
+    [Fact]
+    public async Task AutoConfirmSnapshot_False_SurvivesShopEnablingAutoConfirmLater()
+    {
+        var (customerClient, ownerClient) = await LoginClientsAsync();
+        using var _c = customerClient;
+        using var _o = ownerClient;
+        // Ayar hiç değiştirilmiyor — shop varsayılan (AutoConfirmEnabled=false), randevu Pending.
+
+        var initiated = await InitiateKnownTotalBookingAsync(customerClient, ownerClient, 40);
+        Assert.False(initiated.AutoConfirmEnabled);
+        Assert.Equal("Pending", initiated.Status);
+
+        // Salon ayarı SONRADAN açılıyor — booking zaten oluşturuldu, snapshot'ı false donmuş kalmalı.
+        await SetBookingPolicyAsync(ownerClient, depositEnabled: false, depositPercent: null, autoConfirmEnabled: true);
+
+        var detail = await customerClient.GetJson<BookingSnapshotDto>($"/v1/bookings/{initiated.BookingId}");
+        Assert.False(detail.AutoConfirmEnabled);
+
+        var myBookings = await customerClient.GetJson<IReadOnlyList<BookingSnapshotDto>>("/v1/bookings");
+        var mine = Assert.Single(myBookings, b => b.Id == initiated.BookingId);
+        Assert.False(mine.AutoConfirmEnabled);
+
+        var fromIso = DateTimeOffset.UtcNow.ToString("o");
+        var toIso = DateTimeOffset.UtcNow.AddDays(60).ToString("o");
+        var ownerBookings = await ownerClient.GetJson<IReadOnlyList<BookingSnapshotDto>>(
+            $"/v1/owner/barber-shop/bookings?from={Uri.EscapeDataString(fromIso)}&to={Uri.EscapeDataString(toIso)}");
+        var fromOwner = Assert.Single(ownerBookings, b => b.Id == initiated.BookingId);
+        Assert.False(fromOwner.AutoConfirmEnabled);
     }
 
     // ---- helpers -----------------------------------------------------------
