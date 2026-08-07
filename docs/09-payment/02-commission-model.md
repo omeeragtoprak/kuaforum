@@ -1,10 +1,30 @@
 # Komisyon Modeli — Detay
 
+> ## ⛔ BU DOKÜMAN ARTIK GEÇERLİ DEĞİL — 2026-08-07
+>
+> **Komisyon modeli tamamen kaldırıldı.** Founder kararıyla ([RFC-014](../rfc/RFC-014-abonelik-modeli-ve-domain-duzeltmeleri.md), 2026-08-06) gelir modeli **ciro komisyonundan sabit aylık aboneliğe** geçti. Platform artık ciro üzerinden hiçbir pay almıyor.
+>
+> **Güncel model için tek kaynak:** [`RFC-014`](../rfc/RFC-014-abonelik-modeli-ve-domain-duzeltmeleri.md). Para/faturalama işine girmeden önce onu oku.
+>
+> Bu doküman **tarihsel kayıt** olarak duruyor: neden önce randevu-başına komisyon, sonra aylık ciro komisyonu, sonra abonelik denendiğinin izi burada. **As-built referansı olarak KULLANMA** — aşağıda anlatılan şu API'ler ve alanlar kodda artık YOK (commit `e6d5a6e` ile silindi):
+>
+> | Doküman ne diyor | Gerçek |
+> |---|---|
+> | `CommissionStatement` aggregate | `SubscriptionInvoice` olarak yeniden adlandırıldı |
+> | `CommissionPayment` | `SubscriptionInvoicePayment` |
+> | `BarberShop.CommissionRateOverride`, `SetCommissionRateOverride` | Silindi |
+> | `PUT /v1/admin/billing/barber-shops/{id}/commission-rate` | Endpoint silindi (404) |
+> | `commissionRateGlobal` (admin ayarları) | Silindi |
+> | `basisAmountMinor`, `rateApplied` (fatura DTO) | `planCode`, `planPriceMinor` |
+> | Komisyon matrahı = ay içi Completed ciro × oran | Fatura tutarı = planın `PriceMinor` değeri |
+>
+> Değişmeyen tek şey faturalama **omurgası**: fatura → 7 gün vade → hatırlatma → askı → itiraz → ödeme. Yalnız tutarın kaynağı değişti.
+
 > Detaylı ödeme mimarisi: [`01-payment-architecture.md`](01-payment-architecture.md). Bu doküman komisyon hesaplama + tahsilat + örnek senaryolar.
 
 ---
 
-## Güncelleme 2026-08-05 (RFC-012/013)
+## Güncelleme 2026-08-05 (RFC-012/013) — kendisi de RFC-014 ile süpersedelendi, aşağısı tarihsel
 
 **Bu dokümanın önceki hâli hatalıydı:** "randevu başına anlık komisyon, ödeme anında kesilir" modelini anlatıyordu. Founder kararıyla ([RFC-012](../rfc/RFC-012-monthly-commission-billing.md), 2026-08-05) bu model **süpersedelendi**. Güncel gerçek:
 

@@ -166,6 +166,22 @@ G11/G12 düzeltmesi yalnız üç ekranı kapsadı (kuaför detay, keşfet, rande
 
 ---
 
+## G16. Alan adı değişince istek gövdesi sessizce sıfırlanıyor — sınıfsal risk
+
+**Kanıt (canlı üretildi, 2026-08-07):** RFC-014 ile `AdjustAmountRequest`'in alanı `NewAmountDueMinor` → `NewAmountMinor` oldu; web-admin eski adı göndermeye devam etti. System.Text.Json eksik alanı `default(long)=0` ile doldurdu, validator `>= 0` kabul etti, endpoint **204** döndü. Sonuç: admin 1.499,00 TL yazıp gerekçeyle kaydediyor, ekranda hiçbir hata yok, fatura **0 TL** oluyor ve tahsil edilemez hale geliyor. Aynı fatura üzerinde doğrulandı: `149900` → eski gövde → `0` → yeni gövde → `99900`.
+
+**Etki:** Yüksek (para). Bu tekil hata düzeltildi (`65fa697` istemci + backend `> 0` doğrulaması), ama **kalıp** duruyor: her DTO alan adı değişiminde aynı sessiz sıfırlama tekrar doğabilir.
+
+**Değerlendirilen ve REDDEDİLEN çözüm:** `JsonSerializerOptions`'a global `UnmappedMemberHandling.Disallow` (bilinmeyen/eşleşmeyen alanı 400 ile reddet). Reddedilme gerekçesi: sahada güncellenemeyen mobil sürümler var; sürüm kayması olduğunda eski uygulamalar toptan 400 almaya başlar. Alan-adı katılığı, geriye dönük uyumluluğu kırma pahasına gelir.
+
+**Uygulanan savunma:** zorunlu alan + değer aralığı doğrulaması (sıfır/eksik değer geçerli sayılmaz). Yeni bir para alanı eklerken **kural: "0 anlamlı bir değer mi?" sorusu cevaplanmadan validator yazılmaz.**
+
+**Açık kalan (daha güçlü seçenek):** yalnız admin endpoint'lerinde (istemcisini biz kontrol ediyoruz, sürüm kayması yok) katı deserialization açılabilir. Mobil/public uçlar esnek kalır. Yapılmadı; değerlendirilmeye değer.
+
+**Efor:** 2-3 saat (admin-only katı mod + testler).
+
+---
+
 ## Özet Tablo
 
 | # | Başlık | Etki | Efor |
@@ -185,6 +201,7 @@ G11/G12 düzeltmesi yalnız üç ekranı kapsadı (kuaför detay, keşfet, rande
 | G13 | Entitlement kota kontrolünde yarış koşulu (ödemeli plan öncesi kapatılmalı) | Düşük→Orta | 3-5 saat |
 | G14 | Gerçek çevrimdışı algısı yok (native bağımlılık gerekiyor, bilinçli erteleme) | Düşük | 3-4 saat |
 | G15 | G11/G12 düzeltmesi kapsam dışı ekranlarda uygulanmadı (randevu detayı öncelikli) | Orta | 2-3 saat |
+| G16 | DTO alan adı değişince gövde sessizce sıfırlanıyor (kalıpsal para riski) | Yüksek → tekil düzeltildi | 2-3 saat (admin-only katı mod) |
 
 ---
 

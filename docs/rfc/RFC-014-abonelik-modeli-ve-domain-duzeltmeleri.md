@@ -34,7 +34,15 @@ FAZ 1 domain denetimi ayrıca kodda 5 yeni boşluk buldu (`docs/GAPS.md` G1-G6);
 **How to apply:**
 
 1. **Ücret hesabı tek noktadan:** Fatura tutarı artık `ciro × oran` değil, **plan fiyatı**. `PaymentAmounts`/komisyon hesabı gelir modeli olarak devre dışı; kapora komisyonu kavramı da düşer (kapora artık salonun kendi tahsilatıdır, platform payı yoktur).
-2. **Faturalama omurgası korunur, tabanı değişir.** RFC-012 ile kurulan fatura → 7 gün vade → hatırlatma → askı → itiraz → ödeme zinciri **aynen geçerlidir**; yalnızca tutarın nereden geldiği değişir. `CommissionStatement` aggregate'i `Kind` ayrımıyla genelleştirilir (`Commission` legacy, `Subscription` yeni); `basisAmountMinor`/`rateApplied` abonelik faturalarında `null` olur, yerine `planCode`/`planPriceMinor` yazılır. **Aggregate silinip yeniden yazılmaz** — 176 entegrasyon testinin çoğu ve askı job'ı bu sayede ayakta kalır.
+2. **Faturalama omurgası korunur, tabanı değişir.** RFC-012 ile kurulan fatura → 7 gün vade → hatırlatma → askı → itiraz → ödeme zinciri **aynen geçerlidir**; yalnızca tutarın nereden geldiği değişir.
+
+   > **Uygulama sapması (2026-08-07, bilinçli karar).** Bu madde ilk yazımında *"`CommissionStatement` aggregate'i `Kind` ayrımıyla genelleştirilir (`Commission` legacy, `Subscription` yeni)… aggregate silinip yeniden yazılmaz"* diyordu. Uygulama sırasında bu karar **değiştirildi**: aggregate `SubscriptionInvoice` olarak yeniden adlandırıldı, `commission_statements`/`commission_payments` tabloları migration'da **DROP** edildi, `basisAmountMinor`/`rateApplied` kolonları kaldırılıp yerlerine `planCode`/`planPriceMinor` geldi.
+   >
+   > **Gerekçe:** komisyon modeli tamamen ölü ve **üretimde tek satır veri yok** (canlıya çıkılmadı). `Kind` discriminator'ı, hiçbir zaman kullanılmayacak bir ikinci kolu ve her okuma noktasında bir dallanmayı kalıcı olarak taşımak demekti — sonu gelmeyen "bu alan hangi Kind'da dolu?" sorusu. Temiz yeniden adlandırma bu borcu hiç doğurmadı.
+   >
+   > **Bedeli:** `Down()` migration'ı şemayı geri kuruyor ama **veriyi değil** — geri alma çift yönlü kayıplı. Üretimde satır olmadığı için kabul edildi. Ayrıca `Down()`, `commission_rate_global` kolonunu `NOT NULL DEFAULT 0` ile geri ekliyor; eski domain invariantı `rate > 0` olduğu için rollback edilen kod bu satırla tutarsız olur. **Bu migration production'da geri alınabilir sayılmamalıdır.**
+   >
+   > Bu blok, dokümanın koddan sapmaması için eklendi — asıl karar yukarıdaki metin değil, buradaki uygulamadır.
 3. **Plan ve hak (entitlement) modeli:** Özellik sınırları **koda gömülmez**, DB'den okunur.
    - `subscription_plans`: `code` (LAUNCH_FREE / STARTER / PRO), `name`, `priceMinor`, `isActive`
    - `plan_entitlements`: `planCode`, `key`, `value` — ilk anahtarlar: `max_staff`, `max_monthly_bookings`, `can_use_sms`, `can_use_deposit`
