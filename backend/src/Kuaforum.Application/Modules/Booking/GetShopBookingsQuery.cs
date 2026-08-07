@@ -80,7 +80,7 @@ public sealed class GetOwnerBookingsQueryHandler(IApplicationDbContext db)
                 PaymentKind: paymentKind,
                 PaidOnlineMinor: paidOnlineMinor,
                 RemainingAtShopMinor: remainingAtShopMinor,
-                AutoConfirmEnabled: shop.BookingPolicyAutoConfirmEnabled);
+                AutoConfirmEnabled: b.AutoConfirmSnapshot);
         }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(dtos);

@@ -35,9 +35,18 @@ public sealed record BookingDto(
     PaymentKind? PaymentKind = null,
     long? PaidOnlineMinor = null,
     long RemainingAtShopMinor = 0,
-    // RFC-014 §2 D2 madde 6: salonun O ANKİ (canlı, snapshot değil — mobil "randevunu nasıl
-    // onaylanacağını" güncel ayara göre göstersin) auto-confirm ayarı. Status ile birlikte
-    // okunur — bkz. InitiateBookingResponse XML doc'undaki aynı çıkarım kuralı.
+    // RFC-014 §2 D2 madde 6: BU RANDEVUNUN onay yolu — salonun canlı ayarı DEĞİL,
+    // randevunun Initiate anında donmuş <c>AutoConfirmSnapshot</c> değeri.
+    //
+    // İlk sürüm canlı ayarı döndürüyordu ve gerekçesi "mobil güncel ayara göre göstersin"
+    // diye yazılmıştı; bu yanlıştı. Var olan bir randevunun nasıl onaylanacağı oluşturulduğu
+    // anda belirlenir: kuaför sonradan otomatik onayı KAPATSA bile snapshot'ı true olan
+    // randevu, ödeme geldiğinde kuaför onayı beklemeden Confirmed'a geçer
+    // (bkz. Booking.MarkPaymentReceived). Canlı ayarı göstermek müşteriye "kuaför
+    // onaylayacak" yazdırırdı — gerçekleşmeyecek bir vaat.
+    //
+    // Salonun canlı ayarı randevu ÖNCESİ vaat için kullanılır ve yeri BarberShopDto'dur.
+    // Status ile birlikte okunur — bkz. InitiateBookingResponse XML doc'undaki çıkarım kuralı.
     bool AutoConfirmEnabled = false);
 
 /// <summary>
@@ -137,7 +146,7 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
                 PaymentKind: paymentKind,
                 PaidOnlineMinor: paidOnlineMinor,
                 RemainingAtShopMinor: remainingAtShopMinor,
-                AutoConfirmEnabled: sh?.BookingPolicyAutoConfirmEnabled ?? false);
+                AutoConfirmEnabled: b.AutoConfirmSnapshot);
         }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(result);
@@ -207,6 +216,6 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             PaymentKind: paymentKind,
             PaidOnlineMinor: paidOnlineMinor,
             RemainingAtShopMinor: remainingAtShopMinor,
-            AutoConfirmEnabled: shopMeta?.BookingPolicyAutoConfirmEnabled ?? false));
+            AutoConfirmEnabled: booking.AutoConfirmSnapshot));
     }
 }
