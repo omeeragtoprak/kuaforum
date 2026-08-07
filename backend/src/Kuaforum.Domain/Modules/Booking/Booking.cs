@@ -68,6 +68,17 @@ public sealed class Booking : AggregateRoot
     /// </summary>
     public DateTimeOffset? DepositPaidAt { get; private set; }
 
+    /// <summary>
+    /// RFC-014 §2 D2: shop.BookingPolicy.AutoConfirmEnabled'in Initiate anındaki SNAPSHOT'ı —
+    /// <see cref="RequiresOnlinePayment"/> ile aynı ilke (owner sonradan ayarı kapatsa/açsa bile
+    /// bu booking'in davranışı sabit kalır). İki yerde okunur: (1) <see cref="Initiate"/> içinde,
+    /// <c>requiresOnlinePayment == false</c> iken booking'i doğrudan Confirmed başlatmak için;
+    /// (2) <see cref="MarkPaymentReceived"/> içinde, kapora/tam ödeme tahsil edildiğinde owner
+    /// onayı beklemeden Confirmed'a geçmek için — "otomatik onay kuaför onayını atlar, ödemeyi
+    /// atlamaz" (RFC-014 madde 3).
+    /// </summary>
+    public bool AutoConfirmSnapshot { get; private set; }
+
     public IReadOnlyCollection<BookingItem> Items => _items.AsReadOnly();
 
     public static Result<Booking> Initiate(
@@ -80,7 +91,8 @@ public sealed class Booking : AggregateRoot
         decimal commissionRate,
         bool requiresOnlinePayment = false,
         string? customerNote = null,
-        decimal? depositPercentSnapshot = null)
+        decimal? depositPercentSnapshot = null,
+        bool autoConfirmEnabled = false)
     {
         if (services.Count == 0)
             return Result.Failure<Booking>(Error.Validation("En az bir hizmet seçilmeli."));
@@ -93,6 +105,12 @@ public sealed class Booking : AggregateRoot
         var totalAmount = services.Sum(s => s.PriceMinor);
         var commission = PaymentAmounts.CalculateCommissionMinor(totalAmount, commissionRate);
 
+        // RFC-014 §2 D2: auto-confirm yalnız online ödeme GEREKMEYEN randevularda ANINDA
+        // devreye girer (madde 2) — kapora/tam ödeme gerektiren randevular her zaman Pending
+        // başlar, ödeme tahsil edilene kadar (bkz. MarkPaymentReceived); "otomatik onay
+        // ödemeyi atlamaz" (madde 3).
+        var immediateAutoConfirm = autoConfirmEnabled && !requiresOnlinePayment;
+
         var booking = new Booking
         {
             CustomerId = customerId,
@@ -100,7 +118,8 @@ public sealed class Booking : AggregateRoot
             StylistId = stylistId,
             ScheduledAt = scheduledAt,
             ScheduledEndsAt = scheduledAt.AddMinutes(totalDuration),
-            Status = BookingStatus.Pending,
+            Status = immediateAutoConfirm ? BookingStatus.Confirmed : BookingStatus.Pending,
+            ConfirmedAt = immediateAutoConfirm ? DateTimeOffset.UtcNow : null,
             BookingType = bookingType,
             TotalAmountMinor = totalAmount,
             PlatformCommissionMinor = commission,
@@ -109,6 +128,7 @@ public sealed class Booking : AggregateRoot
             // gönderirse göndersin null'a normalize edilir (BookingPolicy.Create'in DepositEnabled
             // false iken DepositPercent'i null'a normalize etmesiyle aynı ilke).
             DepositPercentSnapshot = requiresOnlinePayment ? depositPercentSnapshot : null,
+            AutoConfirmSnapshot = autoConfirmEnabled,
             CustomerNote = customerNote?.Length > 500 ? customerNote[..500] : customerNote,
         };
 
@@ -120,6 +140,11 @@ public sealed class Booking : AggregateRoot
 
         booking.RaiseDomainEvent(new BookingInitiatedEvent(
             booking.Id, customerId, barberShopId, stylistId, scheduledAt, totalAmount));
+
+        if (immediateAutoConfirm)
+        {
+            booking.RaiseDomainEvent(new BookingConfirmedEvent(booking.Id, customerId, stylistId, scheduledAt, AutoConfirmed: true));
+        }
 
         return booking;
     }
@@ -135,6 +160,15 @@ public sealed class Booking : AggregateRoot
     /// İdempotent: aynı paymentId ile ikinci çağrı (webhook retry) no-op döner — booking bu
     /// arada owner tarafından zaten Confirmed'a taşınmış olsa BİLE (guard Status'e değil
     /// PaymentId eşitliğine bakar, aksi halde meşru bir retry haksız yere Failure alırdı).
+    ///
+    /// RFC-014 §2 D2 (madde 3 — en kritik etkileşim): <see cref="AutoConfirmSnapshot"/> true ise,
+    /// ödeme işaretlendikten HEMEN SONRA booking owner onayı beklemeden Confirmed'a geçer —
+    /// <see cref="BookingPaymentReceivedEvent"/> (owner'a "onayınızı bekliyor" bildirimi) bu
+    /// durumda YAYINLANMAZ, onun yerine <see cref="BookingConfirmedEvent"/> (AutoConfirmed: true)
+    /// yayınlanır — owner'ın aksiyon alması gerekmediği bir talep için "onayınızı bekliyor"
+    /// bildirimi göndermek yanıltıcı olurdu. "Otomatik onay kuaför onayını atlar, ödemeyi
+    /// atlamaz": bu metot hâlâ Status'ün Pending olmasını (yani ödemenin fiilen alınmış olmasını)
+    /// şart koşuyor — auto-confirm burada da ödeme adımını bypass etmiyor.
     /// </summary>
     public Result MarkPaymentReceived(Guid paymentId)
     {
@@ -148,7 +182,17 @@ public sealed class Booking : AggregateRoot
         DepositPaidAt = DateTimeOffset.UtcNow;
         Touch();
 
-        RaiseDomainEvent(new BookingPaymentReceivedEvent(Id, CustomerId, StylistId, ScheduledAt));
+        if (AutoConfirmSnapshot)
+        {
+            Status = BookingStatus.Confirmed;
+            ConfirmedAt = DateTimeOffset.UtcNow;
+            RaiseDomainEvent(new BookingConfirmedEvent(Id, CustomerId, StylistId, ScheduledAt, AutoConfirmed: true));
+        }
+        else
+        {
+            RaiseDomainEvent(new BookingPaymentReceivedEvent(Id, CustomerId, StylistId, ScheduledAt));
+        }
+
         return Result.Success();
     }
 
@@ -206,7 +250,7 @@ public sealed class Booking : AggregateRoot
         ConfirmedAt = DateTimeOffset.UtcNow;
         Touch();
 
-        RaiseDomainEvent(new BookingConfirmedEvent(Id, CustomerId, StylistId, ScheduledAt));
+        RaiseDomainEvent(new BookingConfirmedEvent(Id, CustomerId, StylistId, ScheduledAt, AutoConfirmed: false));
         return Result.Success();
     }
 

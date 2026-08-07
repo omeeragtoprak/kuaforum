@@ -34,7 +34,11 @@ public sealed record BookingDto(
     bool HasReview = false,
     PaymentKind? PaymentKind = null,
     long? PaidOnlineMinor = null,
-    long RemainingAtShopMinor = 0);
+    long RemainingAtShopMinor = 0,
+    // RFC-014 §2 D2 madde 6: salonun O ANKİ (canlı, snapshot değil — mobil "randevunu nasıl
+    // onaylanacağını" güncel ayara göre göstersin) auto-confirm ayarı. Status ile birlikte
+    // okunur — bkz. InitiateBookingResponse XML doc'undaki aynı çıkarım kuralı.
+    bool AutoConfirmEnabled = false);
 
 /// <summary>
 /// RFC-006 Task 5: booking detay/liste DTO'ları için "ödeme fiilen alındı mı" filtresi.
@@ -86,7 +90,7 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
         var shopIds = list.Select(b => b.BarberShopId).Distinct().ToList();
         var shops = await ctx.Set<BarberShop>().AsNoTracking()
             .Where(s => shopIds.Contains(s.Id))
-            .Select(s => new { s.Id, s.Name })
+            .Select(s => new { s.Id, s.Name, s.BookingPolicyAutoConfirmEnabled })
             .ToDictionaryAsync(s => s.Id, ct);
 
         var stylistIds = list.Select(b => b.StylistId).Distinct().ToList();
@@ -132,7 +136,8 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
                 HasReview: reviewedSet.Contains(b.Id),
                 PaymentKind: paymentKind,
                 PaidOnlineMinor: paidOnlineMinor,
-                RemainingAtShopMinor: remainingAtShopMinor);
+                RemainingAtShopMinor: remainingAtShopMinor,
+                AutoConfirmEnabled: sh?.BookingPolicyAutoConfirmEnabled ?? false);
         }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(result);
@@ -169,7 +174,7 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             .FirstOrDefaultAsync(ct);
         var shopMeta = await ctx.Set<BarberShop>().AsNoTracking()
             .Where(s => s.Id == booking.BarberShopId)
-            .Select(s => s.Name)
+            .Select(s => new { s.Name, s.BookingPolicyAutoConfirmEnabled })
             .FirstOrDefaultAsync(ct);
         var stylistMeta = await ctx.Set<Stylist>().AsNoTracking()
             .Where(s => s.Id == booking.StylistId)
@@ -196,11 +201,12 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             CustomerName: customer?.DisplayName,
             CustomerPhone: customer?.PhoneE164,
             CustomerNote: booking.CustomerNote,
-            ShopName: shopMeta,
+            ShopName: shopMeta?.Name,
             StylistName: stylistMeta,
             HasReview: hasReview,
             PaymentKind: paymentKind,
             PaidOnlineMinor: paidOnlineMinor,
-            RemainingAtShopMinor: remainingAtShopMinor));
+            RemainingAtShopMinor: remainingAtShopMinor,
+            AutoConfirmEnabled: shopMeta?.BookingPolicyAutoConfirmEnabled ?? false));
     }
 }

@@ -22,6 +22,9 @@ public sealed record BookingPolicyDto(
     int MaxPendingPerCustomer,
     int? MinDaysBetweenBookings,
     int? MaxBookingsPerMonth,
+    // RFC-014 §2 D2: kapora'nın aksine bir global master-switch'e tabi değil — owner açtığı an
+    // etkindir, "effective" ayrımı yok.
+    bool AutoConfirmEnabled,
     decimal DepositPercentMin,
     decimal DepositPercentMax,
     // Follow-up (C5b M6): global master-switch'in HAM değeri — EffectiveDepositActive zaten
@@ -57,6 +60,7 @@ public sealed class GetBookingPolicyQueryHandler(IApplicationDbContext db, IOpti
             shop.BookingPolicyMaxPendingPerCustomer,
             shop.BookingPolicyMinDaysBetweenBookings,
             shop.BookingPolicyMaxBookingsPerMonth,
+            shop.BookingPolicyAutoConfirmEnabled,
             settings.DepositPercentMin,
             settings.DepositPercentMax,
             paymentOptions.Value.OnlinePaymentsEnabled));
@@ -69,7 +73,8 @@ public sealed record UpdateBookingPolicyCommand(
     decimal? DepositPercent,
     int MaxPendingPerCustomer,
     int? MinDaysBetweenBookings,
-    int? MaxBookingsPerMonth) : ICommand<BookingPolicyDto>;
+    int? MaxBookingsPerMonth,
+    bool AutoConfirmEnabled) : ICommand<BookingPolicyDto>;
 
 public sealed class UpdateBookingPolicyCommandValidator : AbstractValidator<UpdateBookingPolicyCommand>
 {
@@ -106,6 +111,7 @@ public sealed class UpdateBookingPolicyCommandHandler(
             request.MaxPendingPerCustomer,
             request.MinDaysBetweenBookings,
             request.MaxBookingsPerMonth,
+            request.AutoConfirmEnabled,
             settings.DepositPercentMin,
             settings.DepositPercentMax);
         if (policyResult.IsFailure) return Result.Failure<BookingPolicyDto>(policyResult.Error);
@@ -125,6 +131,7 @@ public sealed class UpdateBookingPolicyCommandHandler(
                 request.MaxPendingPerCustomer,
                 request.MinDaysBetweenBookings,
                 request.MaxBookingsPerMonth,
+                request.AutoConfirmEnabled,
             },
             ct: ct);
 
@@ -138,6 +145,7 @@ public sealed class UpdateBookingPolicyCommandHandler(
             shop.BookingPolicyMaxPendingPerCustomer,
             shop.BookingPolicyMinDaysBetweenBookings,
             shop.BookingPolicyMaxBookingsPerMonth,
+            shop.BookingPolicyAutoConfirmEnabled,
             settings.DepositPercentMin,
             settings.DepositPercentMax,
             paymentOptions.Value.OnlinePaymentsEnabled));

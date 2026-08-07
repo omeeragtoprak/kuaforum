@@ -40,6 +40,8 @@ internal sealed class BookingConfiguration : IEntityTypeConfiguration<Booking>
         builder.Property(x => x.DepositPaidAt).HasColumnName("deposit_paid_at");
         // RFC-013 M1: shop.BookingPolicyDepositPercent ile aynı hassasiyet (bkz. BarberConfigurations).
         builder.Property(x => x.DepositPercentSnapshot).HasColumnName("deposit_percent_snapshot").HasPrecision(5, 4);
+        // RFC-014 §2 D2: shop.BookingPolicyAutoConfirmEnabled'in Initiate anındaki snapshot'ı.
+        builder.Property(x => x.AutoConfirmSnapshot).HasColumnName("auto_confirm_snapshot").HasDefaultValue(false);
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");

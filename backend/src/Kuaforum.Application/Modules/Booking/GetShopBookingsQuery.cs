@@ -79,7 +79,8 @@ public sealed class GetOwnerBookingsQueryHandler(IApplicationDbContext db)
                 StylistName: st?.DisplayName,
                 PaymentKind: paymentKind,
                 PaidOnlineMinor: paidOnlineMinor,
-                RemainingAtShopMinor: remainingAtShopMinor);
+                RemainingAtShopMinor: remainingAtShopMinor,
+                AutoConfirmEnabled: shop.BookingPolicyAutoConfirmEnabled);
         }).ToList();
 
         return Result.Success<IReadOnlyList<BookingDto>>(dtos);

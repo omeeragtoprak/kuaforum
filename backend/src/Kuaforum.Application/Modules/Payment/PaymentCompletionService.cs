@@ -13,12 +13,18 @@ namespace Kuaforum.Application.Modules.Payment;
 /// İki tüketici: CompletePaymentCommand (dev mock akışı) ve ProcessPaytrWebhookCommand (PayTR
 /// bildirimi). SaveChanges ÇAĞIRMAZ — commit kararı handler'ındır.
 ///
-/// RFC-013 C4: capture artık booking'i Confirm ETMİYOR — <see cref="BookingAggregate.MarkPaymentReceived"/>
-/// çağrılır (Status Pending kalır, PaymentId + DepositPaidAt set edilir). Onay her zaman ayrı
-/// bir adım: owner'ın OwnerConfirm() çağrısı (PaymentKind.FullOnline dahil — "her randevuda
-/// onay zorunlu"). Capture PaymentCapturedEvent, MarkPaymentReceived BookingPaymentReceivedEvent
-/// yayar; oto-bildirim zinciri event handler'larda çalışır (owner'a "ödenmiş talep onayınızı
-/// bekliyor").
+/// RFC-013 C4: capture booking'i doğrudan Confirm ETMEZ — <see cref="BookingAggregate.MarkPaymentReceived"/>
+/// çağrılır (PaymentId + DepositPaidAt set edilir). Onay normalde ayrı bir adım: owner'ın
+/// OwnerConfirm() çağrısı (PaymentKind.FullOnline dahil — "her randevuda onay zorunlu").
+/// MarkPaymentReceived BookingPaymentReceivedEvent yayar; oto-bildirim zinciri event
+/// handler'larda çalışır (owner'a "ödenmiş talep onayınızı bekliyor").
+///
+/// RFC-014 §2 D2 istisnası: shop'un <c>BookingPolicy.AutoConfirmEnabled</c>'i açıksa (booking'in
+/// kendi <see cref="Kuaforum.Domain.Modules.Booking.Booking.AutoConfirmSnapshot"/>'ı true ise),
+/// <c>MarkPaymentReceived</c> owner onayını beklemeden booking'i KENDİSİ Confirmed'a taşır ve
+/// BookingPaymentReceivedEvent yerine BookingConfirmedEvent(AutoConfirmed: true) yayar — bu
+/// servis bunu bilerek dallanmaz, karar tamamen domain'de (bkz. Booking.MarkPaymentReceived XML
+/// doc'u); "otomatik onay kuaför onayını atlar, ödemeyi atlamaz" (RFC-014 madde 3).
 ///
 /// RFC-013 C1 (adversarial review — "para sızıntısı"): capture, booking'in Pending guard'ını
 /// kaybettiği bir anda gelebilir — owner müşteri PayTR ekranındayken reddetmiş veya

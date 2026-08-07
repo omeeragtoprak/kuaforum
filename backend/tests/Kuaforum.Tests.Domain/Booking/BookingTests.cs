@@ -405,6 +405,118 @@ public class BookingTests
         Assert.Contains(b.DomainEvents, e => e is BookingConfirmedEvent);
     }
 
+    // ── RFC-014 §2 D2: AutoConfirmEnabled (`auto_confirm`) ────────────────
+
+    [Fact]
+    public void Initiate_AutoConfirmDisabled_DefaultsToPending()
+    {
+        // autoConfirmEnabled hiç verilmezse (default false) — mevcut davranış korunur.
+        var b = Initiate();
+
+        Assert.Equal(BookingStatus.Pending, b.Status);
+        Assert.Null(b.ConfirmedAt);
+        Assert.False(b.AutoConfirmSnapshot);
+        Assert.DoesNotContain(b.DomainEvents, e => e is BookingConfirmedEvent);
+    }
+
+    [Fact]
+    public void Initiate_AutoConfirmEnabled_NoOnlinePaymentRequired_GoesStraightToConfirmed()
+    {
+        // Madde 2: auto_confirm açık + kapora/tam ödeme gerekmiyor → Pending atlanır.
+        var b = Kuaforum.Domain.Modules.Booking.Booking.Initiate(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            DateTimeOffset.UtcNow.AddDays(1),
+            SingleService(),
+            BookingType.Scheduled, 0.10m,
+            requiresOnlinePayment: false,
+            autoConfirmEnabled: true).Value;
+
+        Assert.Equal(BookingStatus.Confirmed, b.Status);
+        Assert.NotNull(b.ConfirmedAt);
+        Assert.True(b.AutoConfirmSnapshot);
+        Assert.Contains(b.DomainEvents, e => e is BookingInitiatedEvent);
+        Assert.Contains(b.DomainEvents, e => e is BookingConfirmedEvent { AutoConfirmed: true });
+    }
+
+    [Fact]
+    public void Initiate_AutoConfirmEnabled_WithOnlinePaymentRequired_StaysPending()
+    {
+        // Madde 3 (en kritik): auto_confirm açık AMA kapora/tam ödeme gerekiyor → otomatik onay
+        // ödemeyi ATLAMAZ, booking Pending başlar — tıpkı auto_confirm kapalıymış gibi.
+        var b = Kuaforum.Domain.Modules.Booking.Booking.Initiate(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            DateTimeOffset.UtcNow.AddDays(1),
+            SingleService(),
+            BookingType.Scheduled, 0.10m,
+            requiresOnlinePayment: true,
+            autoConfirmEnabled: true).Value;
+
+        Assert.Equal(BookingStatus.Pending, b.Status);
+        Assert.Null(b.ConfirmedAt);
+        Assert.True(b.AutoConfirmSnapshot); // ileride MarkPaymentReceived'ın okuyacağı snapshot
+        Assert.DoesNotContain(b.DomainEvents, e => e is BookingConfirmedEvent);
+    }
+
+    [Fact]
+    public void MarkPaymentReceived_AutoConfirmSnapshotTrue_ConfirmsWithoutOwnerAction()
+    {
+        // Madde 3'ün ikinci yarısı: ödeme tahsil edildiğinde, owner hiç OwnerConfirm() çağırmadan
+        // booking Confirmed'a geçer. BookingPaymentReceivedEvent ("onayınızı bekliyor") YERİNE
+        // BookingConfirmedEvent(AutoConfirmed: true) yayınlanır — owner'ın aksiyon alması
+        // gerekmiyor, "onayınızı bekliyor" bildirimi yanıltıcı olurdu.
+        var b = Kuaforum.Domain.Modules.Booking.Booking.Initiate(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            DateTimeOffset.UtcNow.AddDays(1),
+            SingleService(),
+            BookingType.Scheduled, 0.10m,
+            requiresOnlinePayment: true,
+            autoConfirmEnabled: true).Value;
+        var paymentId = Guid.NewGuid();
+
+        var r = b.MarkPaymentReceived(paymentId);
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(BookingStatus.Confirmed, b.Status);
+        Assert.NotNull(b.ConfirmedAt);
+        Assert.Equal(paymentId, b.PaymentId);
+        Assert.NotNull(b.DepositPaidAt);
+        Assert.Contains(b.DomainEvents, e => e is BookingConfirmedEvent { AutoConfirmed: true });
+        Assert.DoesNotContain(b.DomainEvents, e => e is BookingPaymentReceivedEvent);
+    }
+
+    [Fact]
+    public void MarkPaymentReceived_AutoConfirmSnapshotFalse_KeepsExistingBehavior()
+    {
+        // Regresyon kilidi: auto_confirm kapalıyken hâlâ eski davranış — Pending kalır,
+        // BookingPaymentReceivedEvent yayınlanır, owner'ın OwnerConfirm() çağırması gerekir.
+        var b = Kuaforum.Domain.Modules.Booking.Booking.Initiate(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            DateTimeOffset.UtcNow.AddDays(1),
+            SingleService(),
+            BookingType.Scheduled, 0.10m,
+            requiresOnlinePayment: true,
+            autoConfirmEnabled: false).Value;
+
+        var r = b.MarkPaymentReceived(Guid.NewGuid());
+
+        Assert.True(r.IsSuccess);
+        Assert.Equal(BookingStatus.Pending, b.Status);
+        Assert.Contains(b.DomainEvents, e => e is BookingPaymentReceivedEvent);
+        Assert.DoesNotContain(b.DomainEvents, e => e is BookingConfirmedEvent);
+    }
+
+    [Fact]
+    public void OwnerConfirm_RaisesBookingConfirmedEvent_WithAutoConfirmedFalse()
+    {
+        // Owner'ın kendi elle onayı her zaman AutoConfirmed: false taşır — bildirim metninin
+        // doğru dallanması buna dayanıyor.
+        var b = Initiate();
+
+        b.OwnerConfirm();
+
+        Assert.Contains(b.DomainEvents, e => e is BookingConfirmedEvent { AutoConfirmed: false });
+    }
+
     // ── RFC-013 C1 (adversarial review): AttachOrphanPayment — capture booking'in Pending ────
     // ── guard'ını kaybettiği ANDAN SONRA gelirse para yetim kalmasın ─────────────────────────
 

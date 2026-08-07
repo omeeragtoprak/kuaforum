@@ -219,23 +219,32 @@ public sealed class RichDemoSeeder(
             if (toResult.IsSuccess) db.TimeOffs.Add(toResult.Value);
         }
 
-        // Booking policy: shop[0]=10% kapora, shop[1]=20% kapora, shop[2]=anti-spam.
+        // Booking policy: shop[0]=10% kapora + auto-confirm (RFC-014 D2: kapora+auto-confirm
+        // etkileşimini founder elle test edebilsin — ödeme öncesi Pending, ödeme sonrası owner
+        // onayı olmadan Confirmed), shop[1]=20% kapora (auto-confirm KAPALI, kontrast için),
+        // shop[2]=anti-spam, shop[3]=auto-confirm AÇIK ama kapora YOK (immediate-confirm akışı —
+        // randevu doğrudan Confirmed döner, Pending hiç görünmez).
         if (settings is not null)
         {
             if (newShops.Count > 0)
             {
-                var p0 = BookingPolicy.Create(true, 0.10m, 2, null, null, settings.DepositPercentMin, settings.DepositPercentMax);
+                var p0 = BookingPolicy.Create(true, 0.10m, 2, null, null, autoConfirmEnabled: true, settings.DepositPercentMin, settings.DepositPercentMax);
                 if (p0.IsSuccess) newShops[0].Shop.SetBookingPolicy(p0.Value);
             }
             if (newShops.Count > 1)
             {
-                var p1 = BookingPolicy.Create(true, 0.20m, 2, null, null, settings.DepositPercentMin, settings.DepositPercentMax);
+                var p1 = BookingPolicy.Create(true, 0.20m, 2, null, null, autoConfirmEnabled: false, settings.DepositPercentMin, settings.DepositPercentMax);
                 if (p1.IsSuccess) newShops[1].Shop.SetBookingPolicy(p1.Value);
             }
             if (newShops.Count > 2)
             {
-                var p2 = BookingPolicy.Create(false, null, 2, 7, 2, settings.DepositPercentMin, settings.DepositPercentMax);
+                var p2 = BookingPolicy.Create(false, null, 2, 7, 2, autoConfirmEnabled: false, settings.DepositPercentMin, settings.DepositPercentMax);
                 if (p2.IsSuccess) newShops[2].Shop.SetBookingPolicy(p2.Value);
+            }
+            if (newShops.Count > 3)
+            {
+                var p3 = BookingPolicy.Create(false, null, 2, null, null, autoConfirmEnabled: true, settings.DepositPercentMin, settings.DepositPercentMax);
+                if (p3.IsSuccess) newShops[3].Shop.SetBookingPolicy(p3.Value);
             }
         }
         await db.SaveChangesAsync(ct);
@@ -809,10 +818,11 @@ public sealed class RichDemoSeeder(
                 if (todayPending is not null) devBookings.Add(todayPending);
 
                 // 3) Kapora ödenmiş Pending (+5 gün) — owner "ödenmiş, onay bekliyor" akışını
-                // burada da görsün. Bunun için salonun kapora ayarı önce açılıyor.
+                // burada da görsün. Bunun için salonun kapora ayarı önce açılıyor. AutoConfirm
+                // BİLEREK kapalı — bu senaryonun tüm amacı owner'ın elle onaylaması.
                 if (settings is not null)
                 {
-                    var devPolicy = BookingPolicy.Create(true, 0.15m, 2, null, null, settings.DepositPercentMin, settings.DepositPercentMax);
+                    var devPolicy = BookingPolicy.Create(true, 0.15m, 2, null, null, autoConfirmEnabled: false, settings.DepositPercentMin, settings.DepositPercentMax);
                     if (devPolicy.IsSuccess) devShop.SetBookingPolicy(devPolicy.Value);
                 }
                 var depositDay = todayLocal.AddDays(5);

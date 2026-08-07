@@ -198,7 +198,8 @@ public static class BarberEndpoints
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new UpdateBookingPolicyCommand(
                 ctx.UserId.Value, body.DepositEnabled, body.DepositPercent,
-                body.MaxPendingPerCustomer, body.MinDaysBetweenBookings, body.MaxBookingsPerMonth), token);
+                body.MaxPendingPerCustomer, body.MinDaysBetweenBookings, body.MaxBookingsPerMonth,
+                body.AutoConfirmEnabled), token);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
                 : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "not_found" => 404, "forbidden" => 403, "server_misconfigured" => 500, _ => 400 });
@@ -287,5 +288,6 @@ public static class BarberEndpoints
         decimal? DepositPercent,
         int MaxPendingPerCustomer,
         int? MinDaysBetweenBookings,
-        int? MaxBookingsPerMonth);
+        int? MaxBookingsPerMonth,
+        bool AutoConfirmEnabled);
 }

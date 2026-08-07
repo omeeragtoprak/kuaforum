@@ -59,6 +59,12 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(8)")
                         .HasColumnName("address_postal_code");
 
+                    b.Property<bool>("BookingPolicyAutoConfirmEnabled")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("booking_policy_auto_confirm_enabled");
+
                     b.Property<bool>("BookingPolicyDepositEnabled")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -896,6 +902,12 @@ namespace Kuaforum.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("id");
+
+                    b.Property<bool>("AutoConfirmSnapshot")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("auto_confirm_snapshot");
 
                     b.Property<Guid>("BarberShopId")
                         .HasColumnType("uuid")

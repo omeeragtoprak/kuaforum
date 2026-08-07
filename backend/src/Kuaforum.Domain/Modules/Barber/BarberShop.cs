@@ -45,6 +45,9 @@ public sealed class BarberShop : AggregateRoot
     public int? BookingPolicyMinDaysBetweenBookings { get; private set; }
     public int? BookingPolicyMaxBookingsPerMonth { get; private set; }
 
+    /// <summary>RFC-014 §2 D2: salon randevuları otomatik onaylar. Varsayılan false (RFC-013'ün "her randevuda kuaför onayı" ilkesi).</summary>
+    public bool BookingPolicyAutoConfirmEnabled { get; private set; }
+
     public static Result<BarberShop> Create(Guid ownerId, string name, SalonGenderType genderType)
     {
         if (string.IsNullOrWhiteSpace(name) || name.Length > 120)
@@ -151,6 +154,7 @@ public sealed class BarberShop : AggregateRoot
         BookingPolicyMaxPendingPerCustomer = policy.MaxPendingPerCustomer;
         BookingPolicyMinDaysBetweenBookings = policy.MinDaysBetweenBookings;
         BookingPolicyMaxBookingsPerMonth = policy.MaxBookingsPerMonth;
+        BookingPolicyAutoConfirmEnabled = policy.AutoConfirmEnabled;
         Touch();
         return Result.Success();
     }

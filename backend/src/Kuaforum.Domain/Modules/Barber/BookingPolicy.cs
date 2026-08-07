@@ -24,6 +24,16 @@ public sealed class BookingPolicy
     public int? MaxBookingsPerMonth { get; private set; }
 
     /// <summary>
+    /// RFC-014 §2 D2: salon randevuları otomatik onaylar (Pending atlanır, doğrudan
+    /// Confirmed). Varsayılan KAPALI — RFC-013'ün "her randevuda kuaför onayı" ilkesi
+    /// varsayılan davranış olarak korunur, bu owner'ın bilinçli opt-in'i. Kapora ile
+    /// etkileşim burada DEĞİL, <see cref="Booking.Booking.Initiate"/> ve
+    /// <see cref="Booking.Booking.MarkPaymentReceived"/>'da uygulanır (bkz. o metotların XML
+    /// doc'u) — bu sınıf yalnızca ayarın kendisini taşır, admin aralığı gibi bir kısıtı yok.
+    /// </summary>
+    public bool AutoConfirmEnabled { get; private set; }
+
+    /// <summary>
     /// Platform tabanı — bkz. InitiateBookingCommand.MaxActivePendingBookingsPerCustomer
     /// (Application katmanındaki GLOBAL, shop'tan bağımsız tavan). Per-shop limit bunu
     /// sıkılaştırabilir, gevşetemez; ikisi ayrı sabitler olarak duruyor (cross-layer sabit
@@ -46,6 +56,7 @@ public sealed class BookingPolicy
         MaxPendingPerCustomer = 2,
         MinDaysBetweenBookings = null,
         MaxBookingsPerMonth = null,
+        AutoConfirmEnabled = false,
     };
 
     public static Result<BookingPolicy> Create(
@@ -54,6 +65,7 @@ public sealed class BookingPolicy
         int maxPendingPerCustomer,
         int? minDaysBetweenBookings,
         int? maxBookingsPerMonth,
+        bool autoConfirmEnabled,
         decimal depositPercentMin,
         decimal depositPercentMax)
     {
@@ -97,6 +109,7 @@ public sealed class BookingPolicy
             MaxPendingPerCustomer = maxPendingPerCustomer,
             MinDaysBetweenBookings = minDaysBetweenBookings,
             MaxBookingsPerMonth = maxBookingsPerMonth,
+            AutoConfirmEnabled = autoConfirmEnabled,
         });
     }
 }

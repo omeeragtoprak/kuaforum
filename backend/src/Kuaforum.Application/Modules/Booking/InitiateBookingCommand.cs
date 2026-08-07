@@ -24,7 +24,15 @@ public sealed record InitiateBookingResponse(
     DateTimeOffset ScheduledAt,
     DateTimeOffset ScheduledEndsAt,
     long TotalAmountMinor,
-    string Currency);
+    string Currency,
+    // RFC-014 §2 D2 madde 6: müşteri özet ekranının doğru vaadi göstermesi için. Status
+    // Confirmed ise randevu anında kesinleşti. Status Pending iken AutoConfirmEnabled true
+    // olması TEK bir şeyi ifade edebilir (bkz. Booking.Initiate): bu salon kapora/tam ödeme
+    // istiyor VE ödeme tamamlanınca kuaför onayı beklemeden Confirmed olacak — auto-confirm
+    // açıkken online ödeme GEREKMEYEN randevular zaten doğrudan Confirmed döner, hiç Pending
+    // görünmezler. AutoConfirmEnabled false + Status Pending ise klasik "kuaför onaylayacak" akışı.
+    BookingStatus Status,
+    bool AutoConfirmEnabled);
 
 public sealed class InitiateBookingCommandValidator : AbstractValidator<InitiateBookingCommand>
 {
@@ -142,7 +150,11 @@ public sealed class InitiateBookingCommandHandler(
             // RFC-013 M1: shop'un O ANKİ kapora oranı da booking'e snapshot'lanır — yalnız
             // InitiatePaymentCommand'ın son-çare fallback'i için (bkz. Booking.DepositPercentSnapshot
             // XML doc). Normal yolda hâlâ canlı shop değeri kullanılır.
-            shop.BookingPolicyDepositPercent);
+            shop.BookingPolicyDepositPercent,
+            // RFC-014 §2 D2: shop'un O ANKİ auto-confirm ayarı da snapshot'lanır (Booking.
+            // AutoConfirmSnapshot XML doc) — RequiresOnlinePayment/DepositPercentSnapshot'la
+            // aynı ilke, sonradan owner ayarı değiştirse bile bu booking'in davranışı sabit kalır.
+            shop.BookingPolicyAutoConfirmEnabled);
 
         if (bookingResult.IsFailure) return Result.Failure<InitiateBookingResponse>(bookingResult.Error);
         var booking = bookingResult.Value;
@@ -172,7 +184,8 @@ public sealed class InitiateBookingCommandHandler(
         }
 
         return Result.Success(new InitiateBookingResponse(
-            booking.Id, booking.ScheduledAt, booking.ScheduledEndsAt, booking.TotalAmountMinor, booking.Currency));
+            booking.Id, booking.ScheduledAt, booking.ScheduledEndsAt, booking.TotalAmountMinor, booking.Currency,
+            booking.Status, booking.AutoConfirmSnapshot));
     }
 
     /// <summary>

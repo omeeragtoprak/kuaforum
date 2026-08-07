@@ -38,6 +38,9 @@ internal sealed class BarberShopConfiguration : IEntityTypeConfiguration<BarberS
         builder.Property(x => x.BookingPolicyMaxPendingPerCustomer).HasColumnName("booking_policy_max_pending_per_customer").HasDefaultValue(2);
         builder.Property(x => x.BookingPolicyMinDaysBetweenBookings).HasColumnName("booking_policy_min_days_between_bookings");
         builder.Property(x => x.BookingPolicyMaxBookingsPerMonth).HasColumnName("booking_policy_max_bookings_per_month");
+        // RFC-014 §2 D2 — aynı HasDefaultValue gerekçesi: mevcut satırlar için CLR sıfır değeri
+        // (false) zaten istenen davranış (varsayılan KAPALI), ama açıklık için burada da yazılı.
+        builder.Property(x => x.BookingPolicyAutoConfirmEnabled).HasColumnName("booking_policy_auto_confirm_enabled").HasDefaultValue(false);
         builder.Property(x => x.Version).HasColumnName("version").IsConcurrencyToken();
         builder.Property(x => x.CreatedAt).HasColumnName("created_at");
         builder.Property(x => x.UpdatedAt).HasColumnName("updated_at");

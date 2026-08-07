@@ -31,7 +31,12 @@ public sealed record BarberShopDto(
     // EFEKTİF değer sızar, ham shop ayarı değil — global switch kapalıyken DepositEnabled=true
     // olsa bile burada false/null döner.
     bool DepositEnabled,
-    decimal? DepositPercent);
+    decimal? DepositPercent,
+    // RFC-014 §2 D2 madde 6: mobil confirm ekranının randevu ÖNCESİ doğru vaadi göstermesi
+    // için ("Randevun anında kesinleşir" vs. "Kuaför onayladığında bildirim gelecek").
+    // Kapora'nın aksine global bir master-switch'e tabi DEĞİL — ham shop ayarı olduğu gibi
+    // sızar (owner açtığı an etkindir).
+    bool AutoConfirmEnabled);
 
 public sealed record StylistDto(
     Guid Id,
@@ -69,7 +74,8 @@ public sealed class GetMyBarberShopQueryHandler(IApplicationDbContext db, IOptio
                 s.AddressCityId, s.AddressDistrictId, s.AddressNeighborhoodId, s.AddressLine1,
                 s.Latitude, s.Longitude, s.CommissionTier,
                 onlinePaymentsEnabled && s.BookingPolicyDepositEnabled,
-                (onlinePaymentsEnabled && s.BookingPolicyDepositEnabled) ? s.BookingPolicyDepositPercent : null))
+                (onlinePaymentsEnabled && s.BookingPolicyDepositEnabled) ? s.BookingPolicyDepositPercent : null,
+                s.BookingPolicyAutoConfirmEnabled))
             .FirstOrDefaultAsync(ct);
         return Result.Success(shop);
     }
@@ -92,7 +98,8 @@ public sealed class GetBarberShopByIdQueryHandler(IApplicationDbContext db, IOpt
                 s.AddressCityId, s.AddressDistrictId, s.AddressNeighborhoodId, s.AddressLine1,
                 s.Latitude, s.Longitude, s.CommissionTier,
                 onlinePaymentsEnabled && s.BookingPolicyDepositEnabled,
-                (onlinePaymentsEnabled && s.BookingPolicyDepositEnabled) ? s.BookingPolicyDepositPercent : null))
+                (onlinePaymentsEnabled && s.BookingPolicyDepositEnabled) ? s.BookingPolicyDepositPercent : null,
+                s.BookingPolicyAutoConfirmEnabled))
             .FirstOrDefaultAsync(ct);
         if (shop is null) return Result.Failure<BarberShopDto>(Error.NotFound("BarberShop"));
         return Result.Success(shop);

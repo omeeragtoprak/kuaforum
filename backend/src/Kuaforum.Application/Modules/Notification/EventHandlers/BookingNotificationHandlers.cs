@@ -97,7 +97,10 @@ public sealed class BookingConfirmedNotificationHandler(
                 .FirstOrDefaultAsync(u => u.Id == shop.OwnerId, cancellationToken);
             if (owner is not null)
             {
-                var subject = "Yeni randevu";
+                // RFC-014 §2 D2 madde 5: otomatik onaylanan randevuda kuaföre yine bildirim gider,
+                // ama metni farklı — owner'ın hiçbir onay aksiyonu almasına gerek yok, "yeni geldi,
+                // haberin olsun" tonunda.
+                var subject = notification.AutoConfirmed ? "Yeni randevu — otomatik onaylandı" : "Yeni randevu";
                 var body = $"{stylist?.DisplayName ?? "Stilist"} için {localTime} yeni randevu.";
 
                 await NotificationHelpers.DispatchInAppAsync(dispatcher, owner.Id,
