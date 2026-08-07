@@ -69,6 +69,21 @@ public sealed class CrossShopConflictBookingTests(IntegrationTestFactory factory
         return new ShopFixture(customerClient, otherShop.Id, otherShop.Name, stylist.Id, service.Id);
     }
 
+    private sealed record CheckConflictResp(ConflictingBookingResp? ConflictingBooking);
+
+    private static async Task<CheckConflictResp> CheckConflictAsync(
+        HttpClient customer, Guid barberShopId, DateTimeOffset scheduledAt, DateTimeOffset scheduledEndsAt)
+    {
+        var resp = await customer.PostAsJsonAsync("/v1/bookings/check-conflict", new
+        {
+            barberShopId,
+            scheduledAt,
+            scheduledEndsAt,
+        });
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        return (await resp.Content.ReadFromJsonAsync<CheckConflictResp>(TestHelpers.Json))!;
+    }
+
     private static async Task<InitiateResp> InitiateAsync(HttpClient customer, Guid stylistId, Guid serviceId, DateTimeOffset scheduledAt)
     {
         var resp = await customer.PostAsJsonAsync("/v1/bookings", new
@@ -190,5 +205,84 @@ public sealed class CrossShopConflictBookingTests(IntegrationTestFactory factory
         var second = await InitiateAsync(shopB.CustomerClient, shopB.StylistId, shopB.ServiceId, first.ScheduledEndsAt);
 
         Assert.Null(second.ConflictingBooking);
+    }
+
+    // ── (5) Ön-kontrol ucu: randevu OLUŞTURULMADAN önce çakışma bilgisi dönüyor ──────────────
+    // ── (coordinator review — RFC-014 §2 D4 madde 1: kapora tahsilat+iade sürtünmesini önler)
+
+    [Fact]
+    public async Task CheckConflict_BeforeBookingExists_ReturnsSameInfoAsInitiateWouldLaterReturn()
+    {
+        var shopA = await SeedShopAndAuthAsync();
+        var shopB = await GetOtherShopAsync(shopA.ShopId, shopA.CustomerClient);
+
+        var anchor = FutureWeekdayUtc(70);
+        var first = await InitiateAsync(shopA.CustomerClient, shopA.StylistId, shopA.ServiceId, anchor);
+
+        // Randevu HENÜZ oluşturulmadı (shop B'de) — yalnız ön-kontrol çağrılıyor.
+        var preCheck = await CheckConflictAsync(shopB.CustomerClient, shopB.ShopId, anchor, anchor.AddMinutes(30));
+        Assert.NotNull(preCheck.ConflictingBooking);
+        Assert.Equal(first.BookingId, preCheck.ConflictingBooking!.BookingId);
+        Assert.Equal(shopA.ShopName, preCheck.ConflictingBooking.BarberShopName);
+        Assert.Equal(first.ScheduledAt, preCheck.ConflictingBooking.ScheduledAt);
+        Assert.Equal(first.ScheduledEndsAt, preCheck.ConflictingBooking.ScheduledEndsAt);
+
+        // Şimdi gerçekten oluştur — "son söz" olan InitiateBookingResponse.ConflictingBooking
+        // AYNI bilgiyi taşımalı (aynı CrossShopConflictFinder çağrısı, iki yol arasında fark yok).
+        var second = await InitiateAsync(shopB.CustomerClient, shopB.StylistId, shopB.ServiceId, anchor);
+        Assert.NotNull(second.ConflictingBooking);
+        Assert.Equal(preCheck.ConflictingBooking.BookingId, second.ConflictingBooking!.BookingId);
+        Assert.Equal(preCheck.ConflictingBooking.BarberShopName, second.ConflictingBooking.BarberShopName);
+        Assert.Equal(preCheck.ConflictingBooking.ScheduledAt, second.ConflictingBooking.ScheduledAt);
+        Assert.Equal(preCheck.ConflictingBooking.ScheduledEndsAt, second.ConflictingBooking.ScheduledEndsAt);
+    }
+
+    [Fact]
+    public async Task CheckConflict_NoConflict_ReturnsNull()
+    {
+        var shopA = await SeedShopAndAuthAsync();
+        var shopB = await GetOtherShopAsync(shopA.ShopId, shopA.CustomerClient);
+
+        await InitiateAsync(shopA.CustomerClient, shopA.StylistId, shopA.ServiceId, FutureWeekdayUtc(70));
+
+        // Açıkça farklı, kesişmeyen bir gün.
+        var precheck = await CheckConflictAsync(shopB.CustomerClient, shopB.ShopId, FutureWeekdayUtc(75), FutureWeekdayUtc(75).AddMinutes(30));
+
+        Assert.Null(precheck.ConflictingBooking);
+    }
+
+    [Fact]
+    public async Task CheckConflict_SameShopAsTarget_NotFlaggedAsConflict()
+    {
+        var shopA = await SeedShopAndAuthAsync();
+
+        var anchor = FutureWeekdayUtc(70);
+        var first = await InitiateAsync(shopA.CustomerClient, shopA.StylistId, shopA.ServiceId, anchor);
+
+        // Hedef salon shop A'nın KENDİSİ — cross-shop mantığı bunu hariç tutar (aynı stylist
+        // çakışması zaten oluşturma anında EXCLUDE constraint/busy-range ile ayrı ele alınıyor).
+        var precheck = await CheckConflictAsync(shopA.CustomerClient, shopA.ShopId, first.ScheduledAt, first.ScheduledEndsAt);
+
+        Assert.Null(precheck.ConflictingBooking);
+    }
+
+    [Fact]
+    public async Task CheckConflict_DoesNotLeakOtherCustomersBooking()
+    {
+        var shopA = await SeedShopAndAuthAsync();
+        var shopB = await GetOtherShopAsync(shopA.ShopId, shopA.CustomerClient);
+
+        // "Customer" persona shop A'da randevu alıyor.
+        var first = await InitiateAsync(shopA.CustomerClient, shopA.StylistId, shopA.ServiceId, FutureWeekdayUtc(70));
+
+        // TAMAMEN FARKLI bir müşteri (CustomerFresh — ayrı telefon/kullanıcı) AYNI zaman
+        // aralığı için shop B'de ön-kontrol çağırıyor. Kendi randevusu olmadığından null
+        // dönmeli — "Customer"ın randevu bilgisi (salon adı + saat) sızmamalı.
+        var otherCustomerClient = factory.CreateClient();
+        otherCustomerClient.SetBearer((await otherCustomerClient.DevLoginAsync("CustomerFresh")).AccessToken);
+
+        var precheck = await CheckConflictAsync(otherCustomerClient, shopB.ShopId, first.ScheduledAt, first.ScheduledEndsAt);
+
+        Assert.Null(precheck.ConflictingBooking);
     }
 }

@@ -36,9 +36,14 @@ public sealed record InitiateBookingResponse(
     // RFC-014 §2 D4 / docs/GAPS.md G1: müşterinin AYNI zaman aralığına BAŞKA bir salondan
     // çakışan (Pending/Confirmed/Started) randevusu varsa doldurulur, yoksa null. Founder
     // kararı: backend bunu yalnız BİLDİRİR, randevuyu REDDETMEZ (meşru senaryo — eş/çocuk
-    // adına randevu, art arda iki farklı hizmet). Mobile bu alanı "X Kuaför'de de randevun
-    // var, yine de devam?" onay diyaloğu için kullanır — randevu bu yanıt dönene kadar zaten
-    // OLUŞTURULMUŞ olur, diyalog geri almak için değil bilgilendirmek içindir.
+    // adına randevu, art arda iki farklı hizmet).
+    //
+    // Coordinator review (2026-08-07): mobil özet ekranı bu alanı ÖNCE görmek ister — bkz.
+    // CheckBookingConflictQuery, oluşturmadan önce çağrılan ön-kontrol ucu, aynı
+    // ConflictingBookingDto şeklini döner. Bu alan yine de KALIYOR — ön-kontrol ile bu yanıt
+    // arasında geçen sürede araya başka bir randevu girebilir (yarış); son söz HER ZAMAN
+    // burasıdır, ön-kontrol yalnız gereksiz kapora tahsilat+iade sürtünmesini azaltan bir
+    // erken-uyarı katmanıdır.
     ConflictingBookingDto? ConflictingBooking = null);
 
 /// <summary>
@@ -71,18 +76,6 @@ public sealed class InitiateBookingCommandHandler(
     IOptions<PaymentOptions> paymentOptions) : IRequestHandler<InitiateBookingCommand, Result<InitiateBookingResponse>>
 {
     private static readonly TimeSpan SlotLockDuration = TimeSpan.FromMinutes(2);
-
-    /// <summary>
-    /// RFC-014 §2 D4: cross-shop çakışma kontrolünün "aktif" saydığı durumlar — <see
-    /// cref="Infrastructure.BackgroundJobs.BookingBusyRangeQuery.BlockingStatuses"/> ile aynı
-    /// küme (Cancelled/Completed/NoShow bir sonraki randevuyu etkilemiyor).
-    /// </summary>
-    private static readonly BookingStatus[] CrossShopConflictStatuses =
-    [
-        BookingStatus.Pending,
-        BookingStatus.Confirmed,
-        BookingStatus.Started,
-    ];
 
     /// <summary>RFC-013 review I2: MaxBookingsPerMonth ay sınırı client'ın gönderdiği DateTimeOffset.Offset'e göre DEĞİL, sabit Europe/Istanbul takvimine göre hesaplanır (bkz. StylistScheduleChecker'daki aynı desen — Türkiye 2016'dan beri DST uygulamıyor, ama doğru API kullanımı önemli).</summary>
     private static readonly TimeZoneInfo IstanbulTz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
@@ -213,48 +206,15 @@ public sealed class InitiateBookingCommandHandler(
             return Result.Failure<InitiateBookingResponse>(Error.Conflict("Bu saat az önce doldu, başka bir saat seçin."));
         }
 
-        var conflictingBooking = await FindCrossShopConflictAsync(
+        // Paylaşılan sorgu — CheckBookingConflictQueryHandler (ön-kontrol, oluşturmadan ÖNCE)
+        // ile AYNI mantık, bkz. CrossShopConflictFinder XML doc. Burada "son söz": ön-kontrol
+        // ile bu SaveChanges arasında araya giren bir randevu varsa onu da yakalar.
+        var conflictingBooking = await CrossShopConflictFinder.FindAsync(
             ctx, request.CustomerId, stylist.BarberShopId, request.ScheduledAt, endsAt, cancellationToken);
 
         return Result.Success(new InitiateBookingResponse(
             booking.Id, booking.ScheduledAt, booking.ScheduledEndsAt, booking.TotalAmountMinor, booking.Currency,
             booking.Status, booking.AutoConfirmSnapshot, conflictingBooking));
-    }
-
-    /// <summary>
-    /// RFC-014 §2 D4 / docs/GAPS.md G1: müşterinin YENİ oluşturulan randevuyla zaman aralığı
-    /// kesişen, BAŞKA bir salondaki aktif randevusu var mı. Salon içi çakışma bunun kapsamı
-    /// dışında — aynı stylist için zaten DB'deki EXCLUDE constraint (M15) engelliyor; aynı
-    /// salonda farklı stylist senaryosu bilinçli olarak dokunulmadı (görev kapsamı "cross-shop").
-    /// Sorgu <c>ix_bookings_customer_scheduled</c> (CustomerId, ScheduledAt) ile taranır — TÜM
-    /// randevu geçmişini çekmek yerine yalnız durum + BarberShopId filtresiyle daraltılmış tek
-    /// satır (<c>FirstOrDefaultAsync</c>) döner, N+1 yok (booking başına en fazla 2 sorgu: bu +
-    /// eşleşirse salon adı için 1).
-    /// </summary>
-    private static async Task<ConflictingBookingDto?> FindCrossShopConflictAsync(
-        DbContext ctx, Guid customerId, Guid newBookingShopId, DateTimeOffset scheduledAt, DateTimeOffset endsAt,
-        CancellationToken ct)
-    {
-        var conflict = await ctx.Set<BookingAggregate>().AsNoTracking()
-            .Where(b => b.CustomerId == customerId
-                        && b.BarberShopId != newBookingShopId
-                        && CrossShopConflictStatuses.Contains(b.Status)
-                        // Sınır durumu: bitiş anı == başlangıç anı çakışma SAYILMAZ — kesin
-                        // eşitsizlikler (BookingBusyRangeQuery'deki aynı desen).
-                        && b.ScheduledAt < endsAt
-                        && b.ScheduledEndsAt > scheduledAt)
-            .OrderBy(b => b.ScheduledAt)
-            .Select(b => new { b.Id, b.BarberShopId, b.ScheduledAt, b.ScheduledEndsAt })
-            .FirstOrDefaultAsync(ct);
-
-        if (conflict is null) return null;
-
-        var shopName = await ctx.Set<BarberShop>().AsNoTracking()
-            .Where(s => s.Id == conflict.BarberShopId)
-            .Select(s => s.Name)
-            .FirstOrDefaultAsync(ct) ?? "";
-
-        return new ConflictingBookingDto(conflict.Id, shopName, conflict.ScheduledAt, conflict.ScheduledEndsAt);
     }
 
     /// <summary>

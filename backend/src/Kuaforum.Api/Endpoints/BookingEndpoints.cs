@@ -13,6 +13,7 @@ public static class BookingEndpoints
         var group = app.MapGroup("/v1/bookings").WithTags("Bookings").RequireAuthorization();
 
         group.MapPost("", InitiateAsync).WithName("InitiateBooking");
+        group.MapPost("/check-conflict", CheckConflictAsync).WithName("CheckBookingConflict");
         group.MapGet("", GetMyBookingsAsync).WithName("GetMyBookings");
         group.MapGet("/{id:guid}", GetByIdAsync).WithName("GetBooking");
         group.MapPost("/{id:guid}/cancel", CancelAsync).WithName("CancelBooking");
@@ -51,6 +52,24 @@ public static class BookingEndpoints
         return r.IsSuccess
             ? Results.Created($"/v1/bookings/{r.Value.BookingId}", r.Value)
             : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "conflict" ? 409 : 400);
+    }
+
+    /// <summary>
+    /// RFC-014 §2 D4 madde 1: randevu özet ekranının ön-kontrolü — oluşturmadan ÖNCE çağrılır.
+    /// <see cref="CheckBookingConflictQuery.CustomerId"/> her zaman JWT'den (ctx.UserId) gelir,
+    /// body'den ASLA — başka bir müşterinin randevu bilgisini sorgulamanın yolu yok.
+    /// </summary>
+    private static async Task<IResult> CheckConflictAsync(
+        [FromBody] CheckBookingConflictRequest body,
+        IMediator m,
+        IRequestContext ctx,
+        CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var r = await m.Send(new CheckBookingConflictQuery(ctx.UserId.Value, body.BarberShopId, body.ScheduledAt, body.ScheduledEndsAt), token);
+        return r.IsSuccess
+            ? Results.Ok(new CheckBookingConflictResponse(r.Value))
+            : Results.Problem(r.Error.Message, statusCode: 400);
     }
 
     private static async Task<IResult> GetMyBookingsAsync(
@@ -120,4 +139,10 @@ public static class BookingEndpoints
         string? CustomerNote);
 
     public sealed record RescheduleBookingRequest(DateTimeOffset NewScheduledAt);
+
+    /// <summary>Mobil özet ekranının elinde zaten olan veriler — seçili salon + seçili slotun başlangıç/bitişi (bkz. CheckBookingConflictQuery XML doc, neden StylistId/ServiceCatalogIds DEĞİL bunlar).</summary>
+    public sealed record CheckBookingConflictRequest(Guid BarberShopId, DateTimeOffset ScheduledAt, DateTimeOffset ScheduledEndsAt);
+
+    /// <summary>InitiateBookingResponse.ConflictingBooking ile AYNI şekil — mobil tek bir tip parse etsin diye.</summary>
+    public sealed record CheckBookingConflictResponse(ConflictingBookingDto? ConflictingBooking);
 }
