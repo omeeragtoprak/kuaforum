@@ -176,6 +176,7 @@ app.MapDeviceTokenEndpoints();
 app.MapAdminEndpoints();
 app.MapBillingEndpoints(app.Environment);
 app.MapWebhookEndpoints();
+app.MapDevEndpoints(app.Environment);
 
 // Hangfire dashboard + recurring jobs ancak Hangfire DI'a register edildiyse
 // (Hangfire:Enabled config flag). Test ortamında Postgres yokken eager bağlanma
@@ -204,7 +205,7 @@ var seedDemo = builder.Configuration.GetValue<bool>("Seed:Demo");
 var seedComprehensive = builder.Configuration.GetValue<bool>("Seed:ComprehensiveDemo");
 var seedRichDemo = builder.Configuration.GetValue<bool>("Seed:RichDemo");
 await Kuaforum.Infrastructure.DependencyInjection.SeedReferenceDataAsync(
-    app.Services, seedDemo, seedComprehensive, seedRichDemo);
+    app.Services, seedDemo, seedComprehensive, seedRichDemo, isProduction: app.Environment.IsProduction());
 
 app.Run();
 

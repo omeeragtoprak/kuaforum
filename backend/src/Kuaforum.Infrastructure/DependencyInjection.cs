@@ -230,6 +230,7 @@ public static class DependencyInjection
         services.AddScoped<DemoBarberSeeder>();
         services.AddScoped<ComprehensiveDemoSeeder>();
         services.AddScoped<RichDemoSeeder>();
+        services.AddScoped<DemoDataResetter>();
         services.AddScoped<AdminSeeder>();
         services.AddScoped<Persistence.Seeding.PlatformSettingsSeeder>();
         services.AddScoped<Persistence.Seeding.SubscriptionPlanSeeder>();
@@ -243,6 +244,8 @@ public static class DependencyInjection
         bool seedDemoBarbers,
         bool seedComprehensiveDemo,
         bool seedRichDemo = false,
+        bool isProduction = false,
+        bool forceReset = false,
         CancellationToken ct = default)
     {
         await using var scope = services.CreateAsyncScope();
@@ -253,6 +256,22 @@ public static class DependencyInjection
         var ctx = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         await ctx.Database.MigrateAsync(ct);
 
+        // Demo veri bayatlama koruması (2026-08-07 canlı bulgu — bkz. DemoDataResetter XML
+        // doc): RichDemoSeeder tek-seferlik idempotent bir gate kullanır, randevu tarihleri
+        // MUTLAK olduğu için "bugünün" randevusu bir gece sonra artık bugüne ait değildir.
+        // forceReset=true (dev-only /v1/dev/reseed-demo endpoint'i) VEYA otomatik bayatlama
+        // tespiti (IsStaleAsync — her boot'ta ücretsiz, iki basit SELECT) tetiklenirse,
+        // coğrafya/plan tanımları HARİÇ tüm demo veri TRUNCATE edilip aşağıdaki seeder
+        // zinciri sıfırdan (bu kez "şimdi"ye göre) çalışır. isProduction=true iken bu blok
+        // TAMAMEN atlanır — DemoDataResetter kendi IHostEnvironment kontrolüyle de ayrıca
+        // throw eder (çift katman, bkz. o sınıfın XML doc'u).
+        if (seedRichDemo && !isProduction)
+        {
+            var resetter = scope.ServiceProvider.GetRequiredService<DemoDataResetter>();
+            if (forceReset || await resetter.IsStaleAsync(ct))
+                await resetter.ResetAsync(ct);
+        }
+
         var geo = scope.ServiceProvider.GetRequiredService<GeographySeeder>();
         await geo.SeedAsync(ct);
 
@@ -260,7 +279,7 @@ public static class DependencyInjection
         await adminSeeder.SeedAsync(ct);
 
         var platformSettingsSeeder = scope.ServiceProvider.GetRequiredService<Persistence.Seeding.PlatformSettingsSeeder>();
-        await platformSettingsSeeder.SeedAsync(ct);
+        await platformSettingsSeeder.SeedAsync(seedDemoBankInfo: seedDemoBarbers || seedComprehensiveDemo || seedRichDemo, ct);
 
         if (seedDemoBarbers)
         {
