@@ -6,33 +6,11 @@ namespace Kuaforum.Tests.Domain.Billing;
 public class PlatformSettingsTests
 {
     [Fact]
-    public void CreateDefault_UsesGivenRate()
+    public void CreateDefault_UsesGivenDepositBounds()
     {
-        var settings = PlatformSettings.CreateDefault(0.20m);
-        Assert.Equal(0.20m, settings.CommissionRateGlobal);
-    }
-
-    [Theory]
-    [InlineData(0.01)]
-    [InlineData(0.5)]
-    public void UpdateCommissionRateGlobal_ValidRange_Succeeds(double rate)
-    {
-        var settings = PlatformSettings.CreateDefault();
-        var result = settings.UpdateCommissionRateGlobal((decimal)rate);
-
-        Assert.True(result.IsSuccess);
-        Assert.Equal((decimal)rate, settings.CommissionRateGlobal);
-    }
-
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-0.1)]
-    [InlineData(0.51)]
-    public void UpdateCommissionRateGlobal_OutOfRange_Fails(double rate)
-    {
-        var settings = PlatformSettings.CreateDefault();
-        var result = settings.UpdateCommissionRateGlobal((decimal)rate);
-        Assert.True(result.IsFailure);
+        var settings = PlatformSettings.CreateDefault(depositPercentMin: 0.10m, depositPercentMax: 0.40m);
+        Assert.Equal(0.10m, settings.DepositPercentMin);
+        Assert.Equal(0.40m, settings.DepositPercentMax);
     }
 
     [Fact]

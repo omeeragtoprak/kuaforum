@@ -16,7 +16,7 @@ namespace Kuaforum.Tests.Integration;
 /// Deposit/FullOnline fark etmeksizin) Pending → Confirmed geçişini yalnız owner'ın
 /// OwnerConfirm() çağrısıyla yapıyor. Reddet/timeout'ta kapora ödenmişse otomatik %100 iade
 /// (mevcut BookingCancelledEvent → BookingRefundService → ProcessBookingRefundJob zinciri).
-/// Komisyon artık ödeme anında SIFIR (RFC-012 — ay sonu CommissionStatement'a taşındı).
+/// Komisyon artık ödeme anında SIFIR (RFC-014 §2 D1 — gelir modeli sabit aylık aboneliğe geçti, SubscriptionInvoice).
 ///
 /// DepositPaymentTests/PaytrWebhookTests bu davranışın "ödeme mekaniği" tarafını (checkout,
 /// webhook, reinitiate) kilitliyor; bu dosya "onay sırası" tarafını — RFC-013'ün asıl riskli

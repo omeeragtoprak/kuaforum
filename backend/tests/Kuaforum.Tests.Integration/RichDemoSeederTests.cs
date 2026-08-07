@@ -16,9 +16,25 @@ namespace Kuaforum.Tests.Integration;
 /// burada EXPLICIT çağrıldığında çalışır — 170 mevcut testin hiçbiri ondan etkilenmez.
 /// </summary>
 [Collection(nameof(IntegrationTestCollection))]
-public sealed class RichDemoSeederTests(IntegrationTestFactory factory)
+public sealed class RichDemoSeederTests(IntegrationTestFactory factory) : IAsyncLifetime
 {
     private const string DemoCustomerPhone = "+905551234567";
+    private const string DemoPaidPlanCode = "DEMO_PAID_QA"; // RichDemoSeeder.DemoPaidPlanCode ile birebir aynı
+
+    // subscription_plans/plan_entitlements ResetDatabaseAsync'in TRUNCATE listesinde YOK
+    // (bkz. EntitlementServiceTests XML doc) — RichDemoSeeder'ın oluşturduğu demo/QA plan satırı
+    // her testten sonra AÇIKÇA temizlenmeli, aksi halde SubscriptionPlanTests.
+    // SubscriptionPlanSeeder_RunTwice_DoesNotDuplicateRows gibi "toplam plan sayısı 3" varsayan
+    // testlere sızar.
+    public Task InitializeAsync() => Task.CompletedTask;
+
+    public async Task DisposeAsync()
+    {
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM shop_subscriptions WHERE plan_code = {DemoPaidPlanCode}");
+        await db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM subscription_plans WHERE code = {DemoPaidPlanCode}");
+    }
 
     [Fact]
     public async Task SeedAsync_CreatesRichErzurumData_AllBookingStatusesRepresented_AndBillingExamples()
@@ -78,16 +94,16 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory)
         Assert.Contains(reviews, r => r.ModerationStatus == Kuaforum.Domain.Modules.Review.ReviewModerationStatus.Pending);
         Assert.Contains(reviews, r => r.ModerationStatus == Kuaforum.Domain.Modules.Review.ReviewModerationStatus.Approved);
 
-        // Billing — 3 statement, farklı durumlar.
-        var statements = await db.CommissionStatements.AsNoTracking()
+        // Billing — 3 fatura, farklı durumlar (demo/QA paid plan üzerinden — bkz. RichDemoSeeder.DemoPaidPlanCode).
+        var invoices = await db.SubscriptionInvoices.AsNoTracking()
             .Where(s => erzurumShops.Select(x => x.Id).Contains(s.BarberShopId))
             .ToListAsync();
-        var richStatements = statements.Where(s => s.BasisAmountMinor is 850_000 or 620_000 or 1_240_000).ToList();
-        Assert.Equal(3, richStatements.Count);
-        Assert.Contains(richStatements, s => s.Status == CommissionStatementStatus.Notified);
-        Assert.Contains(richStatements, s => s.Status == CommissionStatementStatus.SuspensionApplied);
-        Assert.Contains(richStatements, s => s.Status == CommissionStatementStatus.Paid);
-        var suspendedShopId = richStatements.Single(s => s.Status == CommissionStatementStatus.SuspensionApplied).BarberShopId;
+        var richInvoices = invoices.Where(s => s.PlanCode == DemoPaidPlanCode).ToList();
+        Assert.Equal(3, richInvoices.Count);
+        Assert.Contains(richInvoices, s => s.Status == SubscriptionInvoiceStatus.Notified);
+        Assert.Contains(richInvoices, s => s.Status == SubscriptionInvoiceStatus.SuspensionApplied);
+        Assert.Contains(richInvoices, s => s.Status == SubscriptionInvoiceStatus.Paid);
+        var suspendedShopId = richInvoices.Single(s => s.Status == SubscriptionInvoiceStatus.SuspensionApplied).BarberShopId;
         var suspendedShop = erzurumShops.Single(s => s.Id == suspendedShopId);
         Assert.Equal(BarberShopStatus.Suspended, suspendedShop.Status);
 
@@ -245,9 +261,9 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory)
         Assert.True(devShop.BookingPolicyDepositEnabled, "Kapora ödemesi olan bir randevu var ama salonun kapora ayarı kapalı.");
 
         // Faturalama — owner ekranı boş kalmamalı.
-        var devStatements = await db.CommissionStatements.AsNoTracking().Where(s => s.BarberShopId == devShop.Id).ToListAsync();
-        Assert.Contains(devStatements, s => s.Status == CommissionStatementStatus.Notified);
-        Assert.Contains(devStatements, s => s.Status == CommissionStatementStatus.Paid);
+        var devInvoices = await db.SubscriptionInvoices.AsNoTracking().Where(s => s.BarberShopId == devShop.Id).ToListAsync();
+        Assert.Contains(devInvoices, s => s.Status == SubscriptionInvoiceStatus.Notified);
+        Assert.Contains(devInvoices, s => s.Status == SubscriptionInvoiceStatus.Paid);
 
         // Bildirimler — owner'a en az bir bildirim.
         var devNotifs = await db.NotificationLogs.AsNoTracking().Where(n => n.UserId == devOwner.Id).ToListAsync();

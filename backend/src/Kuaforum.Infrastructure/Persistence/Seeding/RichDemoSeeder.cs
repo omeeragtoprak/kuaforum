@@ -38,7 +38,20 @@ public sealed class RichDemoSeeder(
     ILogger<RichDemoSeeder> logger)
 {
     private const string CustomerDemoPhone = "+905551234567"; // DevLoginCommand.CustomerDemoPhone ile birebir aynı
-    private const decimal CommissionRate = 0.10m;
+    private const decimal CommissionRate = 0.10m; // yalnız Booking.PlatformCommissionMinor (vestigial) demo verisi için — bkz. PaymentAmounts XML doc
+
+    /// <summary>
+    /// RFC-014 §2 D1: gerçek STARTER/PRO fiyatı henüz founder kararı DEĞİL (bkz.
+    /// SubscriptionPlanSeeder — PriceMinor=null, IsActive=false). Owner/admin faturalama
+    /// ekranları BOŞ KALMASIN diye (founder elle test ediyor) burada YALNIZCA demo/QA amaçlı,
+    /// ayrı bir plan kodu kullanılır — STARTER/PRO'nun kendi tanımına dokunulmaz, dolayısıyla
+    /// SubscriptionPlanSeeder'ın idempotent "if (!exists)" kontrolüyle de hiç çakışmaz (farklı
+    /// Code, seeder sırasından bağımsız).
+    /// </summary>
+    private const string DemoPaidPlanCode = "DEMO_PAID_QA";
+
+    /// <summary>[unverified 2026-08-06 — yalnızca demo/QA gösterge tutarı, gerçek STARTER/PRO fiyatlandırma kararı DEĞİL.]</summary>
+    private const long DemoPaidPlanPriceMinor = 149_900; // 1.499,00 TL
 
     // Kusur 1 fix (2026-08-06, elle test bulgusu): dev-login "BarberOwner" DevLoginCommand.
     // BarberOwnerDemoPhone ile bu telefonu arar → DemoBarberSeeder.DemoData[0] "Modern Stüdyo
@@ -559,41 +572,49 @@ public sealed class RichDemoSeeder(
             logger.LogInformation("RichDemoSeeder: created {N} notification logs for Demo Müşteri.", notifs.Count);
         }
 
-        // ── Step 8: billing — 3 shops, Notified / Overdue→SuspensionApplied / Paid ──
+        // ── Step 8: billing — 3 shops on a paid plan, Notified / Overdue→SuspensionApplied / Paid ──
+        // RFC-014 §2 D1: LAUNCH_FREE (fiyat 0) faturalanmadığı için, faturalama ekranlarının
+        // BOŞ KALMAMASI için bu 3 demo salonu ayrı bir demo/QA plana bağlanır — bkz.
+        // DemoPaidPlanCode XML doc.
         if (newShops.Count >= 7)
         {
+            await EnsureDemoPaidPlanAsync(ct);
+            await BindShopToDemoPaidPlanAsync(newShops[1].Shop.Id, now, ct);
+            await BindShopToDemoPaidPlanAsync(newShops[3].Shop.Id, now, ct);
+            await BindShopToDemoPaidPlanAsync(newShops[6].Shop.Id, now, ct);
+            await db.SaveChangesAsync(ct);
+
             var (periodStart, periodEnd) = LastMonthPeriod();
-            var rate = settings?.CommissionRateGlobal ?? CommissionRate;
 
             // shop[1] (Zirve) — Notified, vadesi henüz gelmemiş.
-            var notified = CommissionStatement.Create(newShops[1].Shop.Id, periodStart, periodEnd, 850_000, rate).Value;
+            var notified = SubscriptionInvoice.Create(newShops[1].Shop.Id, periodStart, periodEnd, DemoPaidPlanCode, DemoPaidPlanPriceMinor).Value;
             notified.MarkNotified();
-            db.CommissionStatements.Add(notified);
+            db.SubscriptionInvoices.Add(notified);
 
             // shop[3] (Vadi) — Overdue → SuspensionApplied, shop de gerçekten askıya alınır
-            // (SuspendOverdueCommissionAccountsJob'un yaptığı gibi — statement + shop birlikte).
-            var overdue = CommissionStatement.Create(newShops[3].Shop.Id, periodStart, periodEnd, 620_000, rate).Value;
+            // (SuspendOverdueSubscriptionsJob'un yaptığı gibi — fatura + shop birlikte).
+            var overdue = SubscriptionInvoice.Create(newShops[3].Shop.Id, periodStart, periodEnd, DemoPaidPlanCode, DemoPaidPlanPriceMinor).Value;
             overdue.MarkNotified();
             overdue.MarkOverdue();
             overdue.ApplySuspension();
-            db.CommissionStatements.Add(overdue);
+            db.SubscriptionInvoices.Add(overdue);
             var vadiTracked = await db.BarberShops.FirstAsync(s => s.Id == newShops[3].Shop.Id, ct);
-            vadiTracked.Suspend("Ödenmemiş komisyon borcu — demo veri.");
+            vadiTracked.Suspend("Ödenmemiş abonelik borcu — demo veri.");
 
             // shop[6] (Taze) — Paid.
-            var paid = CommissionStatement.Create(newShops[6].Shop.Id, periodStart, periodEnd, 1_240_000, rate).Value;
+            var paid = SubscriptionInvoice.Create(newShops[6].Shop.Id, periodStart, periodEnd, DemoPaidPlanCode, DemoPaidPlanPriceMinor).Value;
             paid.MarkNotified();
             paid.MarkPaid();
-            db.CommissionStatements.Add(paid);
+            db.SubscriptionInvoices.Add(paid);
 
             await db.SaveChangesAsync(ct);
 
             await db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE commission_statements SET due_date = {DateOnly.FromDateTime(now.UtcDateTime).AddDays(5)} WHERE id = {notified.Id}", ct);
+                $"UPDATE subscription_invoices SET due_date = {DateOnly.FromDateTime(now.UtcDateTime).AddDays(5)} WHERE id = {notified.Id}", ct);
             await db.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE commission_statements SET due_date = {DateOnly.FromDateTime(now.UtcDateTime).AddDays(-3)} WHERE id = {overdue.Id}", ct);
+                $"UPDATE subscription_invoices SET due_date = {DateOnly.FromDateTime(now.UtcDateTime).AddDays(-3)} WHERE id = {overdue.Id}", ct);
 
-            logger.LogInformation("RichDemoSeeder: created 3 commission statements (Notified/SuspensionApplied/Paid).");
+            logger.LogInformation("RichDemoSeeder: created 3 subscription invoices (Notified/SuspensionApplied/Paid) on demo paid plan.");
         }
 
         // ── Step 9: dev-login "BarberOwner" personasının salonu ("Modern Stüdyo Kuaför") ──
@@ -713,28 +734,30 @@ public sealed class RichDemoSeeder(
                 var shortIdx1 = shortServiceIdx.Count > 1 ? shortServiceIdx[1] : 0;
                 var shortIdx2 = shortServiceIdx.Count > 2 ? shortServiceIdx[2] : shortIdx0;
 
-                var stylist0Cursor = now.AddMinutes(20);
-                var stylist1Cursor = now.AddMinutes(20);
+                // İmleçler SLOT İNDEKSİ (saat değil) — bkz. NextSlotIndexAfterNow doc'u.
+                var stylist0Slot = NextSlotIndexAfterNow(now);
+                var stylist1Slot = stylist0Slot;
 
                 var dur1 = devServices[shortIdx0].DurationMinutes;
-                var todayConfirmed1 = MakeDevBooking(0, shortIdx0, stylist0Cursor);
+                var todayConfirmed1 = MakeDevBooking(0, shortIdx0, RealisticSlotUtc(todayLocal, stylist0Slot, dur1));
                 if (todayConfirmed1 is not null)
                 {
                     todayConfirmed1.OwnerConfirm();
                     devBookings.Add(todayConfirmed1);
-                    stylist0Cursor = stylist0Cursor.AddMinutes(dur1 + 15);
                 }
+                stylist0Slot += SlotsForService(dur1);
 
                 var dur5 = devServices[shortIdx1].DurationMinutes;
-                var todayConfirmed2 = MakeDevBooking(1, shortIdx1, stylist1Cursor);
+                var todayConfirmed2 = MakeDevBooking(1, shortIdx1, RealisticSlotUtc(todayLocal, stylist1Slot, dur5));
                 if (todayConfirmed2 is not null)
                 {
                     todayConfirmed2.OwnerConfirm();
                     devBookings.Add(todayConfirmed2);
-                    stylist1Cursor = stylist1Cursor.AddMinutes(dur5 + 15);
                 }
+                stylist1Slot += SlotsForService(dur5);
 
-                var todayPending = MakeDevBooking(0, shortIdx2, stylist0Cursor);
+                var dur6 = devServices[shortIdx2].DurationMinutes;
+                var todayPending = MakeDevBooking(0, shortIdx2, RealisticSlotUtc(todayLocal, stylist0Slot, dur6));
                 if (todayPending is not null) devBookings.Add(todayPending);
 
                 // 3) Kapora ödenmiş Pending (+5 gün) — owner "ödenmiş, onay bekliyor" akışını
@@ -824,22 +847,26 @@ public sealed class RichDemoSeeder(
                 logger.LogInformation("RichDemoSeeder: dev-login owner şablonuna {N} geçmiş (bu hafta/geçen hafta) Completed randevu eklendi.", historyBookings.Count);
 
                 // 6) Faturalama — en az 1 Notified + 1 Paid (owner faturalama ekranı boş kalmasın).
+                // RFC-014 §2 D1: LAUNCH_FREE faturalanmadığı için devShop da demo/QA plana bağlanır.
+                await EnsureDemoPaidPlanAsync(ct);
+                await BindShopToDemoPaidPlanAsync(devShop.Id, now, ct);
+                await db.SaveChangesAsync(ct);
+
                 var (devPeriodStart, devPeriodEnd) = LastMonthPeriod();
-                var devRate = settings?.CommissionRateGlobal ?? CommissionRate;
-                var devNotified = CommissionStatement.Create(devShop.Id, devPeriodStart, devPeriodEnd, 540_000, devRate).Value;
+                var devNotified = SubscriptionInvoice.Create(devShop.Id, devPeriodStart, devPeriodEnd, DemoPaidPlanCode, DemoPaidPlanPriceMinor).Value;
                 devNotified.MarkNotified();
-                db.CommissionStatements.Add(devNotified);
+                db.SubscriptionInvoices.Add(devNotified);
 
                 var priorPeriodStart = devPeriodStart.AddMonths(-1);
                 var priorPeriodEnd = devPeriodStart.AddDays(-1);
-                var devPaid = CommissionStatement.Create(devShop.Id, priorPeriodStart, priorPeriodEnd, 780_000, devRate).Value;
+                var devPaid = SubscriptionInvoice.Create(devShop.Id, priorPeriodStart, priorPeriodEnd, DemoPaidPlanCode, DemoPaidPlanPriceMinor).Value;
                 devPaid.MarkNotified();
                 devPaid.MarkPaid();
-                db.CommissionStatements.Add(devPaid);
+                db.SubscriptionInvoices.Add(devPaid);
                 await db.SaveChangesAsync(ct);
                 await db.Database.ExecuteSqlInterpolatedAsync(
-                    $"UPDATE commission_statements SET due_date = {DateOnly.FromDateTime(now.UtcDateTime).AddDays(10)} WHERE id = {devNotified.Id}", ct);
-                logger.LogInformation("RichDemoSeeder: dev-login owner şablonuna 2 komisyon faturası eklendi (Notified/Paid).");
+                    $"UPDATE subscription_invoices SET due_date = {DateOnly.FromDateTime(now.UtcDateTime).AddDays(10)} WHERE id = {devNotified.Id}", ct);
+                logger.LogInformation("RichDemoSeeder: dev-login owner şablonuna 2 abonelik faturası eklendi (Notified/Paid).");
 
                 // 7) Bildirimler — yeni randevu talebi/kapora/iptal/faturalama, okunmuş/okunmamış karışık.
                 var devNotifs = new List<NotificationLog>();
@@ -978,6 +1005,47 @@ public sealed class RichDemoSeeder(
         return (start, start.AddMonths(1).AddDays(-1));
     }
 
+    /// <summary>Idempotent — DemoPaidPlanCode satırı + entitlement'ları yoksa oluşturur. Bkz. DemoPaidPlanCode XML doc.</summary>
+    private async Task EnsureDemoPaidPlanAsync(CancellationToken ct)
+    {
+        if (await db.Set<SubscriptionPlan>().AnyAsync(p => p.Code == DemoPaidPlanCode, ct)) return;
+
+        var plan = SubscriptionPlan.Create(DemoPaidPlanCode, "Demo QA Paket", DemoPaidPlanPriceMinor, isActive: false, displayOrder: 99).Value;
+        db.Set<SubscriptionPlan>().Add(plan);
+
+        foreach (var (key, value) in new[]
+        {
+            (EntitlementKeys.MaxStaff, "10"),
+            (EntitlementKeys.MaxMonthlyBookings, "-1"),
+            (EntitlementKeys.CanUseSms, "true"),
+            (EntitlementKeys.CanUseDeposit, "true"),
+        })
+        {
+            db.Set<PlanEntitlement>().Add(PlanEntitlement.Create(DemoPaidPlanCode, key, value).Value);
+        }
+
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <summary>
+    /// Salonu DemoPaidPlanCode'a bağlar — SubscriptionPlanSeeder'ın LAUNCH_FREE backfill'i
+    /// yalnız ABONELİKSİZ salonları hedeflediği için (bkz. o seeder'ın XML doc'u), burada
+    /// EnsureDemoPaidPlanAsync + bu metod SubscriptionPlanSeeder'dan ÖNCE (RichDemoSeeder
+    /// içinde) çalışırsa backfill bu salonlara hiç dokunmaz.
+    /// </summary>
+    private async Task BindShopToDemoPaidPlanAsync(Guid shopId, DateTimeOffset now, CancellationToken ct)
+    {
+        var existing = await db.Set<ShopSubscription>().FirstOrDefaultAsync(s => s.BarberShopId == shopId, ct);
+        if (existing is null)
+        {
+            db.Set<ShopSubscription>().Add(ShopSubscription.Create(shopId, DemoPaidPlanCode, now.AddMonths(-1), now.AddMonths(11)).Value);
+        }
+        else if (existing.PlanCode != DemoPaidPlanCode)
+        {
+            existing.ChangePlan(DemoPaidPlanCode);
+        }
+    }
+
     /// <summary>
     /// Kusur 2 fix (2026-08-06, elle test bulgusu): önceki sürüm bir "now.AddDays(N)" hedefiyle
     /// "now.AddHours(X)" placeholder'ı arasındaki farkı (shift) hesaplayıp TÜM alanlara
@@ -1027,6 +1095,35 @@ public sealed class RichDemoSeeder(
         if (minutesSinceOpen < 15) return 0;
         return Math.Max(0, (int)(minutesSinceOpen / 15) - 1);
     }
+
+    /// <summary>
+    /// Bugünün İLERLEYEN saatleri için ilk uygun 15dk slot indeksi (açılışa göre).
+    ///
+    /// Kusur (2026-08-07, suite sabah 07:39'da koşarken yakalandı): önceki sürüm bugünün
+    /// Confirmed/Pending randevularını `now.AddMinutes(20)` şeklinde bir SAAT imleciyle
+    /// yerleştiriyordu ve bu imleç iş saatlerine HİÇ kenetlenmiyordu. Mesai başlamadan
+    /// (ör. 07:39) seed edilince randevu 08:39'a düşüyordu — kuaför henüz açık değil.
+    /// Simetrik olarak akşam kapanıştan sonra seed edilince de kapanışı aşıyordu. Yani
+    /// üretilen demo veri yalnız "gün ortasında seed edilirse" doğruydu.
+    ///
+    /// Çözüm: imleç artık saat değil SLOT İNDEKSİ; yerleştirmeyi zaten iş saatlerini garanti
+    /// eden <see cref="RealisticSlotUtc"/> yapıyor. Mesai öncesi koşumda 0 (açılış) döner.
+    /// Kapanışa çok yakın koşumda RealisticSlotUtc modulo ile gün içine kıvırır; oluşan slot
+    /// geçmişte kalırsa <c>Booking.Initiate</c> guard'ı randevuyu üretmez ve çağıran taraf
+    /// null kontrolüyle sessizce atlar — akşam seed'inde "Bugün" panelinin daha boş olması,
+    /// iş saati dışında geçersiz veri üretmeye yeğlenir.
+    /// </summary>
+    private static int NextSlotIndexAfterNow(DateTimeOffset nowUtc, int leadMinutes = 20, TimeOnly? openTime = null)
+    {
+        var open = openTime ?? DefaultOpenTime;
+        var nowLocal = TimeZoneInfo.ConvertTime(nowUtc, IstanbulTz).AddMinutes(leadMinutes);
+        var minutesSinceOpen = (nowLocal.TimeOfDay - open.ToTimeSpan()).TotalMinutes;
+        if (minutesSinceOpen <= 0) return 0;
+        return (int)Math.Ceiling(minutesSinceOpen / 15);
+    }
+
+    /// <summary>Bir hizmet süresini (+15dk tampon) kaç 15dk'lık slot ilerleteceğini verir.</summary>
+    private static int SlotsForService(int durationMinutes) => (int)Math.Ceiling((durationMinutes + 15) / 15.0);
 
     private Payment CreateAndCapturePayment(Booking booking, Guid customerId, Guid shopId)
     {

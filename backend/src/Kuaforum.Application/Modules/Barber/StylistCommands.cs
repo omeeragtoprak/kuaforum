@@ -23,6 +23,33 @@ public sealed class AddStylistCommandValidator : AbstractValidator<AddStylistCom
     }
 }
 
+/// <summary>
+/// RFC-014 §2 D1 review fix: max_staff kotası hem yeni çalışan EKLERKEN (AddStylistCommandHandler)
+/// hem de pasif bir çalışanı YENİDEN AKTİFLEŞTİRİRKEN (UpdateStylistCommandHandler'ın
+/// SetActive(true) dalı) aynı kurala tabi olmalı — ikinci yol daha önce kontrolsüzdü: owner
+/// limitteyken pasif bir stylist'i aktifleştirerek kotayı sessizce aşabiliyordu. Tek ortak
+/// kaynak burada; iki handler da bunu çağırır.
+/// </summary>
+internal static class StylistLimitPolicy
+{
+    public static async Task<Result> EnforceMaxStaffAsync(
+        DbContext ctx, IEntitlementService entitlements, Guid barberShopId, CancellationToken ct)
+    {
+        var plan = await entitlements.GetAsync(barberShopId, ct);
+        if (!plan.MaxStaff.HasValue) return Result.Success();
+
+        var activeStaffCount = await ctx.Set<Stylist>()
+            .CountAsync(s => s.BarberShopId == barberShopId && s.IsActive, ct);
+        if (activeStaffCount >= plan.MaxStaff.Value)
+        {
+            return Result.Failure(Error.Validation(
+                $"Mevcut abonelik planınız en fazla {plan.MaxStaff.Value} aktif çalışan eklemenize izin veriyor. Daha fazla çalışan eklemek için planınızı yükseltmeniz gerekiyor."));
+        }
+
+        return Result.Success();
+    }
+}
+
 public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLogger audit, IEntitlementService entitlements)
     : IRequestHandler<AddStylistCommand, Result<Guid>>
 {
@@ -38,17 +65,8 @@ public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLog
 
         // RFC-014 §2 D1: max_staff aktif abonelik planından okunur, koda gömülü değil.
         // Yalnızca aktif (IsActive) çalışanlar sayılır — pasif bir çalışan kotayı işgal etmemeli.
-        var plan = await entitlements.GetAsync(shop.Id, cancellationToken);
-        if (plan.MaxStaff.HasValue)
-        {
-            var activeStaffCount = await ctx.Set<Stylist>()
-                .CountAsync(s => s.BarberShopId == request.BarberShopId && s.IsActive, cancellationToken);
-            if (activeStaffCount >= plan.MaxStaff.Value)
-            {
-                return Result.Failure<Guid>(Error.Validation(
-                    $"Mevcut abonelik planınız en fazla {plan.MaxStaff.Value} aktif çalışan eklemenize izin veriyor. Daha fazla çalışan eklemek için planınızı yükseltmeniz gerekiyor."));
-            }
-        }
+        var limitCheck = await StylistLimitPolicy.EnforceMaxStaffAsync(ctx, entitlements, shop.Id, cancellationToken);
+        if (limitCheck.IsFailure) return Result.Failure<Guid>(limitCheck.Error);
 
         var createResult = Stylist.Create(request.BarberShopId, request.DisplayName, request.UserId);
         if (createResult.IsFailure) return Result.Failure<Guid>(createResult.Error);
@@ -82,13 +100,20 @@ public sealed record UpdateStylistCommand(
     string? Bio,
     bool? IsActive) : ICommand;
 
-public sealed class UpdateStylistCommandHandler(IApplicationDbContext db) : IRequestHandler<UpdateStylistCommand, Result>
+public sealed class UpdateStylistCommandHandler(IApplicationDbContext db, IEntitlementService entitlements) : IRequestHandler<UpdateStylistCommand, Result>
 {
     public async Task<Result> Handle(UpdateStylistCommand request, CancellationToken cancellationToken)
     {
         var ctx = (DbContext)db;
+        // Review fix: `.Include(s => EF.Property<BarberShop>(s, "_shop"))` was invalid EF Core
+        // syntax (Include lambdas must be plain property accesses; EF.Property is only valid in
+        // Where/OrderBy) AND pointed at a navigation that was never configured on Stylist in the
+        // first place — it threw InvalidOperationException on every single call, 500ing this
+        // entire endpoint. Nothing ever caught it because no test exercised PATCH /v1/stylists/{id}
+        // until this package added one (bkz. StylistMaxStaffLimitTests). The shop is already
+        // fetched separately two lines below, so the Include was also dead weight — removed
+        // rather than "fixed", since nothing consumed the navigation it was trying to load.
         var stylist = await ctx.Set<Stylist>()
-            .Include(s => EF.Property<BarberShop>(s, "_shop"))
             .FirstOrDefaultAsync(s => s.Id == request.StylistId, cancellationToken);
 
         if (stylist is null) return Result.Failure(Error.NotFound("Stylist"));
@@ -99,7 +124,21 @@ public sealed class UpdateStylistCommandHandler(IApplicationDbContext db) : IReq
 
         var update = stylist.UpdateProfile(request.DisplayName, request.PhotoUrl, request.Bio);
         if (update.IsFailure) return update;
-        if (request.IsActive.HasValue) stylist.SetActive(request.IsActive.Value);
+
+        if (request.IsActive.HasValue)
+        {
+            // Yalnızca PASİF→AKTİF geçişi kotaya tabi (yeni bir "koltuk" işgal ediyor).
+            // Zaten aktif bir stylist'i tekrar true'ya set etmek veya aktifi pasife çekmek
+            // kotayı DEĞİŞTİRMEZ — kontrol yalnız gerçek geçişte çalışır, aksi halde DB'deki
+            // "hâlâ aktif" satır kendi kendini sayıp sınırda olan owner'ı yanlışlıkla engeller.
+            if (request.IsActive.Value && !stylist.IsActive)
+            {
+                var limitCheck = await StylistLimitPolicy.EnforceMaxStaffAsync(ctx, entitlements, shop.Id, cancellationToken);
+                if (limitCheck.IsFailure) return limitCheck;
+            }
+
+            stylist.SetActive(request.IsActive.Value);
+        }
 
         await db.SaveChangesAsync(cancellationToken);
         return Result.Success();

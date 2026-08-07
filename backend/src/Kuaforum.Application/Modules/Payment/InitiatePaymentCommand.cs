@@ -130,10 +130,12 @@ public sealed class InitiatePaymentCommandHandler(
             onlineAmountMinor = booking.TotalAmountMinor;
         }
 
-        // RFC-012: komisyon artık ödeme anında kesilmiyor — ay sonu CommissionStatement'a
-        // taşındı (matrah booking toplamından türetiliyor, Booking.PlatformCommissionMinor'dan
-        // DEĞİL). Kapora/tam ödeme tamamen kuaföre akar: NetToBarberMinor = GrossAmountMinor -
-        // 0 - PspMdrMinor. booking.PlatformCommissionMinor buraya asla taşınmaz.
+        // RFC-014 §2 D1: komisyon artık gelir modelinden tamamen çıktı — platform payı sabit
+        // aylık abonelik ücretine (SubscriptionInvoice = SubscriptionPlan.PriceMinor) döndü,
+        // ciro üzerinden hiçbir kesinti yok. Kapora/tam ödeme tamamen kuaföre akar:
+        // NetToBarberMinor = GrossAmountMinor - 0 - PspMdrMinor. booking.PlatformCommissionMinor
+        // (vestigial alan) buraya asla taşınmaz. Bkz. IPaymentProvider.CheckoutRequest.
+        // CommissionMinor XML doc — [unverified] PSP split notu orada.
         const long platformCommissionMinor = 0;
 
         PaymentAggregate payment;

@@ -62,10 +62,13 @@ public static class DependencyInjection
         // RFC-013 M3 (adversarial review): eski DepositRate >= CommissionRate invariantı
         // ANLAMSIZLAŞTI ve yanlış-pozitif boot failure üretiyordu — kaldırıldı. RFC-012 ile
         // komisyon artık ödeme anında hiç kesilmiyor (InitiatePaymentCommand'da
-        // platformCommissionMinor sabit 0 — ay sonu CommissionStatement'a taşındı), RFC-013 C3
-        // ile kapora oranı da global DepositRate DEĞİL, per-shop shop.BookingPolicy.DepositPercent
-        // (bkz. PaymentOptions.DepositRate XML doc — artık kullanılmayan, geriye dönük alan).
-        // "Kapora, komisyonu karşılamalı" invariantının artık karşılaştıracak iki canlı değeri yok.
+        // platformCommissionMinor sabit 0), RFC-013 C3 ile kapora oranı da global DepositRate
+        // DEĞİL, per-shop shop.BookingPolicy.DepositPercent (bkz. PaymentOptions.DepositRate
+        // XML doc — artık kullanılmayan, geriye dönük alan). RFC-014 §2 D1 ile gelir modeli
+        // tamamen sabit aylık aboneliğe (SubscriptionInvoice) geçti — CommissionRate artık
+        // hiçbir faturayı beslemiyor, yalnızca Booking.PlatformCommissionMinor vestigial
+        // alanını doldurur (bkz. PaymentOptions.CommissionRate XML doc). "Kapora, komisyonu
+        // karşılamalı" invariantının artık karşılaştıracak iki canlı değeri yok.
         services.AddOptions<PaymentOptions>()
             .Bind(configuration.GetSection(PaymentOptions.SectionName))
             .Validate(o => o.CommissionRate > 0 && o.CommissionRate <= 0.5m,
@@ -177,8 +180,8 @@ public static class DependencyInjection
         services.AddScoped<BookingReminderJob>();
         services.AddScoped<ExpirePendingBookingsJob>();
         services.AddScoped<ProcessBookingRefundJob>();
-        services.AddScoped<CloseMonthlyCommissionStatementsJob>();
-        services.AddScoped<SuspendOverdueCommissionAccountsJob>();
+        services.AddScoped<CloseMonthlySubscriptionInvoicesJob>();
+        services.AddScoped<SuspendOverdueSubscriptionsJob>();
         services.AddScoped<IBusyRangeQuery, BookingBusyRangeQuery>();
         services.AddScoped<IStylistScheduleChecker, StylistScheduleChecker>();
 
@@ -319,16 +322,16 @@ public static class DependencyInjection
             cronExpression: ExpirePendingBookingsJob.CronExpression,
             options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        manager.AddOrUpdate<CloseMonthlyCommissionStatementsJob>(
-            recurringJobId: CloseMonthlyCommissionStatementsJob.JobId,
+        manager.AddOrUpdate<CloseMonthlySubscriptionInvoicesJob>(
+            recurringJobId: CloseMonthlySubscriptionInvoicesJob.JobId,
             methodCall: job => job.RunAsync(CancellationToken.None),
-            cronExpression: CloseMonthlyCommissionStatementsJob.CronExpression,
+            cronExpression: CloseMonthlySubscriptionInvoicesJob.CronExpression,
             options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
 
-        manager.AddOrUpdate<SuspendOverdueCommissionAccountsJob>(
-            recurringJobId: SuspendOverdueCommissionAccountsJob.JobId,
+        manager.AddOrUpdate<SuspendOverdueSubscriptionsJob>(
+            recurringJobId: SuspendOverdueSubscriptionsJob.JobId,
             methodCall: job => job.RunAsync(CancellationToken.None),
-            cronExpression: SuspendOverdueCommissionAccountsJob.CronExpression,
+            cronExpression: SuspendOverdueSubscriptionsJob.CronExpression,
             options: new RecurringJobOptions { TimeZone = TimeZoneInfo.Utc });
     }
 }

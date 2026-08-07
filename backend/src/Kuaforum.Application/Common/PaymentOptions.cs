@@ -10,10 +10,14 @@ public sealed class PaymentOptions
     /// <summary>
     /// Platform komisyonu (toplam hizmet bedeli üzerinden). RFC-006'da tanımlandı ama RFC-012
     /// ile ödeme anında hiç KULLANILMIYOR — InitiatePaymentCommand platformCommissionMinor'ı
-    /// sabit 0 gönderiyor, gerçek komisyon ay sonu CommissionStatement'a (Billing modülü) taşındı.
-    /// Bu alan hâlâ Booking.Initiate'e (booking.PlatformCommissionMinor — vestigial, faturalama
-    /// bundan beslenmiyor) geçiyor; canlı komisyon hesaplaması için tek doğruluk kaynağı artık
-    /// Billing.PlatformSettings.
+    /// sabit 0 gönderiyor. RFC-014 §2 D1 ile gelir modeli tamamen sabit aylık aboneliğe
+    /// (SubscriptionInvoice, tutar = SubscriptionPlan.PriceMinor) geçti — komisyon artık
+    /// FATURALAMA GELİRİ olarak hiçbir yerde yaşamıyor (PlatformSettings.CommissionRateGlobal
+    /// ve BarberShop.CommissionRateOverride bilerek SİLİNDİ). Bu alan yalnızca
+    /// Booking.Initiate'e (booking.PlatformCommissionMinor — çift vestigial: ne ödeme ne
+    /// faturalama bundan beslenir) geçmeye devam ediyor; Booking aggregate'i ve pin testleri bu
+    /// paketin kapsamı dışında olduğu için kaldırılmadı, yalnızca doğruluk kaynağı olma iddiası
+    /// bu yorumdan çıkarıldı.
     /// </summary>
     public decimal CommissionRate { get; set; } = 0.10m;
 

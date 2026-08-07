@@ -25,14 +25,14 @@ public sealed class BarberShop : AggregateRoot
     public double? Longitude { get; private set; }
 
     public string? SubMerchantKey { get; private set; }
-    public string? CommissionTier { get; private set; }
 
     /// <summary>
-    /// RFC-012: null = global PlatformSettings.CommissionRateGlobal oranını miras alır.
-    /// Admin-only (SetBarberShopCommissionRateOverrideCommand). CommissionTier alanına
-    /// (RFC-009 yer tutucusu) dokunulmuyor — bu, gerçek bir oran mekanizması.
+    /// RFC-009 yer tutucusu — hiçbir zaman gerçek bir oran/fiyat mekanizması olmadı. RFC-014
+    /// §2 D1 ile gelir modeli sabit aylık aboneliğe geçince (bkz. SubscriptionPlan.PriceMinor)
+    /// bu alanın gerçek bir karşılığı olma ihtimali de kalmadı, ama kaldırmak ayrı bir
+    /// migration + olası dış referans riski taşıyor; bu paketin kapsamı dışında bırakıldı.
     /// </summary>
-    public decimal? CommissionRateOverride { get; private set; }
+    public string? CommissionTier { get; private set; }
 
     /// <summary>
     /// RFC-013 C3: BookingPolicy flattened kolonlar — Address kalıbıyla aynı (owned-entity
@@ -139,17 +139,6 @@ public sealed class BarberShop : AggregateRoot
         if (Status != BarberShopStatus.Suspended)
             return Result.Failure(Error.Validation("İşletme askıya alınmış durumda değil."));
         Status = BarberShopStatus.Active;
-        Touch();
-        return Result.Success();
-    }
-
-    /// <summary>RFC-012 admin aksiyonu — null geçirmek override'ı kaldırıp global orana döner.</summary>
-    public Result SetCommissionRateOverride(decimal? rate)
-    {
-        if (rate is <= 0 or > 0.5m)
-            return Result.Failure(Error.Validation("Komisyon oranı %0 ile %50 arasında olmalı."));
-
-        CommissionRateOverride = rate;
         Touch();
         return Result.Success();
     }

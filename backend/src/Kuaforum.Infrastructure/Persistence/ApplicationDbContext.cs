@@ -53,8 +53,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
     public DbSet<DeviceToken> DeviceTokens => Set<DeviceToken>();
     public DbSet<PlatformSettings> PlatformSettings => Set<PlatformSettings>();
-    public DbSet<CommissionStatement> CommissionStatements => Set<CommissionStatement>();
-    public DbSet<CommissionPayment> CommissionPayments => Set<CommissionPayment>();
+    public DbSet<SubscriptionInvoice> SubscriptionInvoices => Set<SubscriptionInvoice>();
+    public DbSet<SubscriptionInvoicePayment> SubscriptionInvoicePayments => Set<SubscriptionInvoicePayment>();
     public DbSet<SubscriptionPlan> SubscriptionPlans => Set<SubscriptionPlan>();
     public DbSet<PlanEntitlement> PlanEntitlements => Set<PlanEntitlement>();
     public DbSet<ShopSubscription> ShopSubscriptions => Set<ShopSubscription>();

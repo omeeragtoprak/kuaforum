@@ -17,11 +17,7 @@ public sealed record AdminBarberShopDto(
     int StylistCount,
     int ServiceCount,
     int CompletedBookingsCount,
-    DateTimeOffset CreatedAt,
-    // Follow-up (review): admin oran formu bu alan olmadan "kör" dolduruluyordu — mevcut
-    // override'ı görmeden PUT /commission-rate çağıran admin yanlışlıkla sıfırlıyordu.
-    // Null = global PlatformSettings.CommissionRateGlobal miras alınıyor (bkz. BarberShop.CommissionRateOverride).
-    decimal? CommissionRateOverride);
+    DateTimeOffset CreatedAt);
 
 public sealed record AdminBarberShopsPage(
     IReadOnlyList<AdminBarberShopDto> Items,
@@ -78,7 +74,7 @@ public sealed class GetAdminBarberShopsQueryHandler(IApplicationDbContext db)
             r.OwnerName, r.OwnerPhone,
             r.shop.Status, r.shop.GenderType,
             r.StylistCount, r.ServiceCount, r.CompletedCount,
-            r.shop.CreatedAt, r.shop.CommissionRateOverride)).ToList();
+            r.shop.CreatedAt)).ToList();
 
         return Result.Success(new AdminBarberShopsPage(dtos, page, size, total));
     }

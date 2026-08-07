@@ -26,9 +26,8 @@ public sealed class BookingPolicy
     /// <summary>
     /// Platform tabanı — bkz. InitiateBookingCommand.MaxActivePendingBookingsPerCustomer
     /// (Application katmanındaki GLOBAL, shop'tan bağımsız tavan). Per-shop limit bunu
-    /// sıkılaştırabilir, gevşetemez; ikisi ayrı sabitler olarak duruyor (bu repo'da
-    /// BarberShop.SetCommissionRateOverride / PlatformSettings.UpdateCommissionRateGlobal
-    /// arasında da aynı bilinçli tekrar var — cross-layer sabit paylaşımı yok). `public`
+    /// sıkılaştırabilir, gevşetemez; ikisi ayrı sabitler olarak duruyor (cross-layer sabit
+    /// paylaşımı yok — bilinçli tekrar). `public`
     /// olması BİLEREK: RFC-013 review M4 — bu değeri InitiateBookingCommandHandler.
     /// MaxActivePendingBookingsPerCustomer ile eşitleyen bir pin testi var
     /// (PolicyConstantsPinTests) ki biri değişip diğeri unutulursa per-shop tavan sessizce

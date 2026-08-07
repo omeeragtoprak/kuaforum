@@ -9,12 +9,16 @@ namespace Kuaforum.Domain.Modules.Billing;
 /// ikinci bir satır asla eklenmez. Okuma tarafı "basit cache'siz": her handler/job doğrudan DB'den
 /// okur (Redis/in-memory cache YOK — RFC-013 bu tabloyu genişletecek, cache invalidation karmaşıklığı
 /// bu erken aşamada gereksiz maliyet).
+///
+/// RFC-014 §2 D1: <c>CommissionRateGlobal</c> KALDIRILDI — gelir modeli ciro komisyonundan sabit
+/// aylık aboneliğe geçti (bkz. SubscriptionInvoice, SubscriptionPlan.PriceMinor tek doğruluk
+/// kaynağı). Bu alan hiçbir fatura hesabını beslemiyordu (yalnızca CommissionStatement.RateApplied
+/// snapshot'ının kaynağıydı, o mekanizma tamamen kalktı) — sessizce ölü bırakmak yerine silindi.
 /// </summary>
 public sealed class PlatformSettings : AggregateRoot
 {
     private PlatformSettings() { }
 
-    public decimal CommissionRateGlobal { get; private set; }
     public string? CommissionPaymentIban { get; private set; }
     public string? CommissionPaymentBankName { get; private set; }
     public string? CommissionPaymentAccountHolderName { get; private set; }
@@ -26,32 +30,18 @@ public sealed class PlatformSettings : AggregateRoot
     public decimal DepositPercentMax { get; private set; }
 
     /// <summary>
-    /// Seeder tarafından bir kez çağrılır. Founder'ın kesin ilk oran kararı implementasyon
-    /// anında netleşmediği için burada örnek %20 (RFC-012 founder örneği) varsayılan —
-    /// admin PUT /v1/admin/billing/settings ile launch öncesi kesinleştirmeli. Aynı şekilde
-    /// DepositPercentMin/Max için RFC-013'ün örnek %5-%50 aralığı varsayılan.
+    /// Seeder tarafından bir kez çağrılır. DepositPercentMin/Max için RFC-013'ün örnek
+    /// %5-%50 aralığı varsayılan.
     /// </summary>
     public static PlatformSettings CreateDefault(
-        decimal commissionRateGlobal = 0.20m,
         decimal depositPercentMin = 0.05m,
         decimal depositPercentMax = 0.50m)
     {
         return new PlatformSettings
         {
-            CommissionRateGlobal = commissionRateGlobal,
             DepositPercentMin = depositPercentMin,
             DepositPercentMax = depositPercentMax,
         };
-    }
-
-    public Result UpdateCommissionRateGlobal(decimal rate)
-    {
-        if (rate <= 0 || rate > 0.5m)
-            return Result.Failure(Error.Validation("Komisyon oranı %0 ile %50 arasında olmalı."));
-
-        CommissionRateGlobal = rate;
-        Touch();
-        return Result.Success();
     }
 
     public Result UpdateDepositPercentBounds(decimal min, decimal max)

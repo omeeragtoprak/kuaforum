@@ -20,7 +20,7 @@ public sealed class BackendFollowUpTests(IntegrationTestFactory factory)
     private sealed record AdminBarberShopDto(
         Guid Id, string Name, string Slug, string? OwnerDisplayName, string? OwnerPhone,
         BarberShopStatus Status, SalonGenderType GenderType, int StylistCount, int ServiceCount,
-        int CompletedBookingsCount, DateTimeOffset CreatedAt, decimal? CommissionRateOverride);
+        int CompletedBookingsCount, DateTimeOffset CreatedAt);
     private sealed record AdminBarberShopsPage(IReadOnlyList<AdminBarberShopDto> Items, int Page, int PageSize, int TotalCount);
     private sealed record BookingPolicyDto(
         bool DepositEnabled, decimal? DepositPercent, bool EffectiveDepositActive,
@@ -46,29 +46,9 @@ public sealed class BackendFollowUpTests(IntegrationTestFactory factory)
         await db.SaveChangesAsync();
     }
 
-    // ── B2: AdminBarberShopDto.CommissionRateOverride ─────────────────────
-
-    [Fact]
-    public async Task AdminListBarberShops_ReturnsCommissionRateOverride_NullByDefault_SetValueAfterAdminPut()
-    {
-        await SeedAsync();
-        using var ownerClient = factory.CreateClient();
-        using var adminClient = factory.CreateClient();
-        ownerClient.SetBearer((await ownerClient.DevLoginAsync("BarberOwner")).AccessToken);
-        adminClient.SetBearer((await adminClient.DevLoginAsync("Admin")).AccessToken);
-        var ownerShop = await ownerClient.GetJson<BarberShopRow>("/v1/owner/barber-shop");
-
-        var before = await adminClient.GetJson<AdminBarberShopsPage>("/v1/admin/barber-shops?pageSize=50");
-        var beforeItem = before.Items.Single(x => x.Id == ownerShop.Id);
-        Assert.Null(beforeItem.CommissionRateOverride);
-
-        var putResp = await adminClient.PutAsJsonAsync($"/v1/admin/billing/barber-shops/{ownerShop.Id}/commission-rate", new { rateOverride = 0.07m });
-        Assert.Equal(HttpStatusCode.NoContent, putResp.StatusCode);
-
-        var after = await adminClient.GetJson<AdminBarberShopsPage>("/v1/admin/barber-shops?pageSize=50");
-        var afterItem = after.Items.Single(x => x.Id == ownerShop.Id);
-        Assert.Equal(0.07m, afterItem.CommissionRateOverride);
-    }
+    // ── B2: AdminBarberShopDto.CommissionRateOverride — RFC-014 ile KALDIRILDI ────────────────
+    // (BarberShop.CommissionRateOverride + PUT /v1/admin/billing/barber-shops/{id}/commission-rate
+    // gelir modelinden çıktı, bkz. BarberShop.cs XML doc. Bu test grubu artık geçersiz.)
 
     // ── B4: BookingPolicyDto.OnlinePaymentsEnabled (ham global bayrak) ────
 

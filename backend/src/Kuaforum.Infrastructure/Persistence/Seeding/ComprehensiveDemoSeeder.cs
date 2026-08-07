@@ -493,8 +493,9 @@ public sealed class ComprehensiveDemoSeeder(ApplicationDbContext db, ILogger<Com
 
         Payment CreateAndCapture()
         {
-            // RFC-012: komisyon ödeme anında kesilmiyor artık (ay sonu CommissionStatement'a
-            // taşındı) — booking.PlatformCommissionMinor buraya taşınmaz, sabit 0.
+            // RFC-014 §2 D1: komisyon gelir modelinden tamamen çıktı (sabit aylık abonelik —
+            // SubscriptionInvoice) — booking.PlatformCommissionMinor (vestigial) buraya
+            // taşınmaz, sabit 0.
             var p = Payment.Initiate(
                 booking.Id, customerId, shopId,
                 booking.TotalAmountMinor, platformCommissionMinor: 0,

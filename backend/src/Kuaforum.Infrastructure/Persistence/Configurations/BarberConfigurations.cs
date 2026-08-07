@@ -28,7 +28,6 @@ internal sealed class BarberShopConfiguration : IEntityTypeConfiguration<BarberS
         builder.Property(x => x.Longitude).HasColumnName("longitude");
         builder.Property(x => x.SubMerchantKey).HasColumnName("sub_merchant_key").HasMaxLength(120);
         builder.Property(x => x.CommissionTier).HasColumnName("commission_tier").HasMaxLength(20);
-        builder.Property(x => x.CommissionRateOverride).HasColumnName("commission_rate_override").HasPrecision(5, 4);
         // HasDefaultValue şart: aksi halde EF migration'ı CLR sıfır değerini (false/0) SQL
         // DEFAULT'u yapar — C#'taki property initializer (`= 2`) yalnız `new BarberShop()`
         // anında uygulanır, mevcut satırlara AddColumn migration'ı ile eklenen kolonun DB

@@ -2,15 +2,15 @@ using Kuaforum.Domain.Common;
 
 namespace Kuaforum.Domain.Modules.Billing.Events;
 
-public sealed record CommissionStatementNotifiedEvent(
-    Guid StatementId,
+public sealed record SubscriptionInvoiceNotifiedEvent(
+    Guid InvoiceId,
     Guid BarberShopId,
     DateOnly PeriodStart,
     DateOnly PeriodEnd,
-    long AmountDueMinor,
+    long AmountMinor,
     DateOnly DueDate) : DomainEvent;
 
-public sealed record CommissionStatementSuspendedEvent(
-    Guid StatementId,
+public sealed record SubscriptionInvoiceSuspendedEvent(
+    Guid InvoiceId,
     Guid BarberShopId,
-    long AmountDueMinor) : DomainEvent;
+    long AmountMinor) : DomainEvent;
