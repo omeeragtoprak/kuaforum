@@ -14,6 +14,18 @@
 - **Önerilen çözüm:** `InitiateBookingCommand` handler'ına ek bir sorgu: `CustomerId` bazlı, `[Pending, Confirmed, Started]` durumundaki booking'lerin zaman aralığı yeni istekle çakışıyorsa reddet (409 veya uyarı). Sert engel yerine "başka bir randevunla çakışıyor, devam etmek istiyor musun?" gibi soft-warning de founder tercih edebilir — ürün kararı gerekli.
 - **Tahmini efor:** 3-5 saat (sorgu + validasyon + integration test).
 
+**Durum:** ✅ **Kapatıldı 2026-08-07/10.** Founder kararı (RFC-014 §2 **D4**): **uyar, ENGELLEME**. Meşru senaryo korunuyor (eş/çocuk adına randevu, art arda iki farklı hizmet).
+
+Uygulama iki uçta:
+- `POST /v1/bookings/check-conflict` (`94881da`) — randevu **oluşmadan önce**, özet adımında. İlk sürüm yalnız oluşturma yanıtında bilgi veriyordu; bu haliyle uyarı değil olan bitenin duyurusuydu ve müşteriyi istemediği randevuyu iptal etmeye zorluyordu (kapora akışında gereksiz tahsilat+iade zinciri).
+- `InitiateBookingResponse.conflictingBooking` (`3f5eaa5`) — **bilerek kaldı**: ön-kontrol ile oluşturma arasında başka bir randevu araya girebilir; son söz burada.
+
+Sorgu mantığı `CrossShopConflictFinder`'da tek yerde; iki yol da onu çağırıyor (ikizlenmiş kurallar zamanla ayrışır). Yalnız **cross-shop** — aynı salon/aynı stylist çakışması zaten `EXCLUDE` constraint ile engelleniyor, ona dokunulmadı. Müşteri kimliği her zaman JWT'den, gövdeden değil (salon adı + saat de kişisel veri).
+
+Mobil onay diyaloğu `97aa39d`: "Yine de devam et" her zaman mümkün; ön-kontrol ağ hatası verirse akış **bloklanmıyor** (tavsiye niteliğinde bir kontrolün başarısızlığı asıl işi durdurmamalı).
+
+**Kapsam dışı bırakılan (yeni kayıt):** Aynı salonda **farklı çalışanlara** çakışan saatte randevu — bugün hiçbir uyarı/engel yok. Cross-shop'tan farklı bir senaryo; müşteri aynı salonda aynı anda iki koltukta olamaz. Düşük öncelikli, ayrı madde açmaya değer.
+
 ---
 
 ## G2. Çalışma saati (WorkingHours) değişikliği mevcut onaylı randevuları kontrol etmiyor
@@ -215,12 +227,12 @@ Coğrafya (81 il/ilçe/mahalle) ve plan tanımlarına dokunulmaz — yeniden ür
 
 | # | Başlık | Etki | Efor |
 |---|---|---|---|
-| G1 | Cross-shop çift randevu koruması yok | Orta | 3-5 saat |
-| G2 | WorkingHours değişimi mevcut randevuları kontrol etmiyor | Orta | 0.5-1 gün |
-| G3 | Stylist deaktivasyonu randevuları sessizce askıda bırakıyor | Orta-Kritik | 0.5-2 gün |
-| G4 | Müşteri-tarafı no-show/şikayet bildirimi yok | Orta | 1-3 gün |
+| G1 | Cross-shop çift randevu koruması yok | Orta | ✅ kapatıldı 2026-08-10 (uyar, engelleme) |
+| G2 | WorkingHours değişimi mevcut randevuları kontrol etmiyor | Orta | RFC-015 D1 — uygulanıyor |
+| G3 | Stylist deaktivasyonu randevuları sessizce askıda bırakıyor | Orta-Kritik | RFC-015 D2 — uygulanıyor |
+| G4 | Müşteri-tarafı no-show/şikayet bildirimi yok | Orta | RFC-015 D3 — uygulanıyor |
 | G5 | Owner=tek-çalışan otomatik stylist yaratılmıyor | Düşük-Orta | 2 saat-0.5 gün |
-| G6 | Askıya alınan salonun müşterisine bildirim yok | Orta | 0.5-1 gün |
+| G6 | Askıya alınan salonun müşterisine bildirim yok | — | ❌ kusur DEĞİL (RFC-015 D4) |
 | G7 | "Stylist" policy/rol isimlendirmesi yanıltıcı — founder kararı bekliyor | Düşük | 1 saat (karar) + değişken |
 | G8 | Bildirim idempotency merkezi değil (kısmi doğrulama) | Düşük `[unverified]` | 2-3 saat audit |
 | G9 | PSP iade retry-tükenince alarm mekanizması doğrulanmadı | Orta `[unverified]` | 1-2 saat doğrulama |
