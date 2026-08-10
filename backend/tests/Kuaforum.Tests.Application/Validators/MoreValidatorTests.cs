@@ -355,3 +355,70 @@ public sealed class DevLoginCommandValidatorTests
         r.ShouldNotHaveAnyValidationErrors();
     }
 }
+
+/// <summary>RFC-015 §2 D3.</summary>
+public sealed class FileBookingComplaintCommandValidatorTests
+{
+    [Fact]
+    public void Empty_customer_fails()
+    {
+        var r = new FileBookingComplaintCommandValidator().TestValidate(
+            new FileBookingComplaintCommand(Guid.Empty, Guid.NewGuid(), null));
+        r.ShouldHaveValidationErrorFor(x => x.CustomerId);
+    }
+
+    [Fact]
+    public void Empty_booking_fails()
+    {
+        var r = new FileBookingComplaintCommandValidator().TestValidate(
+            new FileBookingComplaintCommand(Guid.NewGuid(), Guid.Empty, null));
+        r.ShouldHaveValidationErrorFor(x => x.BookingId);
+    }
+
+    [Fact]
+    public void Note_too_long_fails()
+    {
+        var r = new FileBookingComplaintCommandValidator().TestValidate(
+            new FileBookingComplaintCommand(Guid.NewGuid(), Guid.NewGuid(), new string('a', 1001)));
+        r.ShouldHaveValidationErrorFor(x => x.Note);
+    }
+
+    [Fact]
+    public void Valid_passes()
+    {
+        var r = new FileBookingComplaintCommandValidator().TestValidate(
+            new FileBookingComplaintCommand(Guid.NewGuid(), Guid.NewGuid(), "Kuaför randevu saatinde salonda değildi."));
+        r.ShouldNotHaveAnyValidationErrors();
+    }
+}
+
+/// <summary>RFC-015 §2 D1 — önizleme ucunun validator'ı, kaydetme validator'ıyla aynı kural setini paylaşır.</summary>
+public sealed class GetWorkingHoursChangeImpactQueryValidatorTests
+{
+    [Fact]
+    public void Open_after_close_and_not_closed_fails()
+    {
+        var r = new GetWorkingHoursChangeImpactQueryValidator().TestValidate(
+            new GetWorkingHoursChangeImpactQuery(Guid.NewGuid(), Guid.NewGuid(), DayOfWeek.Monday,
+                new TimeOnly(18, 0), new TimeOnly(9, 0), false));
+        r.ShouldHaveValidationErrorFor(x => x.OpenTime);
+    }
+
+    [Fact]
+    public void Open_after_close_but_isClosed_true_passes()
+    {
+        var r = new GetWorkingHoursChangeImpactQueryValidator().TestValidate(
+            new GetWorkingHoursChangeImpactQuery(Guid.NewGuid(), Guid.NewGuid(), DayOfWeek.Sunday,
+                new TimeOnly(18, 0), new TimeOnly(9, 0), true));
+        r.ShouldNotHaveAnyValidationErrors();
+    }
+
+    [Fact]
+    public void Valid_range_passes()
+    {
+        var r = new GetWorkingHoursChangeImpactQueryValidator().TestValidate(
+            new GetWorkingHoursChangeImpactQuery(Guid.NewGuid(), Guid.NewGuid(), DayOfWeek.Monday,
+                new TimeOnly(9, 0), new TimeOnly(17, 0), false));
+        r.ShouldNotHaveAnyValidationErrors();
+    }
+}

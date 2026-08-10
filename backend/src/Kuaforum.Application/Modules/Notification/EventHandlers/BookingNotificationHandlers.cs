@@ -320,3 +320,30 @@ public sealed class BookingRescheduledNotificationHandler(
         }
     }
 }
+
+/// <summary>
+/// RFC-015 §2 D3 madde 5: kuaföre bildirim gider ama NÖTR dille — "müşteri bir sorun bildirdi,
+/// inceleniyor". Suçlayıcı metin ("gelmediniz", "salon kapalıydı") KULLANILMAZ; henüz doğrulanmış
+/// hiçbir şey yok, admin incelemesi bitmeden owner'ı suçlu ilan eden bir bildirim hem haksız hem
+/// de owner'la müşteri arasında uygulama-dışı bir çatışmayı tetikleyebilir. Müşteriye ayrı bir
+/// bildirim YOK — kendi aksiyonunun sonucunu zaten UI'da anında görüyor.
+/// </summary>
+public sealed class BookingComplaintFiledNotificationHandler(
+    IApplicationDbContext db,
+    INotificationDispatcher dispatcher) : INotificationHandler<Domain.Modules.Booking.Events.BookingComplaintFiledEvent>
+{
+    public async Task Handle(Domain.Modules.Booking.Events.BookingComplaintFiledEvent notification, CancellationToken cancellationToken)
+    {
+        var ctx = (DbContext)db;
+        var shop = await ctx.Set<Domain.Modules.Barber.BarberShop>().AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == notification.BarberShopId, cancellationToken);
+        if (shop is null) return;
+
+        const string subject = "Bir randevu hakkında bildirim alındı";
+        const string body = "Müşterilerinden biri bu randevuyla ilgili bir sorun bildirdi. Ekibimiz inceliyor, gerekirse seninle iletişime geçeceğiz.";
+
+        await NotificationHelpers.DispatchInAppAsync(dispatcher, shop.OwnerId,
+            "booking.complaint.filed.barber", subject, body, cancellationToken,
+            relatedBookingId: notification.BookingId);
+    }
+}

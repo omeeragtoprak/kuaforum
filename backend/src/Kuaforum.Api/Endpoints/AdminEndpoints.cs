@@ -143,6 +143,15 @@ public static class AdminEndpoints
                 : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("AdminCancelBooking");
 
+        // RFC-015 §2 D3 madde 3: müşteri şikayet kuyruğu — KYC kuyruğuyla aynı sayfalama kalıbı.
+        group.MapGet("/booking-complaints", async (
+            [FromQuery] BookingComplaintStatus? status, [FromQuery] int? page, [FromQuery] int? pageSize,
+            IMediator m, CancellationToken ct) =>
+        {
+            var r = await m.Send(new GetAdminBookingComplaintsQuery(status, page ?? 1, pageSize ?? 20), ct);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+        }).WithName("AdminBookingComplaintQueue");
+
         group.MapGet("/audit-logs", async (
             [FromQuery] Guid? actorUserId,
             [FromQuery] string? actionType,

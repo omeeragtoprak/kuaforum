@@ -32,6 +32,10 @@ public sealed record BookingDto(
     string? ShopName = null,
     string? StylistName = null,
     bool HasReview = false,
+    // RFC-015 §2 D3: mobil "Kuaför gelmedi / salon kapalıydı" butonunu gizlemek/pasifleştirmek
+    // için — randevu başına tek şikayet olduğundan (bkz. ux_booking_complaints_booking), UI
+    // ikinci bir denemeyi göstermemeli.
+    bool HasComplaint = false,
     PaymentKind? PaymentKind = null,
     long? PaidOnlineMinor = null,
     long RemainingAtShopMinor = 0,
@@ -115,6 +119,12 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
             .ToListAsync(ct);
         var reviewedSet = reviewedBookingIds.ToHashSet();
 
+        var complainedBookingIds = await ctx.Set<BookingComplaint>().AsNoTracking()
+            .Where(c => bookingIds.Contains(c.BookingId))
+            .Select(c => c.BookingId)
+            .ToListAsync(ct);
+        var complainedSet = complainedBookingIds.ToHashSet();
+
         // RFC-006 Task 5: booking başına tek payment satırı (ux_payments_booking) — toplu
         // WHERE BookingId IN (...) sorgusuyla N+1'den kaçınıyoruz.
         var payments = await ctx.Set<PaymentAggregate>().AsNoTracking()
@@ -143,6 +153,7 @@ public sealed class GetMyBookingsQueryHandler(IApplicationDbContext db) : IReque
                 ShopName: sh?.Name,
                 StylistName: st?.DisplayName,
                 HasReview: reviewedSet.Contains(b.Id),
+                HasComplaint: complainedSet.Contains(b.Id),
                 PaymentKind: paymentKind,
                 PaidOnlineMinor: paidOnlineMinor,
                 RemainingAtShopMinor: remainingAtShopMinor,
@@ -193,6 +204,9 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
         var hasReview = await ctx.Set<ReviewAggregate>().AsNoTracking()
             .AnyAsync(r => r.BookingId == booking.Id, ct);
 
+        var hasComplaint = await ctx.Set<BookingComplaint>().AsNoTracking()
+            .AnyAsync(c => c.BookingId == booking.Id, ct);
+
         var payment = await ctx.Set<PaymentAggregate>().AsNoTracking()
             .Where(p => p.BookingId == booking.Id && BookingPaymentProjection.PaidStatuses.Contains(p.Status))
             .Select(p => new { p.Kind, p.GrossAmountMinor })
@@ -213,6 +227,7 @@ public sealed class GetBookingByIdQueryHandler(IApplicationDbContext db) : IRequ
             ShopName: shopMeta?.Name,
             StylistName: stylistMeta,
             HasReview: hasReview,
+            HasComplaint: hasComplaint,
             PaymentKind: paymentKind,
             PaidOnlineMinor: paidOnlineMinor,
             RemainingAtShopMinor: remainingAtShopMinor,

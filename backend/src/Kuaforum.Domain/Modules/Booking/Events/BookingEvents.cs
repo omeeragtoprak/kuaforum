@@ -31,3 +31,12 @@ public sealed record BookingRescheduledEvent(
     Guid StylistId,
     DateTimeOffset OldScheduledAt,
     DateTimeOffset NewScheduledAt) : DomainEvent;
+
+/// <summary>RFC-015 §2 D3 / GAPS.md G4: müşteri "kuaför gelmedi / salon kapalıydı" bildirdi. Owner'a
+/// NÖTR dille bildirim gider (bkz. BookingComplaintFiledNotificationHandler) — henüz doğrulanmış
+/// hiçbir şey yok, suçlayıcı metin kullanılmaz. Otomatik iade TETİKLEMEZ.</summary>
+public sealed record BookingComplaintFiledEvent(
+    Guid ComplaintId,
+    Guid BookingId,
+    Guid CustomerId,
+    Guid BarberShopId) : DomainEvent;

@@ -119,7 +119,7 @@ public sealed class IntegrationTestFactory : WebApplicationFactory<Program>, IAs
               shop_subscriptions,
               barber_replies, reviews,
               refunds, payments,
-              booking_items, bookings,
+              booking_complaints, booking_items, bookings,
               stylist_services, time_offs, working_hours, stylists, service_catalogs,
               kyc_documents, kyc_submissions, barber_shops,
               consents, refresh_tokens, otp_codes, admin_credentials, users

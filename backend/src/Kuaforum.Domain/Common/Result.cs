@@ -55,6 +55,7 @@ public sealed record Error(string Code, string Message)
         ["Refund"] = "İade",
         ["TimeOff"] = "İzin",
         ["WorkingHours"] = "Çalışma saati",
+        ["BookingComplaint"] = "Şikayet",
     };
 }
 

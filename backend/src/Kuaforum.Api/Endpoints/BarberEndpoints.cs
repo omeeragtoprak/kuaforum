@@ -226,7 +226,9 @@ public static class BarberEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new UpdateStylistCommand(ctx.UserId.Value, id, body.DisplayName, body.PhotoUrl, body.Bio, body.IsActive), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            // RFC-015 §2 D2: yanıt artık (varsa) pasifleştirmeden etkilenen randevu listesini
+            // taşıyor — eskiden NoContent'ti, mobil ajana breaking change olarak iletilecek.
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("UpdateStylist");
 
         stylistGroup.MapPost("/{id:guid}/walk-in", async (Guid id, [FromBody] ToggleWalkInRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
@@ -246,8 +248,20 @@ public static class BarberEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new SetWorkingHoursCommand(ctx.UserId.Value, id, body.DayOfWeek, body.OpenTime, body.CloseTime, body.IsClosed), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            // RFC-015 §2 D1: yanıt artık o günün yeni aralığı dışında kalan (varsa bildirilmiş)
+            // randevu listesini taşıyor — eskiden NoContent'ti, mobil ajana breaking change
+            // olarak iletilecek.
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
         }).WithName("SetWorkingHours");
+
+        // RFC-015 §2 D1 madde 2: kaydetmeden ÖNCE önizleme — mobil bunu "Bu değişiklik 3
+        // randevunu etkiliyor" onay diyaloğu için çağırır. Salt okunur, hiçbir persistans yok.
+        stylistGroup.MapPost("/{id:guid}/working-hours/preview", async (Guid id, [FromBody] WorkingHoursRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
+        {
+            if (ctx.UserId is null) return Results.Unauthorized();
+            var r = await m.Send(new GetWorkingHoursChangeImpactQuery(ctx.UserId.Value, id, body.DayOfWeek, body.OpenTime, body.CloseTime, body.IsClosed), token);
+            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
+        }).WithName("PreviewWorkingHoursChange");
 
         stylistGroup.MapGet("/{id:guid}/time-offs", async (Guid id, IMediator m, CancellationToken token) =>
         {

@@ -1,5 +1,6 @@
 using FluentValidation;
 using Kuaforum.Application.Common.Interfaces;
+using Kuaforum.Application.Modules.Booking;
 using Kuaforum.Domain.Common;
 using Kuaforum.Domain.Modules.Barber;
 using MediatR;
@@ -92,17 +93,30 @@ public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLog
     }
 }
 
+/// <summary>RFC-015 §2 D2: pasifleştirme yanıtı — bu çağrı Aktif→Pasif geçişini FİİLEN
+/// tetiklediyse o stylist'in etkilenen (gelecekteki Pending/Confirmed) randevularını taşır.
+/// Diğer tüm durumlarda (aktifleştirme, profil-only güncelleme, no-op tekrar) boş liste döner —
+/// "etkilenen" yalnız gerçek bir aktif→pasif geçişte anlamlı.</summary>
+public sealed record UpdateStylistResultDto(IReadOnlyList<AffectedBookingDto> AffectedBookings);
+
 public sealed record UpdateStylistCommand(
     Guid OwnerId,
     Guid StylistId,
     string? DisplayName,
     string? PhotoUrl,
     string? Bio,
-    bool? IsActive) : ICommand;
+    bool? IsActive) : ICommand<UpdateStylistResultDto>;
 
-public sealed class UpdateStylistCommandHandler(IApplicationDbContext db, IEntitlementService entitlements) : IRequestHandler<UpdateStylistCommand, Result>
+/// <summary>
+/// RFC-015 §2 D2: pasifleştirme ENGELLENMEZ — owner devir/iptal kararını kendi verir, sistem
+/// yalnız körlüğü giderir. Otomatik devretme/iptal YAPILMAZ (V1.5'e ertelendi, RFC §3). Müşteriye
+/// bildirim bu maddede YOK (RFC yalnız kuaför-tarafı uyarı istiyor) — D1'in aksine burada
+/// INotificationDispatcher hiç enjekte edilmiyor, kapsam dışı iş üretmemek için bilinçli.
+/// </summary>
+public sealed class UpdateStylistCommandHandler(IApplicationDbContext db, IEntitlementService entitlements)
+    : IRequestHandler<UpdateStylistCommand, Result<UpdateStylistResultDto>>
 {
-    public async Task<Result> Handle(UpdateStylistCommand request, CancellationToken cancellationToken)
+    public async Task<Result<UpdateStylistResultDto>> Handle(UpdateStylistCommand request, CancellationToken cancellationToken)
     {
         var ctx = (DbContext)db;
         // Review fix: `.Include(s => EF.Property<BarberShop>(s, "_shop"))` was invalid EF Core
@@ -116,14 +130,19 @@ public sealed class UpdateStylistCommandHandler(IApplicationDbContext db, IEntit
         var stylist = await ctx.Set<Stylist>()
             .FirstOrDefaultAsync(s => s.Id == request.StylistId, cancellationToken);
 
-        if (stylist is null) return Result.Failure(Error.NotFound("Stylist"));
+        if (stylist is null) return Result.Failure<UpdateStylistResultDto>(Error.NotFound("Stylist"));
 
         var shop = await ctx.Set<BarberShop>().FirstOrDefaultAsync(s => s.Id == stylist.BarberShopId, cancellationToken);
         if (shop is null || shop.OwnerId != request.OwnerId)
-            return Result.Failure(Error.Forbidden("Bu stilistin bağlı olduğu işletmenin sahibi siz değilsiniz."));
+            return Result.Failure<UpdateStylistResultDto>(Error.Forbidden("Bu stilistin bağlı olduğu işletmenin sahibi siz değilsiniz."));
 
         var update = stylist.UpdateProfile(request.DisplayName, request.PhotoUrl, request.Bio);
-        if (update.IsFailure) return update;
+        if (update.IsFailure) return Result.Failure<UpdateStylistResultDto>(update.Error);
+
+        // RFC-015 §2 D2: yalnız FİİLEN aktif→pasif geçişi (wasActive true, hedef false) etkilenen
+        // randevu sorgusunu tetikler — pasif kalan bir stylist'e tekrar isActive=false göndermek
+        // (no-op) veya aktifleştirme, "etkilenen" kavramının hiç geçerli olmadığı durumlar.
+        var isDeactivating = request.IsActive == false && stylist.IsActive;
 
         if (request.IsActive.HasValue)
         {
@@ -134,14 +153,19 @@ public sealed class UpdateStylistCommandHandler(IApplicationDbContext db, IEntit
             if (request.IsActive.Value && !stylist.IsActive)
             {
                 var limitCheck = await StylistLimitPolicy.EnforceMaxStaffAsync(ctx, entitlements, shop.Id, cancellationToken);
-                if (limitCheck.IsFailure) return limitCheck;
+                if (limitCheck.IsFailure) return Result.Failure<UpdateStylistResultDto>(limitCheck.Error);
             }
 
             stylist.SetActive(request.IsActive.Value);
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        return Result.Success();
+
+        IReadOnlyList<AffectedBookingDto> affected = Array.Empty<AffectedBookingDto>();
+        if (isDeactivating)
+            affected = await StylistFutureBookingsFinder.GetFutureActiveBookingsAsync(ctx, stylist.Id, cancellationToken);
+
+        return Result.Success(new UpdateStylistResultDto(affected));
     }
 }
 

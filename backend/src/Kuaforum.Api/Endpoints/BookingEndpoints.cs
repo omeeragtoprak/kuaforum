@@ -22,8 +22,31 @@ public static class BookingEndpoints
         group.MapPost("/{id:guid}/complete", CompleteAsync).WithName("CompleteBooking");
         group.MapPost("/{id:guid}/no-show", NoShowAsync).WithName("MarkNoShow");
         group.MapPost("/{id:guid}/reschedule", RescheduleAsync).WithName("RescheduleBooking");
+        group.MapPost("/{id:guid}/complaint", FileComplaintAsync).WithName("FileBookingComplaint");
 
         return app;
+    }
+
+    /// <summary>RFC-015 §2 D3: müşteri "kuaför gelmedi / salon kapalıydı" bildirir. Yalnız geçmiş
+    /// randevularda, randevu başına tek kayıt (idempotent), admin kuyruğuna düşer, otomatik iade
+    /// TETİKLEMEZ.</summary>
+    private static async Task<IResult> FileComplaintAsync(
+        Guid id,
+        [FromBody] FileBookingComplaintRequest? body,
+        IMediator m,
+        IRequestContext ctx,
+        CancellationToken token)
+    {
+        if (ctx.UserId is null) return Results.Unauthorized();
+        var r = await m.Send(new FileBookingComplaintCommand(ctx.UserId.Value, id, body?.Note), token);
+        return r.IsSuccess
+            ? Results.Ok(new { complaintId = r.Value })
+            : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch
+            {
+                "not_found" => 404,
+                "forbidden" => 403,
+                _ => 400,
+            });
     }
 
     private static async Task<IResult> RescheduleAsync(
@@ -139,6 +162,8 @@ public static class BookingEndpoints
         string? CustomerNote);
 
     public sealed record RescheduleBookingRequest(DateTimeOffset NewScheduledAt);
+
+    public sealed record FileBookingComplaintRequest(string? Note);
 
     /// <summary>Mobil özet ekranının elinde zaten olan veriler — seçili salon + seçili slotun başlangıç/bitişi (bkz. CheckBookingConflictQuery XML doc, neden StylistId/ServiceCatalogIds DEĞİL bunlar).</summary>
     public sealed record CheckBookingConflictRequest(Guid BarberShopId, DateTimeOffset ScheduledAt, DateTimeOffset ScheduledEndsAt);
