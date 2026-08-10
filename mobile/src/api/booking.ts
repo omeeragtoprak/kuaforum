@@ -40,6 +40,11 @@ export type Booking = {
   customerPhone?: string | null;
   customerNote?: string | null;
   hasReview?: boolean;
+  /**
+   * RFC-015 §2 D3 — bu randevu için "kuaför gelmedi / salon kapalıydı" bildirimi zaten yapılmış
+   * mı (randevu başına TEK bildirim). true ise şikayet butonu tekrar gösterilmez.
+   */
+  hasComplaint?: boolean;
   /** Yalnız GERÇEKTEN ödenmiş (Captured/Settled) payment'larda dolu — Initiated yok sayılır. */
   paymentKind?: PaymentKind | null;
   paidOnlineMinor?: number | null;
@@ -161,5 +166,17 @@ export const BookingApi = {
   },
   async markNoShow(id: string): Promise<void> {
     await apiClient.post(`/v1/bookings/${id}/no-show`);
+  },
+
+  /**
+   * RFC-015 §2 D3 — müşterinin "kuaför gelmedi / salon kapalıydı" bildirimi. Yalnız GEÇMİŞ
+   * Confirmed/Started/Completed randevularda kabul edilir (backend 400 döner, mobil de
+   * `canFileBookingComplaint` ile aynı kuralla butonu gizler — bkz. lib/salon-changes.ts).
+   * İdempotent: randevu başına tek kayıt, ikinci çağrı aynı complaintId'yi no-op döner.
+   * Admin kuyruğuna düşer, OTOMATİK İADE tetiklemez.
+   */
+  async fileComplaint(id: string, note?: string): Promise<{ complaintId: string }> {
+    const res = await apiClient.post<{ complaintId: string }>(`/v1/bookings/${id}/complaint`, { note });
+    return res.data;
   },
 };

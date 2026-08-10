@@ -21,6 +21,7 @@ import {
 import { useAuthStore } from '@/store/auth-store';
 import { estimateDepositMinor } from '@/lib/deposit';
 import { resolveBookingConfirmMode } from '@/lib/booking-confirm';
+import { canFileBookingComplaint, complaintConfirmMessage, complaintSuccessMessage } from '@/lib/salon-changes';
 
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -112,6 +113,17 @@ export default function BookingDetailScreen() {
       qc.invalidateQueries({ queryKey: ['booking', id] });
       qc.invalidateQueries({ queryKey: ['owner-bookings-2weeks'] });
       qc.invalidateQueries({ queryKey: ['notifications-unread'] });
+    },
+    onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
+  });
+
+  const complaintMutation = useMutation({
+    mutationFn: () => BookingApi.fileComplaint(id!),
+    onSuccess: () => {
+      Haptics.success();
+      Alert.alert('Bildirildi', complaintSuccessMessage());
+      qc.invalidateQueries({ queryKey: ['booking', id] });
+      qc.invalidateQueries({ queryKey: ['my-bookings'] });
     },
     onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
@@ -219,6 +231,19 @@ export default function BookingDetailScreen() {
     ]);
   }
 
+  // RFC-015 §2 D3 madde 5 — gönderme öncesi onay diyaloğu NE OLACAĞINI yazar (admin
+  // inceleyecek, otomatik iade YOK); "paran iade edilecek" gibi yanlış bir beklenti vermez.
+  function handleComplaint() {
+    Alert.alert(
+      'Kuaför gelmedi / salon kapalıydı',
+      complaintConfirmMessage(),
+      [
+        { text: 'Vazgeç', style: 'cancel' },
+        { text: 'Bildir', style: 'destructive', onPress: () => complaintMutation.mutate() },
+      ],
+    );
+  }
+
   function handleNoShow() {
     Alert.alert('Gelmedi', 'Müşteri gelmedi olarak işaretlensin mi? İade yapılmaz.', [
       { text: 'Vazgeç', style: 'cancel' },
@@ -269,6 +294,13 @@ export default function BookingDetailScreen() {
   // RFC-013 C4: ödeme booking'i otomatik onaylamıyor — Pending + paymentKind dolu, "ödedim ama
   // kuaför henüz onaylamadı" durumu. "Ödemeyi tamamla" CTA'sı bu durumda GÖSTERİLMEZ (zaten
   // ödendi); yerine ayrı, "kuaför onayı bekleniyor" ifadesi taşıyan bir durum kutusu gösterilir.
+  // RFC-015 §2 D3 madde 1 — yalnız GEÇMİŞ + Confirmed/Started/Completed randevularda görünür
+  // (backend zaten 400 döner, ama arayüz olası olmayan bir hatayı beklememeli). `complaintEligibleBase`
+  // hasComplaint'i YOK SAYAR — bu, "buton mu yoksa 'inceleniyor' durumu mu" ayrımını yapmak için
+  // (aynı temel koşul, iki farklı hasComplaint değeriyle çağrılır — mantık tek yerde, JSX'e gömülmez).
+  const complaintEligibleBase = canFileBookingComplaint({ status: b.status, scheduledEndsAt: b.scheduledEndsAt, hasComplaint: false, isBarber });
+  const canFileComplaintNow = complaintEligibleBase && !b.hasComplaint;
+  const showComplaintPending = complaintEligibleBase && !!b.hasComplaint;
   const canCompletePayment = !isBarber && confirmMode === 'online-payment' && isBookingPending(b.status) && b.paymentKind == null;
   const showPaidPendingApproval = !isBarber && confirmMode === 'online-payment' && isBookingPending(b.status) && b.paymentKind != null;
   const showOwnerApprovalPending = !isBarber && confirmMode === 'salon-payment' && isBookingPending(b.status);
@@ -506,6 +538,19 @@ export default function BookingDetailScreen() {
           {alreadyReviewed ? (
             <View style={styles.reviewDoneBox} accessible accessibilityLabel="Bu randevuya yorum yazıldı">
               <Text style={styles.reviewDoneText}>✅ Bu randevu için yorumun alındı, teşekkürler.</Text>
+            </View>
+          ) : null}
+          {canFileComplaintNow ? (
+            <Button
+              label="🚩 Kuaför gelmedi / salon kapalıydı"
+              variant="outline"
+              onPress={handleComplaint}
+              loading={complaintMutation.isPending}
+            />
+          ) : null}
+          {showComplaintPending ? (
+            <View style={styles.pendingApprovalBox} accessible accessibilityLabel="Bildirimin inceleniyor">
+              <Text style={styles.pendingApprovalText}>🚩 Bildirimin inceleniyor</Text>
             </View>
           ) : null}
         </View>

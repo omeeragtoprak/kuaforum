@@ -18,9 +18,16 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
 import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
-import { BarberApi, Stylist, WorkingHours, TimeOff, DayOfWeekKey } from '@/api/barber';
+import { BarberApi, Stylist, WorkingHours, TimeOff, DayOfWeekKey, AffectedBookingDto } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
+import {
+  formatWorkingHoursImpactMessage,
+  formatWorkingHoursSavedImpactMessage,
+  haveSameAffectedBookings,
+  stylistDeactivationWarningText,
+  formatStylistDeactivationImpactMessage,
+} from '@/lib/salon-changes';
 
 const DAY_LABEL: Record<DayOfWeekKey, string> = {
   Monday: 'Pazartesi',
@@ -100,7 +107,7 @@ export default function AvailabilityScreen() {
   const setHoursMut = useMutation({
     mutationFn: async (body: { dayOfWeek: number; openTime: string; closeTime: string; isClosed: boolean }) => {
       if (!stylist) throw new Error('Çalışan seçilmedi.');
-      await BarberApi.setWorkingHours(stylist.id, body);
+      return BarberApi.setWorkingHours(stylist.id, body);
     },
     onSuccess: () => { Haptics.success(); qc.invalidateQueries({ queryKey: ['working-hours', stylist?.id] }); },
     onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
@@ -143,12 +150,20 @@ export default function AvailabilityScreen() {
   const updateStylistMut = useMutation({
     mutationFn: async (args: { id: string; displayName?: string; isActive?: boolean }) => {
       const { id, ...body } = args;
-      await BarberApi.updateStylist(id, body);
+      return BarberApi.updateStylist(id, body);
     },
-    onSuccess: () => {
+    onSuccess: (result, variables) => {
       Haptics.success();
       qc.invalidateQueries({ queryKey: ['my-stylists', shopQuery.data?.id] });
       setEditingStylist(null);
+      // RFC-015 §2 D2: yalnız FİİLEN pasifleştirme (isActive: false) yanıtı etkilenen randevu
+      // taşır (backend UpdateStylistCommandHandler — yalnız gerçek aktif→pasif geçişinde
+      // dolu). Rename/aktifleştirme çağrılarında affectedBookings her zaman boş gelir, bu
+      // yüzden ekstra bir diyalog tetiklenmez.
+      if (variables.isActive === false && result.affectedBookings.length > 0) {
+        const name = stylistsQuery.data?.find((s) => s.id === variables.id)?.displayName ?? 'Çalışan';
+        Alert.alert('Etkilenen randevular', formatStylistDeactivationImpactMessage(result.affectedBookings, name));
+      }
     },
     onError: (err) => { Haptics.error(); Alert.alert('Hata', extractApiError(err)); },
   });
@@ -163,6 +178,9 @@ export default function AvailabilityScreen() {
   const [editingOpen, setEditingOpen] = useState('09:00');
   const [editingClose, setEditingClose] = useState('19:00');
   const [editingClosed, setEditingClosed] = useState(false);
+  // RFC-015 §2 D1 madde 2 — kaydetmeden önceki salt-okunur önizleme çağrısı sırasında "Kaydet"
+  // butonunu meşgul göster (setHoursMut.isPending ayrı bir aşama, bu ondan önce gelir).
+  const [checkingImpact, setCheckingImpact] = useState(false);
 
   const [showAddTimeOff, setShowAddTimeOff] = useState(false);
   const [toDay, setToDay] = useState<string | null>(null);
@@ -179,8 +197,13 @@ export default function AvailabilityScreen() {
     setEditingClosed(wh.isClosed);
   }
 
-  function saveHours() {
-    if (!editing) return;
+  // RFC-015 §2 D1: kaydetmeden önce salt-okunur önizleme çağrılır. Etkilenen randevu varsa
+  // kuaföre "ne olacağını" anlatan bir onay diyaloğu gösterilir — "emin misiniz?" DEMEZ, kaç
+  // randevu + hangi müşteri/saat etkilendiğini yazar. Onaylarsa kaydedilir; ENGELLEME YOK.
+  // Önizleme hata verirse akışı BLOKLAMAZ — doğrudan kaydetmeye izin verir (madde 4, tavsiye
+  // niteliğinde bir kontrol).
+  async function saveHours() {
+    if (!editing || !stylist) return;
     if (!editingClosed) {
       const [oh, om] = editingOpen.split(':').map(Number);
       const [ch, cm] = editingClose.split(':').map(Number);
@@ -189,12 +212,54 @@ export default function AvailabilityScreen() {
         return;
       }
     }
-    setHoursMut.mutate({
+
+    const body = {
       dayOfWeek: DAY_INDEX[editing.dayOfWeek],
       openTime: `${editingOpen}:00`,
       closeTime: `${editingClose}:00`,
       isClosed: editingClosed,
-    }, { onSuccess: () => setEditing(null) });
+    };
+
+    let previewAffected: AffectedBookingDto[] = [];
+    setCheckingImpact(true);
+    try {
+      previewAffected = await BarberApi.previewWorkingHoursImpact(stylist.id, body);
+    } catch {
+      previewAffected = []; // bloklama — kaydetmeye izin ver, sonucu save yanıtı belirleyecek
+    } finally {
+      setCheckingImpact(false);
+    }
+
+    if (previewAffected.length > 0) {
+      Alert.alert(
+        'Değişikliği kaydet',
+        formatWorkingHoursImpactMessage(previewAffected),
+        [
+          { text: 'Vazgeç', style: 'cancel' },
+          { text: 'Kaydet', onPress: () => commitHours(body, previewAffected) },
+        ],
+      );
+      return;
+    }
+
+    commitHours(body, previewAffected);
+  }
+
+  function commitHours(
+    body: { dayOfWeek: number; openTime: string; closeTime: string; isClosed: boolean },
+    previewAffected: AffectedBookingDto[],
+  ) {
+    setHoursMut.mutate(body, {
+      onSuccess: (result) => {
+        setEditing(null);
+        // Madde 3: preview ile save arasında fark çıkarsa (yarış — yeni randevu girdi/çıktı)
+        // kullanıcıya SON DURUM gösterilir. Aynıysa (normal yol — kullanıcı zaten yukarıdaki
+        // diyalogda gördü) ikinci kez gösterilmez.
+        if (!haveSameAffectedBookings(result.affectedBookings, previewAffected) && result.affectedBookings.length > 0) {
+          Alert.alert('Bilgi', formatWorkingHoursSavedImpactMessage(result.affectedBookings));
+        }
+      },
+    });
   }
 
   function saveTimeOff() {
@@ -379,7 +444,7 @@ export default function AvailabilityScreen() {
 
             <View style={styles.modalActions}>
               <Button label="Vazgeç" variant="ghost" onPress={() => setEditing(null)} />
-              <Button label="Kaydet" onPress={saveHours} loading={setHoursMut.isPending} />
+              <Button label="Kaydet" onPress={saveHours} loading={checkingImpact || setHoursMut.isPending} />
             </View>
           </Pressable>
         </Pressable>
@@ -512,7 +577,7 @@ export default function AvailabilityScreen() {
                   Alert.alert(
                     editingStylist.isActive ? 'Çalışanı pasifleştir' : 'Çalışanı aktif et',
                     editingStylist.isActive
-                      ? 'Pasif çalışan müşterilere görünmez. Aktif randevuları etkilenmez.'
+                      ? stylistDeactivationWarningText()
                       : 'Çalışan tekrar müşterilere görünmeye başlar.',
                     [
                       { text: 'Vazgeç', style: 'cancel' },

@@ -1,5 +1,8 @@
 import { apiClient } from './client';
 import type { BookingPolicyDto, BookingPolicyPayload } from '@/lib/booking-policy';
+import type { AffectedBookingDto } from '@/lib/salon-changes';
+
+export type { AffectedBookingDto };
 
 export type BarberShop = {
   id: string;
@@ -189,8 +192,15 @@ export const BarberApi = {
     const res = await apiClient.post(`/v1/owner/barber-shop/${shopId}/stylists`, { displayName });
     return res.data;
   },
-  async updateStylist(stylistId: string, body: { displayName?: string; photoUrl?: string; bio?: string; isActive?: boolean }): Promise<void> {
-    await apiClient.patch(`/v1/stylists/${stylistId}`, body);
+  /**
+   * RFC-015 §2 D2 — KIRICI DEĞİŞİKLİK: eskiden 204 No Content dönüyordu, artık 200 +
+   * `{ affectedBookings: AffectedBookingDto[] }` dönüyor. Yalnız FİİLEN aktif→pasif geçişinde
+   * (isActive: false gönderilip stylist önceden aktifken) dolu gelir — diğer tüm çağrılarda
+   * (profil güncelleme, aktifleştirme, no-op) boş dizi.
+   */
+  async updateStylist(stylistId: string, body: { displayName?: string; photoUrl?: string; bio?: string; isActive?: boolean }): Promise<{ affectedBookings: AffectedBookingDto[] }> {
+    const res = await apiClient.patch<{ affectedBookings: AffectedBookingDto[] }>(`/v1/stylists/${stylistId}`, body);
+    return res.data;
   },
   async toggleStylistWalkIn(stylistId: string, available: boolean): Promise<void> {
     await apiClient.post(`/v1/stylists/${stylistId}/walk-in`, { available });
@@ -246,8 +256,25 @@ export const BarberApi = {
     const res = await apiClient.get<WorkingHours[]>(`/v1/stylists/${stylistId}/working-hours`);
     return res.data;
   },
-  async setWorkingHours(stylistId: string, body: { dayOfWeek: number; openTime: string; closeTime: string; isClosed: boolean }): Promise<void> {
-    await apiClient.put(`/v1/stylists/${stylistId}/working-hours`, body);
+  /**
+   * RFC-015 §2 D1 — KIRICI DEĞİŞİKLİK: eskiden 204 No Content dönüyordu, artık 200 +
+   * `{ affectedBookings: AffectedBookingDto[] }` dönüyor — o günün yeni aralığı dışında kalan
+   * (varsa bildirilmiş) gelecekteki Pending/Confirmed randevular. Kaydetme ENGELLENMEZ; bu liste
+   * yalnız bilgilendirme + preview'dan farklı çıkabilecek "kesin sonuç" içindir.
+   */
+  async setWorkingHours(stylistId: string, body: { dayOfWeek: number; openTime: string; closeTime: string; isClosed: boolean }): Promise<{ affectedBookings: AffectedBookingDto[] }> {
+    const res = await apiClient.put<{ affectedBookings: AffectedBookingDto[] }>(`/v1/stylists/${stylistId}/working-hours`, body);
+    return res.data;
+  },
+  /**
+   * RFC-015 §2 D1 madde 2 — kaydetmeden ÖNCE salt okunur önizleme. Hiçbir persistans yapmaz.
+   * Backend `IReadOnlyList<AffectedBookingDto>`'yu ÇIPLAK bir dizi olarak döner (PUT'un aksine
+   * `{ affectedBookings: [...] }` sarmalı YOK) — curl ile doğrulandı, iki yanıt şekli kasıtlı
+   * olarak farklı.
+   */
+  async previewWorkingHoursImpact(stylistId: string, body: { dayOfWeek: number; openTime: string; closeTime: string; isClosed: boolean }): Promise<AffectedBookingDto[]> {
+    const res = await apiClient.post<AffectedBookingDto[]>(`/v1/stylists/${stylistId}/working-hours/preview`, body);
+    return res.data;
   },
   async getTimeOffs(stylistId: string): Promise<TimeOff[]> {
     const res = await apiClient.get<TimeOff[]>(`/v1/stylists/${stylistId}/time-offs`);
