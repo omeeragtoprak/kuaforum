@@ -21,7 +21,19 @@ namespace Kuaforum.Tests.Integration;
 /// meaningful. Runs its own throwaway Postgres+Redis (not the shared
 /// <see cref="IntegrationTestFactory"/> collection) since it needs config unavailable to
 /// that already-booted shared instance.
+///
+/// Still tagged with the shared <see cref="IntegrationTestCollection"/> — NOT to receive its
+/// ICollectionFixture instances (this class takes none in its constructor) but purely to stop
+/// xUnit from putting it in its own implicit collection and running it *in parallel* with the
+/// rest of the integration suite. Left untagged, this class's own Testcontainers Postgres+Redis
+/// pair booted concurrently with the shared factory's, and the added host CPU/IO contention was
+/// traced (2026-08-10) to intermittently flipping the query plan Postgres chose for an unordered
+/// FirstAsync() in BookingSlotSafetyTests, spuriously failing
+/// Exclude_constraint_alone_rejects_overlap_when_the_app_level_lock_is_bypassed. This is the
+/// exact class of interference IntegrationTestCollection's own doc comment already names — it
+/// recurred because this file was added later without the tag. See GAP-ANALYSIS.md P2-14.
 /// </summary>
+[Collection(nameof(IntegrationTestCollection))]
 public sealed class ObjectStorageFailFastTests
 {
     [Fact]

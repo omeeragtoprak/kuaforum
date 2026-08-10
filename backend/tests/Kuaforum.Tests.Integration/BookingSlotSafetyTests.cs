@@ -385,11 +385,28 @@ public sealed class BookingSlotSafetyTests(IntegrationTestFactory factory)
         using (var scope = factory.Services.CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            var shopEntity = await db.Set<BarberShop>().AsNoTracking().FirstAsync();
-            barberShopId = shopEntity.Id;
-            var stylistEntity = await db.Set<Stylist>().AsNoTracking().FirstAsync(s => s.BarberShopId == barberShopId);
+
+            // Root-cause fix (flaky-test investigation, 2026-08-10): this USED to grab
+            // db.Set<BarberShop>().FirstAsync() with no WHERE/ORDER BY and derive stylist/service
+            // from whatever shop came back. Postgres gives no ordering guarantee without
+            // ORDER BY — under the shared factory's Seq Scan that's normally stable, but under
+            // load (e.g. another test's Testcontainers pair contending for host CPU/IO and
+            // perturbing the buffer cache / planner's index-vs-seqscan cost estimate) the "first"
+            // row occasionally flipped. One of the 13 DemoBarberSeeder shops — "Yeni Açılan
+            // Kuaför (Draft)" — is deliberately seeded with ZERO stylists/services (it exists to
+            // exercise the KYC Draft-state flow), so landing on it made the very next line
+            // (FirstAsync(s => s.BarberShopId == barberShopId) on Stylist) throw "Sequence
+            // contains no elements". Reproduced directly: see 2026-08-10 investigation notes.
+            //
+            // Fix: query Stylist FIRST and derive the shop from it. Every row in the Stylist
+            // table belongs to a shop that has at least one stylist by construction — the empty
+            // Draft shop can never be selected this way, so the failure mode is structurally
+            // impossible rather than merely unlikely. OrderBy(Id) added for reproducibility
+            // (deterministic across runs/plans) even though correctness no longer depends on it.
+            var stylistEntity = await db.Set<Stylist>().AsNoTracking().OrderBy(s => s.Id).FirstAsync();
             stylistId = stylistEntity.Id;
-            var serviceEntity = await db.Set<ServiceCatalog>().AsNoTracking().FirstAsync(s => s.BarberShopId == barberShopId);
+            barberShopId = stylistEntity.BarberShopId;
+            var serviceEntity = await db.Set<ServiceCatalog>().AsNoTracking().OrderBy(s => s.Id).FirstAsync(s => s.BarberShopId == barberShopId);
             serviceId = serviceEntity.Id;
             serviceName = serviceEntity.Name;
             durationMinutes = serviceEntity.DurationMinutes;
