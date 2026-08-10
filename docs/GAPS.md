@@ -35,6 +35,14 @@ Mobil onay diyaloğu `97aa39d`: "Yine de devam et" her zaman mümkün; ön-kontr
 - **Önerilen çözüm:** `SetWorkingHoursCommandHandler`'a "yeni saat aralığı dışında kalan gelecekteki Confirmed/Pending booking var mı" kontrolü ekle; varsa (a) işlemi reddet ve owner'a listele, veya (b) izin ver ama etkilenen randevuları owner'a göster + müşteriye bildirim tetikle. Ürün kararı: engelle mi, uyar mı — founder'a sorulmalı.
 - **Tahmini efor:** 0.5-1 gün (sorgu + UI uyarı + karar).
 
+**Durum:** ✅ **Kapatıldı 2026-08-10** (`3710774` backend, `31e7848` mobil). Founder kararı RFC-015 §2 **D1**: **uyar, izin ver, müşteriye haber ver.** Engellemek reddedildi — hastalık/acil kapanışta kuaförü ayarı hiç değiştiremez hale getirirdi.
+
+Kuaför kaydetmeden önce `POST /v1/stylists/{id}/working-hours/preview` ile etkilenen randevuları görüyor; onaylarsa kayıt yapılıyor ve **etkilenen müşterilere bildirim gidiyor**. Randevu otomatik iptal EDİLMİYOR — karar taraflara ait. Bildirim idempotent (kayıtlı değer fiilen değişmediyse tekrar gitmiyor, curl ile doğrulandı).
+
+**Kırıcı değişiklik:** `PUT /v1/stylists/{id}/working-hours` artık 204 değil, 200 + `{affectedBookings}`.
+
+**Bilinçli sapma:** Bildirim, projenin yerleşik "aggregate olay yayınlar → Notification handler" kalıbı yerine doğrudan dispatcher ile gönderiliyor. Gerekçe: durumu değişmeyen N randevuya sırf olay taşımak için dokunmak gereksiz karmaşıklık. Projenin mevcut Outbox borcunun parçası olarak kayıtlı.
+
 ---
 
 ## G3. Stylist deaktive edilince gelecek randevuları sessizce askıda kalıyor — otomatik iptal/devir yok
@@ -44,6 +52,14 @@ Mobil onay diyaloğu `97aa39d`: "Yine de devam et" her zaman mümkün; ön-kontr
 - **Önerilen çözüm:** Stylist `SetActive(false)` çağrıldığında, o stylist'e bağlı gelecekteki Confirmed/Pending randevuları owner'a bir uyarı listesi olarak göster (zorla iptal etme — owner devir kararını kendi verir) + varsa müşteriye "kuaförün değişebilir, salonla iletişime geç" bildirimi. Minimum versiyon: yalnız owner-tarafı uyarı ekranı (booking'e dokunmadan).
 - **Tahmini efor:** 0.5-1 gün (owner uyarı listesi); tam otomatik devir/iptal akışı ayrı ve daha büyük bir ürün kararı (1-2 gün).
 
+**Durum:** ✅ **Kapatıldı 2026-08-10.** Founder kararı RFC-015 §2 **D2**: kuaföre **etkilenen randevu listesi gösterilir**, pasifleştirme engellenmez, **otomatik devretme YOK**.
+
+Otomatik devretme bilerek reddedildi: müşteri belirli bir kişiyi seçmiş olabilir, habersiz değişim "istediğim kişiye gidemedim" deneyimi yaratır ve marketplace güvenini doğrudan vurur. Sistem karar vermiyor, körlüğü gideriyor.
+
+Ayrıca mobildeki yanıltıcı metin düzeltildi: eski hali *"Aktif randevuları etkilenmez"* kuaföre "ilgilenmem gereken bir şey yok" hissi veriyordu; randevular hâlâ o çalışana bağlı ve birinin halletmesi gerekiyor.
+
+**Kırıcı değişiklik:** `PATCH /v1/stylists/{id}` artık 204 değil, 200 + `{affectedBookings}`.
+
 ---
 
 ## G4. Müşteri tarafında salon/kuaför no-show'unu bildirebileceği bir mekanizma hiç yok
@@ -52,6 +68,14 @@ Mobil onay diyaloğu `97aa39d`: "Yine de devam et" her zaman mümkün; ön-kontr
 - **Etki:** Orta. Müşteri salona gidip kapalı bulursa veya kuaför gelmezse, uygulama içinde bunu bildirecek/kapora iadesi talep edecek hiçbir yol yok — destek talebi tamamen uygulama dışı kanallara (telefon, e-posta) düşüyor. Marketplace güveni ve KVKK/tüketici hukuku açısından (6502 sayılı kanun, hizmet ifa edilmezse iade hakkı) orta-vadede zorunlu bir akış.
 - **Önerilen çözüm:** MVP için minimum: booking detay ekranında "Kuaför gelmedi / salon kapalıydı" butonu → `CustomerReportedNoShow` gibi bir flag + admin kuyruğuna düşen bir kayıt (otomatik iade tetiklemesin, insan incelemesi gerektirsin — sahte şikayet riskine karşı). Tam otomatik iade akışı V1.5'e ertelenebilir.
 - **Tahmini efor:** flag + admin kuyruğu: 1 gün; tam iş akışı (bildirim, SLA, otomatik eskalasyon): 2-3 gün.
+
+**Durum:** ✅ **Kapatıldı 2026-08-10** (minimum sürüm). Founder kararı RFC-015 §2 **D3**. `POST /v1/bookings/{id}/complaint` + admin kuyruğu; **otomatik iade TETİKLENMİYOR** — bu ayrı bir testle sabitlendi, çünkü otomatik iade kötüye kullanıma açık bir para musluğu olurdu.
+
+Yalnız geçmiş randevularda; randevu başına tek kayıt (uygulama katmanı guard + unique index — yarışta da tek). Kuaföre bildirim **nötr dille** ("bir sorun bildirdi, inceleniyor") — henüz doğrulanmış bir şey yok, suçlayıcı metin kullanılmıyor.
+
+**Zamanlama gerekçesi:** Online ödeme launch'ta kapalı, yani şu an kaybedilecek para yok. Ama **kapora açıldığı gün bu kanal tüketici hukuku açısından zorunlu hale gelir** (6502 sayılı kanun — hizmet ifa edilmezse iade hakkı). Minimum sürümü şimdi kurmak, o gün hazırlıksız yakalanmamayı sağlıyor.
+
+**Bilinçli kapsam daraltması:** Şikayeti "çözüldü" olarak kapatma akışı YOK. `Status` alanı ileriye dönük var ama geçiş metodu yok; admin mevcut iptal/iade akışını kullanıyor. Kuyruk operasyonel olarak büyürse (V1.5) eklenmeli.
 
 ---
 
@@ -228,9 +252,9 @@ Coğrafya (81 il/ilçe/mahalle) ve plan tanımlarına dokunulmaz — yeniden ür
 | # | Başlık | Etki | Efor |
 |---|---|---|---|
 | G1 | Cross-shop çift randevu koruması yok | Orta | ✅ kapatıldı 2026-08-10 (uyar, engelleme) |
-| G2 | WorkingHours değişimi mevcut randevuları kontrol etmiyor | Orta | RFC-015 D1 — uygulanıyor |
-| G3 | Stylist deaktivasyonu randevuları sessizce askıda bırakıyor | Orta-Kritik | RFC-015 D2 — uygulanıyor |
-| G4 | Müşteri-tarafı no-show/şikayet bildirimi yok | Orta | RFC-015 D3 — uygulanıyor |
+| G2 | WorkingHours değişimi mevcut randevuları kontrol etmiyor | Orta | ✅ kapatıldı 2026-08-10 |
+| G3 | Stylist deaktivasyonu randevuları sessizce askıda bırakıyor | Orta-Kritik | ✅ kapatıldı 2026-08-10 |
+| G4 | Müşteri-tarafı no-show/şikayet bildirimi yok | Orta | ✅ kapatıldı 2026-08-10 (min sürüm) |
 | G5 | Owner=tek-çalışan otomatik stylist yaratılmıyor | Düşük-Orta | 2 saat-0.5 gün |
 | G6 | Askıya alınan salonun müşterisine bildirim yok | — | ❌ kusur DEĞİL (RFC-015 D4) |
 | G7 | "Stylist" policy/rol isimlendirmesi yanıltıcı — founder kararı bekliyor | Düşük | 1 saat (karar) + değişken |
