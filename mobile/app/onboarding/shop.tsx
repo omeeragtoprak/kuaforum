@@ -7,6 +7,8 @@ import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
 import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
 import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
+// NOT: OnboardingHeader (src/components/onboarding/) salt-okunur kısıt kapsamında,
+// resume akışı/geri butonu davranışına dokunulmadı.
 import { BarberApi, BarberShop } from '@/api/barber';
 import { extractApiError, refreshTokens } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -168,7 +170,7 @@ export default function OnboardingShopScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="🚫"
+          icon="x"
           title="Bu özellik salon sahipleri için"
           description="Stilist hesabınla yeni bir salon oluşturamazsın. Salon sahibinin seni ekleyeceği daveti bekle."
           actionLabel="Geri"
@@ -182,7 +184,7 @@ export default function OnboardingShopScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.loadingCenter}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+          <ActivityIndicator size="large" color={Colors.ink} />
           <Text style={styles.loadingText}>Salon bilgin kontrol ediliyor…</Text>
         </View>
       </SafeAreaView>
@@ -193,7 +195,7 @@ export default function OnboardingShopScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="📡"
+          icon="globe"
           title="Bağlantı kurulamadı"
           description="Mevcut salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
           actionLabel="Tekrar dene"
@@ -274,7 +276,9 @@ function GenderOption({ selected, onPress, title, detail }: { selected: boolean;
       accessibilityLabel={`${title}. ${detail}`}
       style={({ pressed }) => [styles.genderOption, selected && styles.genderOptionSelected, pressed && styles.pressed]}
     >
-      <Text style={[styles.radioMark, selected && styles.radioMarkSelected]}>{selected ? '●' : '○'}</Text>
+      <View style={[styles.radioMark, selected && styles.radioMarkSelected]}>
+        {selected ? <View style={styles.radioMarkDot} /> : null}
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.genderTitle}>{title}</Text>
         <Text style={styles.genderDetail}>{detail}</Text>
@@ -304,10 +308,15 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: Colors.border, borderRadius: Radius.md,
     padding: Spacing.md, backgroundColor: Colors.surface, minHeight: Layout.tapTargetMin,
   },
-  genderOptionSelected: { borderColor: Colors.primary, backgroundColor: Colors.primarySoft },
+  genderOptionSelected: { borderColor: Colors.ink, backgroundColor: Colors.surfaceAlt },
   pressed: { opacity: 0.9 },
-  radioMark: { fontSize: 18, color: Colors.textMuted, width: 20, textAlign: 'center' },
-  radioMarkSelected: { color: Colors.primary },
+  radioMark: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 1.5, borderColor: Colors.borderStrong,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  radioMarkSelected: { borderColor: Colors.ink },
+  radioMarkDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.ink },
   genderTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
   genderDetail: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
 });

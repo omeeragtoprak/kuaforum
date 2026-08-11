@@ -156,7 +156,7 @@ export default function OnboardingAddressScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="🏪"
+          icon="store"
           title="Önce salon bilgisi gerekli"
           description="Adres girmeden önce salon adını ve hizmet segmentini tamamlaman gerekiyor."
           actionLabel="Adım 1'e git"

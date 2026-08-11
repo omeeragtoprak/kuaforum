@@ -5,10 +5,11 @@ import { useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { OnboardingHeader } from '@/components/onboarding/OnboardingHeader';
 import { KycDocumentSection } from '@/components/kyc/KycDocumentSection';
 import { UploadedKycDoc } from '@/components/kyc/KycDocumentPicker';
-import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Layout, Radius } from '@/lib/theme';
 import { BarberApi, KycDocumentRequest } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -70,7 +71,7 @@ export default function OnboardingDocumentsScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="🏪"
+          icon="store"
           title="Önce salon bilgisi gerekli"
           description="Belge yüklemeden önce salon adını ve adresini tamamlaman gerekiyor."
           actionLabel="Adım 1'e git"
@@ -84,7 +85,9 @@ export default function OnboardingDocumentsScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <View style={styles.successCenter}>
-          <Text style={styles.successEmoji}>🎉</Text>
+          <View style={styles.successIconWrap}>
+            <Icon name="check" size={30} color={Colors.success} strokeWidth={2} />
+          </View>
           <Text style={styles.successTitle}>Başvurun incelemede</Text>
           <Text style={styles.successBody}>
             Belgelerin admin onayına gönderildi. Sonuç 1-2 iş günü içinde bildirimle gelecek.
@@ -113,7 +116,7 @@ export default function OnboardingDocumentsScreen() {
         {!canSubmit ? <Text style={styles.hint}>Vergi Levhası ve Kimlik zorunludur.</Text> : null}
 
         <View style={styles.submitBtn}>
-          <Button label="📤 Başvuruyu gönder" onPress={handleSubmit} disabled={!canSubmit} loading={submitting} size="lg" />
+          <Button label="Başvuruyu gönder" onPress={handleSubmit} disabled={!canSubmit} loading={submitting} size="lg" />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -134,8 +137,16 @@ const styles = StyleSheet.create({
   hint: { fontSize: FontSize.xs, color: Colors.textMuted },
   submitBtn: { marginTop: Spacing.sm },
   successCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: Layout.screenPaddingX, gap: Spacing.sm },
-  successEmoji: { fontSize: 64, marginBottom: Spacing.sm },
-  successTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
+  successIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.successSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
+  successTitle: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center', letterSpacing: LetterSpacing.title },
   successBody: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20, maxWidth: 340 },
   successBtn: { width: '100%', marginTop: Spacing.lg, borderRadius: Radius.md },
 });
