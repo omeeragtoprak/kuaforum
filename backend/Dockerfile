@@ -63,7 +63,22 @@ EXPOSE 8000
 # Shell form (no brackets after CMD) — Docker runs it via `/bin/sh -c`, which
 # expands $PORT at healthcheck-run time. PORT set değilse 8000'e düşer —
 # entrypoint.sh'deki default ile tutarlı.
-HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
-    CMD curl -fsS "http://localhost:${PORT:-8000}/health/ready" || exit 1
+# `/health` (liveness) — `/health/ready` DEĞİL. İkisinin farkı burada kritik:
+#
+# `/health/ready` dış bağımlılıkları (veritabanı) da yoklar. Bunu konteyner
+# HEALTHCHECK'ine bağlamak iki sorun üretti:
+#   1. Render'da deploy hiç canlıya çıkmadı. Neon uykudan uyanırken /health/ready
+#      5 sn'lik timeout'u aşıyordu → konteyner "unhealthy" → Render trafiği HİÇ
+#      yönlendirmedi. Uygulama sorunsuz açılıp 0.0.0.0'ı dinlemesine rağmen
+#      Serilog'da tek bir istek görünmüyordu; üç deploy bu yüzden kaybedildi.
+#   2. Tasarım olarak da yanlış: veritabanı bir an yavaşladığında konteyner
+#      yeniden başlatılır — oysa uygulama sağlamdır ve DB dönünce kendiliğinden
+#      düzelir. Liveness "süreç ayakta mı", readiness "trafik alabilir mi"
+#      sorusudur; orkestratör (Render/compose) readiness'ı ayrıca sorar.
+#
+# start-period 60s: soğuk başlangıçta migration + ilk DB bağlantısı 25 sn'yi
+# aşabiliyor; bu süre içindeki başarısızlıklar retry sayacına yazılmaz.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD curl -fsS "http://localhost:${PORT:-8000}/health" || exit 1
 
 ENTRYPOINT ["/app/docker-entrypoint.sh"]
