@@ -794,28 +794,53 @@ public sealed class RichDemoSeeder(
 
                 var nextSlot = NextSlotIndexAfterNow(now);
 
+                // Kusur fix (2026-08-11, gerçek zaman kırılganlığı — bkz. RichDemoSeederTests
+                // teşhisi): bu üç randevu ÖNCEDEN RealisticSlotUtc'nin ürettiği hedef zamanı
+                // DOĞRUDAN MakeDevBooking'e (dolayısıyla Booking.Initiate'e) veriyordu.
+                // Booking.Initiate'in "geçmişte olamaz" guard'ı HER ZAMAN GERÇEK
+                // DateTimeOffset.UtcNow'a bakar — enjekte edilebilir `now`/nowOverride'a değil
+                // (bkz. Booking.cs). nowOverride kullanılmayan gerçek-zaman koşumlarında bu
+                // normalde güvenlidir (nextSlot zaten now+20dk'nın ötesinde), AMA Completed1/2
+                // ve geçmiş-hafta randevularının kullandığı "yer tutucu (now+1sa) ile Initiate
+                // et, SONRA reflection'la geçmişe/bugüne kaydır" kalıbının aksine bu üçü tek bir
+                // güvenlik payına (yalnızca +20dk) güveniyordu — aynı stilistte daha önce
+                // yerleştirilmiş bir randevunun ReserveDevSlot kürsörünü ilerletmesi veya günün
+                // erken/geç saatlerinde modulo-sarma (bkz. NextSlotIndexAfterNow doc'u) bu payı
+                // tüketebiliyordu. Tutarlılık ve sağlamlık için Completed1/2 ile AYNI güvenli
+                // kalıba geçirildi: Initiate her zaman placeholderFuture (now+1sa, HER ZAMAN
+                // gerçek gelecekte) ile çağrılır, hedef saate BackdateBooking ile kaydırılır —
+                // sonuç aynı, ama artık gerçek saat ile hiç yarışmıyor.
                 var dur1 = devServices[shortIdx0].DurationMinutes;
                 var confirmed1Slot = ReserveDevSlot(todayLocal, devStylists[0 % devStylists.Count].Id, nextSlot, dur1);
-                var todayConfirmed1 = confirmed1Slot is null ? null : MakeDevBooking(0, shortIdx0, RealisticSlotUtc(todayLocal, confirmed1Slot.Value, dur1));
+                var todayConfirmed1 = confirmed1Slot is null ? null : MakeDevBooking(0, shortIdx0, placeholderFuture);
                 if (todayConfirmed1 is not null)
                 {
                     todayConfirmed1.OwnerConfirm();
+                    var target1 = RealisticSlotUtc(todayLocal, confirmed1Slot!.Value, dur1);
+                    BackdateBooking(todayConfirmed1, target1 - todayConfirmed1.ScheduledAt, confirmed: true, started: false, completed: false, cancelled: false);
                     devBookings.Add(todayConfirmed1);
                 }
 
                 var dur5 = devServices[shortIdx1].DurationMinutes;
                 var confirmed2Slot = ReserveDevSlot(todayLocal, devStylists[1 % devStylists.Count].Id, nextSlot, dur5);
-                var todayConfirmed2 = confirmed2Slot is null ? null : MakeDevBooking(1, shortIdx1, RealisticSlotUtc(todayLocal, confirmed2Slot.Value, dur5));
+                var todayConfirmed2 = confirmed2Slot is null ? null : MakeDevBooking(1, shortIdx1, placeholderFuture);
                 if (todayConfirmed2 is not null)
                 {
                     todayConfirmed2.OwnerConfirm();
+                    var target2 = RealisticSlotUtc(todayLocal, confirmed2Slot!.Value, dur5);
+                    BackdateBooking(todayConfirmed2, target2 - todayConfirmed2.ScheduledAt, confirmed: true, started: false, completed: false, cancelled: false);
                     devBookings.Add(todayConfirmed2);
                 }
 
                 var dur6 = devServices[shortIdx2].DurationMinutes;
                 var pendingSlot = ReserveDevSlot(todayLocal, devStylists[0 % devStylists.Count].Id, nextSlot, dur6);
-                var todayPending = pendingSlot is null ? null : MakeDevBooking(0, shortIdx2, RealisticSlotUtc(todayLocal, pendingSlot.Value, dur6));
-                if (todayPending is not null) devBookings.Add(todayPending);
+                var todayPending = pendingSlot is null ? null : MakeDevBooking(0, shortIdx2, placeholderFuture);
+                if (todayPending is not null)
+                {
+                    var targetP = RealisticSlotUtc(todayLocal, pendingSlot!.Value, dur6);
+                    BackdateBooking(todayPending, targetP - todayPending.ScheduledAt, confirmed: false, started: false, completed: false, cancelled: false);
+                    devBookings.Add(todayPending);
+                }
 
                 // 3) Kapora ödenmiş Pending (+5 gün) — owner "ödenmiş, onay bekliyor" akışını
                 // burada da görsün. Bunun için salonun kapora ayarı önce açılıyor. AutoConfirm

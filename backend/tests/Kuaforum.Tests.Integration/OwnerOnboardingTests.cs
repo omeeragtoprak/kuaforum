@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Kuaforum.Domain.Modules.Barber;
+using Kuaforum.Domain.Modules.Billing;
 using Kuaforum.Domain.Modules.Identity;
 using Kuaforum.Domain.Modules.Identity.ValueObjects;
 using Kuaforum.Infrastructure.Persistence;
@@ -251,6 +252,10 @@ public sealed class OwnerOnboardingTests(IntegrationTestFactory factory)
         using var scope = factory.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
         Assert.Equal(1, await db.Set<BarberShop>().CountAsync(s => s.OwnerId == login.UserId));
+
+        // G5: kazanan istekte de kaybeden istekte de owner'ın oto-eklenen stylist'i yarıştan
+        // etkilenmemeli — tam olarak 1 stylist (kaybedenin SaveChanges'i hiç commit olmadığı için).
+        Assert.Equal(1, await db.Set<Stylist>().CountAsync(s => s.UserId == login.UserId));
     }
 
     /// <summary>
@@ -276,6 +281,173 @@ public sealed class OwnerOnboardingTests(IntegrationTestFactory factory)
         var pg = Assert.IsType<PostgresException>(ex.InnerException);
         Assert.Equal(PostgresErrorCodes.UniqueViolation, pg.SqlState); // 23505
         Assert.Equal("ux_barber_shops_owner", pg.ConstraintName);
+    }
+
+    // ---------------------------------------------------------------
+    // GAPS.md G5 — owner tek-çalışan senaryosunda otomatik Stylist + WorkingHours
+    // ---------------------------------------------------------------
+
+    public sealed record SearchItemDto(Guid Id, string Name, int StylistCount, bool HasWalkInAvailable);
+    public sealed record SearchRespDto(IReadOnlyList<SearchItemDto> Items, int Page, int PageSize, int TotalCount);
+
+    /// <summary>
+    /// G5 çekirdek doğrulama: shop oluşurken owner AYNI SaveChanges içinde aktif ilk Stylist
+    /// olarak eklenir (adı DevLogin "Customer" persona'sının DisplayName'i, "Demo Müşteri")
+    /// VE bu stylist için 7 günlük WorkingHours satırı da (Pzt-Cmt 09:00-19:00, Pazar kapalı)
+    /// aynı transaction'da oluşur. Yalnız Stylist eklemek yetmezdi — WorkingHours olmadan
+    /// ComputeAvailabilityQuery hiç slot üretmez, salon yine "randevu alınamaz" kalırdı.
+    /// </summary>
+    [Fact]
+    public async Task CreateShop_AutoAddsOwnerAsActiveStylist_WithDefaultWorkingHours()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("Customer");
+        client.SetBearer(login.AccessToken);
+
+        var create = await PostCreateShopAsync(client, "Oto Stilist Salonu");
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var shopId = (await create.Content.ReadFromJsonAsync<CreatedResp>(TestHelpers.Json))!.Id;
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var stylists = await db.Set<Stylist>().AsNoTracking().Where(s => s.BarberShopId == shopId).ToListAsync();
+        var stylist = Assert.Single(stylists);
+        Assert.True(stylist.IsActive);
+        Assert.Equal(login.UserId, stylist.UserId);
+        Assert.Equal("Demo Müşteri", stylist.DisplayName); // DevLoginCommand'in Customer persona DisplayName'i
+
+        var workingHours = await db.Set<WorkingHours>().AsNoTracking()
+            .Where(w => w.StylistId == stylist.Id).ToListAsync();
+        Assert.Equal(7, workingHours.Count);
+        Assert.All(workingHours.Where(w => w.DayOfWeek != DayOfWeek.Sunday), w =>
+        {
+            Assert.False(w.IsClosed);
+            Assert.Equal(new TimeOnly(9, 0), w.OpenTime);
+            Assert.Equal(new TimeOnly(19, 0), w.CloseTime);
+        });
+        Assert.True(workingHours.Single(w => w.DayOfWeek == DayOfWeek.Sunday).IsClosed);
+    }
+
+    /// <summary>
+    /// DevLogin OTP kayıtlarının tamamı DisplayName ile geliyor ama gerçek OTP-only kayıtta
+    /// (RFC-005) müşteri hiç isim girmeden Customer olarak var olabilir — DisplayName null
+    /// kalabilir. Bu durumda handler shop adını fallback olarak kullanır (owner adı yerine
+    /// hiçbir ad göstermemek/Stylist.Create'i başarısız bırakmaktan iyi).
+    /// </summary>
+    [Fact]
+    public async Task CreateShop_OwnerWithoutDisplayName_FallsBackToShopNameForStylist()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("Customer");
+        client.SetBearer(login.AccessToken);
+
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE users SET display_name = NULL WHERE id = {login.UserId}");
+        }
+
+        var create = await PostCreateShopAsync(client, "İsimsiz Owner Salonu");
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var shopId = (await create.Content.ReadFromJsonAsync<CreatedResp>(TestHelpers.Json))!.Id;
+
+        using var verifyScope = factory.Services.CreateScope();
+        var verifyDb = verifyScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var stylist = await verifyDb.Set<Stylist>().AsNoTracking().SingleAsync(s => s.BarberShopId == shopId);
+        Assert.Equal("İsimsiz Owner Salonu", stylist.DisplayName);
+    }
+
+    /// <summary>
+    /// Atomiklik kanıtı: farklı iki owner AYNI ismi kullanınca ikincisi ux_barber_shops_slug'a
+    /// çarpar (DbUpdateException, SaveChanges'te). O ana kadar context'e eklenmiş olan
+    /// BarberShop + ShopSubscription + Stylist + WorkingHours hiçbiri commit edilmemeli —
+    /// tek SaveChangesAsync çağrısının hepsini kapsadığının kanıtı.
+    /// </summary>
+    [Fact]
+    public async Task Failed_shop_creation_due_to_slug_conflict_leaves_no_orphan_stylist()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var clientA = factory.CreateClient();
+        using var clientB = factory.CreateClient();
+        var loginA = await clientA.DevLoginAsync("Customer");
+        clientA.SetBearer(loginA.AccessToken);
+        var loginB = await clientB.DevLoginAsync("CustomerFresh");
+        clientB.SetBearer(loginB.AccessToken);
+
+        var respA = await PostCreateShopAsync(clientA, "Çakışan İsim Salonu");
+        Assert.Equal(HttpStatusCode.Created, respA.StatusCode);
+
+        var respB = await PostCreateShopAsync(clientB, "Çakışan İsim Salonu");
+        Assert.Equal(HttpStatusCode.Conflict, respB.StatusCode);
+
+        using var scope = factory.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        Assert.Equal(0, await db.Set<BarberShop>().CountAsync(s => s.OwnerId == loginB.UserId));
+        Assert.Equal(0, await db.Set<Stylist>().CountAsync(s => s.UserId == loginB.UserId));
+
+        // Kazanan tarafta yalnızca kendi tek shop/subscription/stylist'i var — kaybedenden
+        // hiçbir satır sızmamış (toplamlar tam olarak "1 başarılı istek" kadar).
+        Assert.Equal(1, await db.Set<BarberShop>().CountAsync());
+        Assert.Equal(1, await db.Set<ShopSubscription>().CountAsync());
+        var shopA = await db.Set<BarberShop>().AsNoTracking().SingleAsync(s => s.OwnerId == loginA.UserId);
+        Assert.Equal(1, await db.Set<Stylist>().CountAsync(s => s.BarberShopId == shopA.Id));
+    }
+
+    /// <summary>
+    /// G5'in "nihai hedef"i: KYC onayından geçip Active olan yeni bir salon, hiçbir manuel
+    /// "+ Yeni çalışan" adımı olmadan arama sonuçlarında StylistCount≥1 ve (walk-in açılırsa)
+    /// HasWalkInAvailable=true görünür. KYC belge akışını burada tekrarlamıyoruz (KycFlowTests
+    /// zaten kapsıyor) — Draft→PendingKyc→Active geçişini doğrudan domain metoduyla yapıyoruz,
+    /// bu testin odağı KYC değil "oto-stylist + search görünürlüğü" ilişkisi.
+    /// </summary>
+    [Fact]
+    public async Task Newly_created_shop_is_bookable_in_search_after_activation()
+    {
+        await factory.ResetDatabaseAsync();
+
+        using var client = factory.CreateClient();
+        var login = await client.DevLoginAsync("Customer");
+        client.SetBearer(login.AccessToken);
+
+        var create = await PostCreateShopAsync(client, "Aranabilir Yeni Salon");
+        Assert.Equal(HttpStatusCode.Created, create.StatusCode);
+        var shopId = (await create.Content.ReadFromJsonAsync<CreatedResp>(TestHelpers.Json))!.Id;
+
+        Guid stylistId;
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var shop = await db.Set<BarberShop>().SingleAsync(s => s.Id == shopId);
+            Assert.True(shop.MarkPendingKyc().IsSuccess);
+            Assert.True(shop.ApproveKyc("test-sub-merchant-key").IsSuccess);
+            await db.SaveChangesAsync(default);
+
+            stylistId = await db.Set<Stylist>().AsNoTracking()
+                .Where(s => s.BarberShopId == shopId).Select(s => s.Id).SingleAsync();
+        }
+
+        var searchResp = await client.GetJson<SearchRespDto>("/v1/barber-shops/search?pageSize=50");
+        var item = Assert.Single(searchResp.Items, i => i.Id == shopId);
+        Assert.True(item.StylistCount >= 1, "Yeni aktive edilen salon en az 1 aktif stylist ile görünmeli.");
+
+        // Walk-in açıldığında da görünür olmalı — G5'in tam kapsadığı davranış.
+        using (var scope = factory.Services.CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+            var stylist = await db.Set<Stylist>().SingleAsync(s => s.Id == stylistId);
+            Assert.True(stylist.ToggleWalkIn(true).IsSuccess);
+            await db.SaveChangesAsync(default);
+        }
+
+        var walkInResp = await client.GetJson<SearchRespDto>("/v1/barber-shops/search?walkInOnly=true&pageSize=50");
+        Assert.Contains(walkInResp.Items, i => i.Id == shopId && i.HasWalkInAvailable);
     }
 
     // ---------------------------------------------------------------

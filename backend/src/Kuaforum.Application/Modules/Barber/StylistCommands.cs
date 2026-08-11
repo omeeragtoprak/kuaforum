@@ -51,12 +51,37 @@ internal static class StylistLimitPolicy
     }
 }
 
+/// <summary>
+/// G5: Pazartesi-Cumartesi 09:00-19:00, Pazar kapalı — yeni bir stylist'in gördüğü ilk çalışma
+/// saati varsayılanı. Owner elle "+ Yeni çalışan" eklerken (AddStylistCommandHandler) VE
+/// CreateBarberShopCommandHandler salonun oto-eklenen ilk stylist'i (owner'ın kendisi) için
+/// AYNI varsayılanı kullanır — yalnız Stylist satırı eklemek yetmez, WorkingHours olmadan
+/// GetAvailableSlots hiç slot üretmez ve salon "randevu alınabilir" görünmez (bkz. GAPS.md G5).
+/// Tek kaynak burada; iki handler da bunu çağırır.
+/// </summary>
+internal static class DefaultWorkingHoursFactory
+{
+    public static readonly TimeOnly OpenTime = new(9, 0);
+    public static readonly TimeOnly CloseTime = new(19, 0);
+
+    public static IEnumerable<WorkingHours> CreateWeekFor(Guid stylistId)
+    {
+        foreach (var dow in new[]
+        {
+            DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
+            DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
+        })
+        {
+            var isClosed = dow == DayOfWeek.Sunday;
+            var result = WorkingHours.Create(stylistId, dow, OpenTime, CloseTime, isClosed);
+            if (result.IsSuccess) yield return result.Value;
+        }
+    }
+}
+
 public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLogger audit, IEntitlementService entitlements)
     : IRequestHandler<AddStylistCommand, Result<Guid>>
 {
-    private static readonly TimeOnly DefaultOpen = new(9, 0);
-    private static readonly TimeOnly DefaultClose = new(19, 0);
-
     public async Task<Result<Guid>> Handle(AddStylistCommand request, CancellationToken cancellationToken)
     {
         var ctx = (DbContext)db;
@@ -75,16 +100,8 @@ public sealed class AddStylistCommandHandler(IApplicationDbContext db, IAuditLog
         var stylist = createResult.Value;
         ctx.Set<Stylist>().Add(stylist);
 
-        foreach (var dow in new[]
-        {
-            DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday,
-            DayOfWeek.Friday, DayOfWeek.Saturday, DayOfWeek.Sunday,
-        })
-        {
-            var isClosed = dow == DayOfWeek.Sunday;
-            var whResult = WorkingHours.Create(stylist.Id, dow, DefaultOpen, DefaultClose, isClosed);
-            if (whResult.IsSuccess) ctx.Set<WorkingHours>().Add(whResult.Value);
-        }
+        foreach (var wh in DefaultWorkingHoursFactory.CreateWeekFor(stylist.Id))
+            ctx.Set<WorkingHours>().Add(wh);
 
         await audit.RecordAsync("barber.stylist.added", nameof(Stylist), stylist.Id.ToString(),
             actorUserId: request.OwnerId, payload: new { request.DisplayName }, ct: cancellationToken);
