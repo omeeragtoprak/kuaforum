@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Billing;
 using Kuaforum.Domain.Modules.Billing;
@@ -23,7 +24,7 @@ public static class BillingEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new GetOwnerSubscriptionInvoicesQuery(ctx.UserId.Value), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetOwnerSubscriptionInvoices");
 
         ownerGroup.MapGet("/statements/{id:guid}", async (Guid id, IMediator m, IRequestContext ctx, CancellationToken ct) =>
@@ -32,7 +33,7 @@ public static class BillingEndpoints
             var r = await m.Send(new GetOwnerSubscriptionInvoiceDetailQuery(ctx.UserId.Value, id), ct);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : r.Error.Code == "forbidden" ? 403 : 400);
+                : r.ToProblem();
         }).WithName("GetOwnerSubscriptionInvoiceDetail");
 
         ownerGroup.MapPost("/statements/{id:guid}/dispute", async (
@@ -42,7 +43,7 @@ public static class BillingEndpoints
             var r = await m.Send(new DisputeSubscriptionInvoiceCommand(ctx.UserId.Value, id, body.Note), ct);
             return r.IsSuccess
                 ? Results.NoContent()
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : r.Error.Code == "forbidden" ? 403 : 400);
+                : r.ToProblem();
         }).WithName("DisputeSubscriptionInvoice");
 
         ownerGroup.MapPost("/statements/{id:guid}/pay/initiate", async (
@@ -53,13 +54,7 @@ public static class BillingEndpoints
             var r = await m.Send(new InitiateSubscriptionInvoicePaymentCommand(ctx.UserId.Value, id, idempKey), ct);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch
-                {
-                    "conflict" => 409,
-                    "not_found" => 404,
-                    "forbidden" => 403,
-                    _ => 400,
-                });
+                : r.ToProblem();
         }).WithName("InitiateSubscriptionInvoicePayment");
 
         // Mock-only completion endpoint for dev — PaymentEndpoints.MockCompleteAsync presedenti.
@@ -72,7 +67,7 @@ public static class BillingEndpoints
                 var r = await m.Send(new CompleteSubscriptionInvoicePaymentCommand(token, PaymentProviderName.Mock), ct);
                 return r.IsSuccess
                     ? Results.Ok(new { subscriptionInvoicePaymentId = r.Value, message = "Mock subscription invoice payment captured." })
-                    : Results.Problem(r.Error.Message, statusCode: 400);
+                    : r.ToProblem();
             }).WithName("MockCompleteSubscriptionInvoicePayment").AllowAnonymous();
         }
 
@@ -81,7 +76,7 @@ public static class BillingEndpoints
         adminGroup.MapGet("/settings", async (IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetPlatformSettingsQuery(), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetPlatformSettings");
 
         adminGroup.MapPut("/settings", async (
@@ -92,7 +87,7 @@ public static class BillingEndpoints
                 ctx.UserId.Value, body.CommissionPaymentIban,
                 body.CommissionPaymentBankName, body.CommissionPaymentAccountHolderName,
                 body.DepositPercentMin, body.DepositPercentMax), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("UpdatePlatformSettings");
 
         adminGroup.MapGet("/statements", async (
@@ -102,7 +97,7 @@ public static class BillingEndpoints
             IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetAdminSubscriptionInvoicesQueueQuery(status, disputedOnly, periodStart, page ?? 1, pageSize ?? 25), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetAdminSubscriptionInvoicesQueue");
 
         adminGroup.MapPost("/statements/{id:guid}/mark-paid", async (
@@ -110,7 +105,7 @@ public static class BillingEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new MarkSubscriptionInvoicePaidCommand(ctx.UserId.Value, id, body.Reason), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("MarkSubscriptionInvoicePaid");
 
         adminGroup.MapPost("/statements/{id:guid}/adjust", async (
@@ -118,7 +113,7 @@ public static class BillingEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new AdjustSubscriptionInvoiceAmountCommand(ctx.UserId.Value, id, body.NewAmountMinor, body.Reason), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("AdjustSubscriptionInvoiceAmount");
 
         adminGroup.MapPost("/statements/{id:guid}/extend-due", async (
@@ -126,7 +121,7 @@ public static class BillingEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new ExtendSubscriptionInvoiceDueDateCommand(ctx.UserId.Value, id, body.NewDueDate, body.Reason), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("ExtendSubscriptionInvoiceDueDate");
 
         return app;

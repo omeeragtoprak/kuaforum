@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Modules.Geography;
 using MediatR;
 
@@ -12,19 +13,19 @@ public static class GeographyEndpoints
         group.MapGet("/cities", async (IMediator m, CancellationToken ct) =>
         {
             var result = await m.Send(new GetCitiesQuery(), ct);
-            return result.IsSuccess ? Results.Ok(result.Value) : Results.Problem(result.Error.Message);
+            return result.IsSuccess ? Results.Ok(result.Value) : result.ToProblem();
         }).WithName("GetCities");
 
         group.MapGet("/cities/{cityId:guid}/districts", async (Guid cityId, IMediator m, CancellationToken ct) =>
         {
             var result = await m.Send(new GetDistrictsByCityQuery(cityId), ct);
-            return result.IsSuccess ? Results.Ok(result.Value) : Results.Problem(result.Error.Message);
+            return result.IsSuccess ? Results.Ok(result.Value) : result.ToProblem();
         }).WithName("GetDistricts");
 
         group.MapGet("/districts/{districtId:guid}/neighborhoods", async (Guid districtId, IMediator m, CancellationToken ct) =>
         {
             var result = await m.Send(new GetNeighborhoodsByDistrictQuery(districtId), ct);
-            return result.IsSuccess ? Results.Ok(result.Value) : Results.Problem(result.Error.Message);
+            return result.IsSuccess ? Results.Ok(result.Value) : result.ToProblem();
         }).WithName("GetNeighborhoods");
 
         return app;

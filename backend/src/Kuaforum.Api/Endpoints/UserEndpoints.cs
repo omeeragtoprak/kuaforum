@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Identity.Auth;
 using Kuaforum.Application.Modules.Identity.Consents;
@@ -44,7 +45,7 @@ public static class UserEndpoints
         var result = await m.Send(new InitiatePhoneChangeCommand(ctx.UserId.Value, body.NewPhone), token);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> ConfirmPhoneChange(
@@ -56,8 +57,7 @@ public static class UserEndpoints
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new ConfirmPhoneChangeCommand(ctx.UserId.Value, body.OtpId, body.Code), token);
         return result.IsSuccess
-            ? Results.NoContent()
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            ? Results.NoContent() : result.ToProblem();
     }
 
     private static async Task<IResult> GetMyProfile(IMediator m, IRequestContext ctx, CancellationToken ct)
@@ -66,7 +66,7 @@ public static class UserEndpoints
         var result = await m.Send(new GetMyProfileQuery(ctx.UserId.Value), ct);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 404, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> UpdateMyProfile(
@@ -78,8 +78,7 @@ public static class UserEndpoints
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new UpdateMyProfileCommand(ctx.UserId.Value, body.DisplayName, body.AvatarUrl), token);
         return result.IsSuccess
-            ? Results.NoContent()
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            ? Results.NoContent() : result.ToProblem();
     }
 
     private static async Task<IResult> DeleteMyAccount(IMediator m, IRequestContext ctx, CancellationToken ct)
@@ -88,7 +87,7 @@ public static class UserEndpoints
         var result = await m.Send(new DeleteMyAccountCommand(ctx.UserId.Value), ct);
         return result.IsSuccess
             ? Results.Ok(new { message = "Account scheduled for deletion. You have 30 days to restore." })
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> RestoreMyAccount(IMediator m, IRequestContext ctx, CancellationToken token)
@@ -96,8 +95,7 @@ public static class UserEndpoints
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new RestoreMyAccountCommand(ctx.UserId.Value), token);
         return result.IsSuccess
-            ? Results.NoContent()
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            ? Results.NoContent() : result.ToProblem();
     }
 
     private static async Task<IResult> ExportMyData(IMediator m, IRequestContext ctx, CancellationToken token)
@@ -106,14 +104,14 @@ public static class UserEndpoints
         var result = await m.Send(new ExportMyDataQuery(ctx.UserId.Value), token);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 404, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> GetMySessions(IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new GetMySessionsQuery(ctx.UserId.Value), token);
-        return result.IsSuccess ? Results.Ok(result.Value) : Results.Problem(result.Error.Message);
+        return result.IsSuccess ? Results.Ok(result.Value) : result.ToProblem();
     }
 
     private static async Task<IResult> RevokeSession(
@@ -125,15 +123,14 @@ public static class UserEndpoints
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new RevokeSessionCommand(ctx.UserId.Value, id), token);
         return result.IsSuccess
-            ? Results.NoContent()
-            : Results.Problem(detail: result.Error.Message, statusCode: 404, title: result.Error.Code);
+            ? Results.NoContent() : result.ToProblem();
     }
 
     private static async Task<IResult> GetMyConsents(IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new GetMyConsentsQuery(ctx.UserId.Value), token);
-        return result.IsSuccess ? Results.Ok(result.Value) : Results.Problem(result.Error.Message);
+        return result.IsSuccess ? Results.Ok(result.Value) : result.ToProblem();
     }
 
     private static async Task<IResult> UpdateConsent(
@@ -145,8 +142,7 @@ public static class UserEndpoints
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new UpdateConsentCommand(ctx.UserId.Value, body.Purpose, body.Grant, body.Version), token);
         return result.IsSuccess
-            ? Results.NoContent()
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            ? Results.NoContent() : result.ToProblem();
     }
 
     private static async Task<IResult> GrantInitialConsents(
@@ -158,8 +154,7 @@ public static class UserEndpoints
         if (ctx.UserId is null) return Results.Unauthorized();
         var result = await m.Send(new GrantInitialConsentsCommand(ctx.UserId.Value, body.AcceptTos, body.AcceptMarketing), token);
         return result.IsSuccess
-            ? Results.NoContent()
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            ? Results.NoContent() : result.ToProblem();
     }
 
     public sealed record UpdateMyProfileRequest(string? DisplayName, string? AvatarUrl);

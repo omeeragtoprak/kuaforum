@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Admin;
 using Kuaforum.Application.Modules.Barber;
@@ -18,7 +19,7 @@ public static class AdminEndpoints
         group.MapGet("/dashboard", async (IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetDashboardStatsQuery(), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("AdminDashboard");
 
         group.MapGet("/kyc/queue", async (
@@ -26,7 +27,7 @@ public static class AdminEndpoints
             IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetKycQueueQuery(status, page ?? 1, pageSize ?? 20), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("AdminKycQueue");
 
         group.MapGet("/kyc/{submissionId:guid}/documents", async (
@@ -36,7 +37,7 @@ public static class AdminEndpoints
             var r = await m.Send(new GetKycDocumentsQuery(ctx.UserId.Value, submissionId), ct);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : 400);
+                : r.ToProblem();
         }).WithName("AdminKycDocuments");
 
         group.MapGet("/kyc/documents/{documentId:guid}/content", async (
@@ -45,7 +46,7 @@ public static class AdminEndpoints
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new GetKycDocumentContentQuery(ctx.UserId.Value, documentId), ct);
             if (r.IsFailure)
-                return Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : 400);
+                return r.ToProblem();
 
             try
             {
@@ -65,7 +66,7 @@ public static class AdminEndpoints
             if (ctx.UserId is null) return Results.Unauthorized();
             var cmd = new ReviewKycCommand(ctx.UserId.Value, submissionId, body.Approve, body.RejectionReason, body.SubMerchantKey);
             var r = await m.Send(cmd, ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("AdminReviewKyc");
 
         group.MapGet("/users", async (
@@ -74,7 +75,7 @@ public static class AdminEndpoints
             IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetUsersQuery(search, role, status, page ?? 1, pageSize ?? 20), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("AdminListUsers");
 
         group.MapPost("/users/{userId:guid}/suspend", async (
@@ -83,7 +84,7 @@ public static class AdminEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new SuspendUserCommand(ctx.UserId.Value, userId, body.Reason), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("AdminSuspendUser");
 
         group.MapPost("/users/{userId:guid}/unsuspend", async (
@@ -91,7 +92,7 @@ public static class AdminEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new UnsuspendUserCommand(ctx.UserId.Value, userId), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("AdminUnsuspendUser");
 
         group.MapGet("/bookings", async (
@@ -103,7 +104,7 @@ public static class AdminEndpoints
         {
             var r = await m.Send(new GetAdminBookingsQuery(
                 from, to, status, barberShopId, search, page ?? 1, pageSize ?? 25), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("AdminListBookings");
 
         group.MapGet("/barber-shops", async (
@@ -112,7 +113,7 @@ public static class AdminEndpoints
             IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetAdminBarberShopsQuery(search, status, page ?? 1, pageSize ?? 25), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("AdminListBarberShops");
 
         group.MapPost("/barber-shops/{id:guid}/suspend", async (
@@ -121,7 +122,7 @@ public static class AdminEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new SuspendBarberShopCommand(ctx.UserId.Value, id, body.Reason), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("AdminSuspendBarberShop");
 
         group.MapPost("/barber-shops/{id:guid}/reactivate", async (
@@ -129,7 +130,7 @@ public static class AdminEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new ReactivateBarberShopCommand(ctx.UserId.Value, id), ct);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("AdminReactivateBarberShop");
 
         group.MapPost("/bookings/{id:guid}/cancel", async (
@@ -140,7 +141,7 @@ public static class AdminEndpoints
             var r = await m.Send(new AdminCancelBookingCommand(ctx.UserId.Value, id, body.Reason), ct);
             return r.IsSuccess
                 ? Results.Ok(new { refundPercentage = r.Value })
-                : Results.Problem(r.Error.Message, statusCode: 400);
+                : r.ToProblem();
         }).WithName("AdminCancelBooking");
 
         // RFC-015 §2 D3 madde 3: müşteri şikayet kuyruğu — KYC kuyruğuyla aynı sayfalama kalıbı.
@@ -149,7 +150,7 @@ public static class AdminEndpoints
             IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetAdminBookingComplaintsQuery(status, page ?? 1, pageSize ?? 20), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("AdminBookingComplaintQueue");
 
         group.MapGet("/audit-logs", async (
@@ -166,7 +167,7 @@ public static class AdminEndpoints
             var r = await m.Send(new GetAuditLogsQuery(
                 actorUserId, actionType, resourceType, resourceId,
                 fromUtc, toUtc, page ?? 1, pageSize ?? 50), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("AdminAuditLogs");
 
         return app;

@@ -239,7 +239,11 @@ public sealed class AvailabilityEnforcementTests(IntegrationTestFactory factory)
             reason = "İptal etmeden önce blokla",
         });
 
-        Assert.Equal(HttpStatusCode.BadRequest, addOff.StatusCode);
+        // 409, 400 DEĞİL: gönderilen izin aralığı geçerli — çakışan bir aktif randevu
+        // olduğu için reddediliyor, yani sorun isteğin BİÇİMİNDE değil kaynağın
+        // DURUMUNDA. Bu test eskiden 400 bekliyordu; sebep uçların Error.Conflict'i
+        // 400'e düşüren ad-hoc eşlemesiydi (bkz. Api/Common/ResultHttp.cs).
+        Assert.Equal(HttpStatusCode.Conflict, addOff.StatusCode);
         var body = await addOff.Content.ReadAsStringAsync();
         Assert.Contains("aktif randevu", body);
     }

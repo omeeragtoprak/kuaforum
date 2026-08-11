@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Payment;
 using Kuaforum.Domain.Modules.Payment;
@@ -47,7 +48,7 @@ public static class PaymentEndpoints
         var r = await m.Send(new InitiatePaymentCommand(ctx.UserId.Value, body.BookingId, body.Kind, idempKey), token);
         return r.IsSuccess
             ? Results.Ok(r.Value)
-            : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "conflict" ? 409 : 400);
+            : r.ToProblem();
     }
 
     private static async Task<IResult> RefundAsync(
@@ -60,7 +61,7 @@ public static class PaymentEndpoints
         var r = await m.Send(new RefundPaymentCommand(ctx.UserId.Value, body.PaymentId), token);
         return r.IsSuccess
             ? Results.Ok(new { refundId = r.Value })
-            : Results.Problem(r.Error.Message, statusCode: 400);
+            : r.ToProblem();
     }
 
     private static async Task<IResult> MockCompleteAsync(
@@ -71,7 +72,7 @@ public static class PaymentEndpoints
         var r = await m.Send(new CompletePaymentCommand(token, PaymentProviderName.Mock), ct);
         return r.IsSuccess
             ? Results.Ok(new { paymentId = r.Value, message = "Mock payment captured. Booking confirmed." })
-            : Results.Problem(r.Error.Message, statusCode: 400);
+            : r.ToProblem();
     }
 
     // Kind body'de gönderilmezse FullOnline — eski istekler davranış değiştirmeden çalışır (RFC-006).

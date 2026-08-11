@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Booking;
 using Kuaforum.Domain.Modules.Booking;
@@ -41,12 +42,7 @@ public static class BookingEndpoints
         var r = await m.Send(new FileBookingComplaintCommand(ctx.UserId.Value, id, body?.Note), token);
         return r.IsSuccess
             ? Results.Ok(new { complaintId = r.Value })
-            : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch
-            {
-                "not_found" => 404,
-                "forbidden" => 403,
-                _ => 400,
-            });
+            : r.ToProblem();
     }
 
     private static async Task<IResult> RescheduleAsync(
@@ -60,7 +56,7 @@ public static class BookingEndpoints
         var r = await m.Send(new RescheduleBookingCommand(ctx.UserId.Value, id, body.NewScheduledAt), token);
         return r.IsSuccess
             ? Results.Ok(r.Value)
-            : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "conflict" ? 409 : 400);
+            : r.ToProblem();
     }
 
     private static async Task<IResult> InitiateAsync(
@@ -74,7 +70,7 @@ public static class BookingEndpoints
             ctx.UserId.Value, body.StylistId, body.ScheduledAt, body.ServiceCatalogIds, body.IsWalkIn, body.CustomerNote), token);
         return r.IsSuccess
             ? Results.Created($"/v1/bookings/{r.Value.BookingId}", r.Value)
-            : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "conflict" ? 409 : 400);
+            : r.ToProblem();
     }
 
     /// <summary>
@@ -92,7 +88,7 @@ public static class BookingEndpoints
         var r = await m.Send(new CheckBookingConflictQuery(ctx.UserId.Value, body.BarberShopId, body.ScheduledAt, body.ScheduledEndsAt), token);
         return r.IsSuccess
             ? Results.Ok(new CheckBookingConflictResponse(r.Value))
-            : Results.Problem(r.Error.Message, statusCode: 400);
+            : r.ToProblem();
     }
 
     private static async Task<IResult> GetMyBookingsAsync(
@@ -103,7 +99,7 @@ public static class BookingEndpoints
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new GetMyBookingsQuery(ctx.UserId.Value, status), token);
-        return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+        return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
     }
 
     private static async Task<IResult> GetByIdAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
@@ -123,35 +119,35 @@ public static class BookingEndpoints
         var r = await m.Send(new CancelBookingCommand(ctx.UserId.Value, id), token);
         return r.IsSuccess
             ? Results.Ok(new { refundPercentage = r.Value })
-            : Results.Problem(r.Error.Message, statusCode: 400);
+            : r.ToProblem();
     }
 
     private static async Task<IResult> OwnerConfirmAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new OwnerConfirmBookingCommand(ctx.UserId.Value, id), token);
-        return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        return r.IsSuccess ? Results.NoContent() : r.ToProblem();
     }
 
     private static async Task<IResult> StartAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new StartBookingCommand(ctx.UserId.Value, id), token);
-        return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        return r.IsSuccess ? Results.NoContent() : r.ToProblem();
     }
 
     private static async Task<IResult> CompleteAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new CompleteBookingCommand(ctx.UserId.Value, id), token);
-        return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        return r.IsSuccess ? Results.NoContent() : r.ToProblem();
     }
 
     private static async Task<IResult> NoShowAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new MarkNoShowCommand(ctx.UserId.Value, id), token);
-        return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        return r.IsSuccess ? Results.NoContent() : r.ToProblem();
     }
 
     public sealed record InitiateBookingRequest(

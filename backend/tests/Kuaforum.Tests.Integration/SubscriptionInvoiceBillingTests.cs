@@ -510,7 +510,11 @@ public sealed class SubscriptionInvoiceBillingTests(IntegrationTestFactory facto
 
         // Eski (stale) snapshot'la gelen tamamlama çağrısı reddedilmeli.
         var completeResp = await f.OwnerClient.GetAsync($"/v1/owner/billing/subscription-invoice-payments/mock/complete?token={initiated.ProviderToken}");
-        Assert.Equal(HttpStatusCode.BadRequest, completeResp.StatusCode);
+        // 409, 400 DEĞİL: token geçerli, istek doğru — reddin sebebi faturanın ödeme
+        // başlatıldıktan SONRA değişmiş olması (stale snapshot). Kaynak zaten
+        // Error.Conflict üretiyordu (SubscriptionInvoicePaymentCommands.cs:175); eski
+        // ad-hoc uç eşlemesi bunu 400'e düşürüyordu. Bkz. Api/Common/ResultHttp.cs.
+        Assert.Equal(HttpStatusCode.Conflict, completeResp.StatusCode);
 
         var invoice = (await f.OwnerClient.GetJson<OwnerInvoicesPage>("/v1/owner/billing/statements"))
             .Items.Single(s => s.Id == invoiceId);

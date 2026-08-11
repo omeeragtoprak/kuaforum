@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Barber;
 using Kuaforum.Application.Modules.Booking;
@@ -36,7 +37,7 @@ public static class BarberEndpoints
                 MaxPriceMinor: maxPriceMinor,
                 Page: page is null or <= 0 ? 1 : page.Value,
                 PageSize: pageSize is null or <= 0 ? 20 : Math.Min(pageSize.Value, 50)), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).AllowAnonymous().WithName("SearchBarbers");
 
         owned.MapGet("/{id:guid}", async (Guid id, IMediator m, CancellationToken ct) =>
@@ -85,7 +86,7 @@ public static class BarberEndpoints
                 CityId: cityId,
                 Page: page is null or <= 0 ? 1 : page.Value,
                 PageSize: pageSize is null or <= 0 ? 20 : Math.Min(pageSize.Value, 50)), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetPublicBarberShops");
 
         // Owner-protected (GAP P1-4): rol policy'si grup seviyesinde — Customer token'ı 403 alır.
@@ -102,21 +103,21 @@ public static class BarberEndpoints
             var r = await m.Send(new CreateBarberShopCommand(ctx.UserId.Value, body.Name, body.GenderType, body.Description, body.Phone), token);
             return r.IsSuccess
                 ? Results.Created($"/v1/barber-shops/{r.Value}", new { id = r.Value })
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "conflict" => 409, "forbidden" => 403, _ => 400 });
+                : r.ToProblem();
         }).WithName("CreateBarberShop");
 
         ownerGroup.MapGet("", async (IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new GetMyBarberShopQuery(ctx.UserId.Value), token);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetMyBarberShop");
 
         ownerGroup.MapGet("/stats", async (IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new GetOwnerDashboardStatsQuery(ctx.UserId.Value), token);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetOwnerDashboardStats");
 
         ownerGroup.MapGet("/bookings", async (
@@ -134,14 +135,14 @@ public static class BarberEndpoints
             var fromUtc = from ?? new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
             var toUtc = to ?? fromUtc.AddDays(7);
             var r = await m.Send(new GetOwnerBookingsQuery(ctx.UserId.Value, fromUtc, toUtc, status), token);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetOwnerBookings");
 
         ownerGroup.MapPatch("/{id:guid}", async (Guid id, [FromBody] UpdateBarberShopRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new UpdateBarberShopCommand(ctx.UserId.Value, id, body.Name, body.Description, body.GenderType, body.Phone), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("UpdateBarberShop");
 
         ownerGroup.MapPut("/{id:guid}/address", async (Guid id, [FromBody] SetAddressRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
@@ -150,35 +151,35 @@ public static class BarberEndpoints
             var r = await m.Send(new SetBarberShopAddressCommand(
                 ctx.UserId.Value, id, body.CityId, body.DistrictId, body.NeighborhoodId,
                 body.Line1, body.Line2, body.PostalCode, body.Latitude, body.Longitude), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("SetBarberShopAddress");
 
         ownerGroup.MapPost("/{id:guid}/stylists", async (Guid id, [FromBody] AddStylistRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new AddStylistCommand(ctx.UserId.Value, id, body.DisplayName, body.UserId), token);
-            return r.IsSuccess ? Results.Created($"/v1/stylists/{r.Value}", new { id = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Created($"/v1/stylists/{r.Value}", new { id = r.Value }) : r.ToProblem();
         }).WithName("AddStylist");
 
         ownerGroup.MapPost("/{id:guid}/services", async (Guid id, [FromBody] CreateServiceRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new CreateServiceCommand(ctx.UserId.Value, id, body.Name, body.Gender, body.DurationMinutes, body.PriceMinor, body.BufferMinutes, body.Description), token);
-            return r.IsSuccess ? Results.Created($"/v1/services/{r.Value}", new { id = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Created($"/v1/services/{r.Value}", new { id = r.Value }) : r.ToProblem();
         }).WithName("CreateService");
 
         ownerGroup.MapPut("/{id:guid}/services/{serviceId:guid}", async (Guid id, Guid serviceId, [FromBody] UpdateServiceRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new UpdateServiceCommand(ctx.UserId.Value, id, serviceId, body.Name, body.Description, body.DurationMinutes, body.PriceMinor, body.BufferMinutes), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("UpdateService");
 
         ownerGroup.MapDelete("/{id:guid}/services/{serviceId:guid}", async (Guid id, Guid serviceId, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new DeleteServiceCommand(ctx.UserId.Value, id, serviceId), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("DeleteService");
 
         // RFC-013 C3: owner kendi shop'unun kapora + anti-spam ayarını görür/değiştirir.
@@ -189,7 +190,7 @@ public static class BarberEndpoints
             var r = await m.Send(new GetBookingPolicyQuery(ctx.UserId.Value), token);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "not_found" => 404, "forbidden" => 403, "server_misconfigured" => 500, _ => 400 });
+                : r.ToProblem();
         }).WithName("GetBookingPolicy");
 
         ownerGroup.MapPut("/booking-policy", async (
@@ -202,21 +203,21 @@ public static class BarberEndpoints
                 body.AutoConfirmEnabled), token);
             return r.IsSuccess
                 ? Results.Ok(r.Value)
-                : Results.Problem(r.Error.Message, statusCode: r.Error.Code switch { "not_found" => 404, "forbidden" => 403, "server_misconfigured" => 500, _ => 400 });
+                : r.ToProblem();
         }).WithName("UpdateBookingPolicy");
 
         ownerGroup.MapPost("/{id:guid}/kyc/submit", async (Guid id, [FromBody] SubmitKycRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new SubmitKycCommand(ctx.UserId.Value, id, body.Documents), token);
-            return r.IsSuccess ? Results.Ok(new { submissionId = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Ok(new { submissionId = r.Value }) : r.ToProblem();
         }).WithName("SubmitKyc");
 
         ownerGroup.MapGet("/kyc/status", async (IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new GetMyKycStatusQuery(ctx.UserId.Value), token);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetMyKycStatus");
 
         // Stylist actions (GAP P1-4): "Stylist" policy'si BarberOwner'ı da kapsar (AuthSetup).
@@ -228,20 +229,20 @@ public static class BarberEndpoints
             var r = await m.Send(new UpdateStylistCommand(ctx.UserId.Value, id, body.DisplayName, body.PhotoUrl, body.Bio, body.IsActive), token);
             // RFC-015 §2 D2: yanıt artık (varsa) pasifleştirmeden etkilenen randevu listesini
             // taşıyor — eskiden NoContent'ti, mobil ajana breaking change olarak iletilecek.
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("UpdateStylist");
 
         stylistGroup.MapPost("/{id:guid}/walk-in", async (Guid id, [FromBody] ToggleWalkInRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new ToggleStylistWalkInCommand(ctx.UserId.Value, id, body.Available), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("ToggleWalkIn");
 
         stylistGroup.MapGet("/{id:guid}/working-hours", async (Guid id, IMediator m, CancellationToken token) =>
         {
             var r = await m.Send(new GetWorkingHoursQuery(id), token);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetWorkingHours");
 
         stylistGroup.MapPut("/{id:guid}/working-hours", async (Guid id, [FromBody] WorkingHoursRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
@@ -251,7 +252,7 @@ public static class BarberEndpoints
             // RFC-015 §2 D1: yanıt artık o günün yeni aralığı dışında kalan (varsa bildirilmiş)
             // randevu listesini taşıyor — eskiden NoContent'ti, mobil ajana breaking change
             // olarak iletilecek.
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("SetWorkingHours");
 
         // RFC-015 §2 D1 madde 2: kaydetmeden ÖNCE önizleme — mobil bunu "Bu değişiklik 3
@@ -260,27 +261,27 @@ public static class BarberEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new GetWorkingHoursChangeImpactQuery(ctx.UserId.Value, id, body.DayOfWeek, body.OpenTime, body.CloseTime, body.IsClosed), token);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("PreviewWorkingHoursChange");
 
         stylistGroup.MapGet("/{id:guid}/time-offs", async (Guid id, IMediator m, CancellationToken token) =>
         {
             var r = await m.Send(new GetTimeOffsQuery(id), token);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message, statusCode: 404);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetTimeOffs");
 
         stylistGroup.MapPost("/{id:guid}/time-off", async (Guid id, [FromBody] TimeOffRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new AddTimeOffCommand(ctx.UserId.Value, id, body.StartsAt, body.EndsAt, body.Reason), token);
-            return r.IsSuccess ? Results.Created($"/v1/time-offs/{r.Value}", new { id = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Created($"/v1/time-offs/{r.Value}", new { id = r.Value }) : r.ToProblem();
         }).WithName("AddTimeOff");
 
         stylistGroup.MapDelete("/{id:guid}/time-offs/{timeOffId:guid}", async (Guid id, Guid timeOffId, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new DeleteTimeOffCommand(ctx.UserId.Value, id, timeOffId), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("DeleteTimeOff");
 
         return app;

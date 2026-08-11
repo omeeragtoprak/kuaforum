@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Modules.Availability;
 using MediatR;
 using Microsoft.AspNetCore.Mvc;
@@ -19,7 +20,7 @@ public static class AvailabilityEndpoints
                 body.StylistId, body.FromDate, body.ToDate, body.ServiceCatalogIds), ct);
             return result.IsSuccess
                 ? Results.Ok(result.Value)
-                : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+                : result.ToProblem();
         }).WithName("ComputeAvailability");
 
         return app;

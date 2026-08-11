@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Notification;
 using MediatR;
@@ -27,14 +28,14 @@ public static class NotificationEndpoints
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new GetMyNotificationsQuery(ctx.UserId.Value, take ?? 50), token);
-        return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+        return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
     }
 
     private static async Task<IResult> GetUnreadCountAsync(IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new GetUnreadCountQuery(ctx.UserId.Value), token);
-        return r.IsSuccess ? Results.Ok(new { unreadCount = r.Value }) : Results.Problem(r.Error.Message);
+        return r.IsSuccess ? Results.Ok(new { unreadCount = r.Value }) : r.ToProblem();
     }
 
     private static async Task<IResult> MarkReadAsync(Guid id, IMediator m, IRequestContext ctx, CancellationToken token)
@@ -43,13 +44,13 @@ public static class NotificationEndpoints
         var r = await m.Send(new MarkNotificationReadCommand(ctx.UserId.Value, id), token);
         return r.IsSuccess
             ? Results.NoContent()
-            : Results.Problem(r.Error.Message, statusCode: r.Error.Code == "not_found" ? 404 : 400);
+            : r.ToProblem();
     }
 
     private static async Task<IResult> MarkAllReadAsync(IMediator m, IRequestContext ctx, CancellationToken token)
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new MarkAllNotificationsReadCommand(ctx.UserId.Value), token);
-        return r.IsSuccess ? Results.Ok(new { markedRead = r.Value }) : Results.Problem(r.Error.Message);
+        return r.IsSuccess ? Results.Ok(new { markedRead = r.Value }) : r.ToProblem();
     }
 }

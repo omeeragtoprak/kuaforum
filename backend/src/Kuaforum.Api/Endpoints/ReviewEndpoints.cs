@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Review;
 using Kuaforum.Domain.Modules.Review;
@@ -15,7 +16,7 @@ public static class ReviewEndpoints
                 Guid shopId, [FromQuery] int? page, [FromQuery] int? pageSize, IMediator m, CancellationToken ct) =>
             {
                 var r = await m.Send(new GetReviewsByShopQuery(shopId, page ?? 1, pageSize ?? 20), ct);
-                return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+                return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
             })
             .WithTags("Reviews").AllowAnonymous().WithName("GetShopReviews");
 
@@ -25,14 +26,14 @@ public static class ReviewEndpoints
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new SubmitReviewCommand(ctx.UserId.Value, body.BookingId, body.Rating, body.Body), token);
-            return r.IsSuccess ? Results.Created($"/v1/reviews/{r.Value}", new { id = r.Value }) : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.Created($"/v1/reviews/{r.Value}", new { id = r.Value }) : r.ToProblem();
         }).WithName("SubmitReview");
 
         customer.MapPost("/{id:guid}/reply", async (Guid id, [FromBody] ReplyRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new ReplyToReviewCommand(ctx.UserId.Value, id, body.Body), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("ReplyToReview");
 
         // Admin moderation
@@ -40,21 +41,21 @@ public static class ReviewEndpoints
         admin.MapGet("/pending", async ([FromQuery] int? page, [FromQuery] int? pageSize, IMediator m, CancellationToken ct) =>
         {
             var r = await m.Send(new GetPendingReviewsQuery(page ?? 1, pageSize ?? 20), ct);
-            return r.IsSuccess ? Results.Ok(r.Value) : Results.Problem(r.Error.Message);
+            return r.IsSuccess ? Results.Ok(r.Value) : r.ToProblem();
         }).WithName("GetPendingReviews");
 
         admin.MapPost("/{id:guid}/approve", async (Guid id, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new ApproveReviewCommand(ctx.UserId.Value, id), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("ApproveReview");
 
         admin.MapPost("/{id:guid}/reject", async (Guid id, [FromBody] RejectRequest body, IMediator m, IRequestContext ctx, CancellationToken token) =>
         {
             if (ctx.UserId is null) return Results.Unauthorized();
             var r = await m.Send(new RejectReviewCommand(ctx.UserId.Value, id, body.Reason), token);
-            return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+            return r.IsSuccess ? Results.NoContent() : r.ToProblem();
         }).WithName("RejectReview");
 
         return app;

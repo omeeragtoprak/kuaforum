@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Application.Common.Interfaces;
 using Kuaforum.Application.Modules.Identity.DeviceTokens;
 using Kuaforum.Domain.Modules.Identity;
@@ -29,7 +30,7 @@ public static class DeviceTokenEndpoints
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new RegisterDeviceTokenCommand(
             ctx.UserId.Value, body.FcmToken, body.Platform, body.AppVersion, body.DeviceModel), token);
-        return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        return r.IsSuccess ? Results.NoContent() : r.ToProblem();
     }
 
     private static async Task<IResult> UnregisterAsync(
@@ -40,7 +41,7 @@ public static class DeviceTokenEndpoints
     {
         if (ctx.UserId is null) return Results.Unauthorized();
         var r = await m.Send(new UnregisterDeviceTokenCommand(ctx.UserId.Value, fcmToken), token);
-        return r.IsSuccess ? Results.NoContent() : Results.Problem(r.Error.Message, statusCode: 400);
+        return r.IsSuccess ? Results.NoContent() : r.ToProblem();
     }
 
     public sealed record RegisterDeviceTokenRequest(

@@ -1,3 +1,4 @@
+using Kuaforum.Api.Common;
 using Kuaforum.Api.Configuration;
 using Kuaforum.Application.Modules.Identity.Auth;
 using Kuaforum.Domain.Modules.Identity;
@@ -69,7 +70,7 @@ public static class AuthEndpoints
             new DevLoginCommand(request.Role, deviceFingerprint, request.DeviceName ?? "Dev Quick Login", ip), ct);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> AdminLoginAsync(
@@ -86,7 +87,7 @@ public static class AuthEndpoints
                 deviceFingerprint, request.DeviceName ?? "Web Admin", ip), ct);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 401, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> OAuthLoginAsync(
@@ -102,7 +103,7 @@ public static class AuthEndpoints
             ct);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 401, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> SendOtpAsync(
@@ -113,7 +114,7 @@ public static class AuthEndpoints
         var result = await mediator.Send(new SendOtpCommand(request.Phone, request.Purpose), ct);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> VerifyOtpAsync(
@@ -128,7 +129,7 @@ public static class AuthEndpoints
             ct);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> RefreshAsync(
@@ -141,7 +142,7 @@ public static class AuthEndpoints
         var result = await mediator.Send(new RefreshTokenCommand(request.RefreshToken, request.DeviceFingerprint, ip), ct);
         return result.IsSuccess
             ? Results.Ok(result.Value)
-            : Results.Problem(detail: result.Error.Message, statusCode: 401, title: result.Error.Code);
+            : result.ToProblem();
     }
 
     private static async Task<IResult> LogoutAsync(
@@ -151,8 +152,7 @@ public static class AuthEndpoints
     {
         var result = await mediator.Send(new LogoutCommand(request.RefreshToken), ct);
         return result.IsSuccess
-            ? Results.NoContent()
-            : Results.Problem(detail: result.Error.Message, statusCode: 400, title: result.Error.Code);
+            ? Results.NoContent() : result.ToProblem();
     }
 
     private static async Task<IResult> LogoutAllAsync(
@@ -165,7 +165,7 @@ public static class AuthEndpoints
         if (!Guid.TryParse(userIdClaim, out var userId))
             return Results.Unauthorized();
         var result = await mediator.Send(new LogoutAllCommand(userId), ct);
-        return result.IsSuccess ? Results.NoContent() : Results.Problem(result.Error.Message);
+        return result.IsSuccess ? Results.NoContent() : result.ToProblem();
     }
 
     public sealed record DevLoginRequest(DevLoginRole Role, string? DeviceFingerprint, string? DeviceName);

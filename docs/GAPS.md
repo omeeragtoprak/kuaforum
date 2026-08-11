@@ -305,9 +305,40 @@ Kendi salonunda aynı istek `204`. Yani **yetki kontrolü çalışıyor** — so
 - Mobil istemci 400'ü doğrulama hatası sayıp kullanıcıya yanlış mesaj gösterebilir ("bilgileri kontrol et" gibi) — oysa veri doğru, yetki yok.
 - İzleme/alarm tarafında yetki ihlalleri doğrulama gürültüsünün içinde kaybolur; birinin sistematik olarak başkasının kaynağını denediğini fark edemezsiniz.
 
-**Çözüm:** Domain katmanındaki sahiplik hatalarını `Error.Forbidden` ile üret (bazı yerlerde zaten öyle — `POST /v1/bookings/{id}/complaint` doğru şekilde `403` dönüyor), tutarsız olanları hizala. `Result`→HTTP eşlemesinde `Forbidden` zaten 403'e gidiyor; sorun hatanın `Validation` olarak üretilmesi.
+**İLK TEŞHİS YANLIŞTI (düzeltme, 2026-08-11).** Yukarıda "sorun hatanın `Validation` olarak
+üretilmesi" yazıyordu. Kod okunduğunda tersi çıktı: kaynak ZATEN doğru hatayı üretiyor —
+`UpdateBarberShopCommand.cs:39` ve `:94` ikisi de `Error.Forbidden("Not owner.")`. Kusur
+Application katmanında değil, **API katmanının eşlemesindeydi**.
 
-**Efor:** 2-3 saat (hata türü taraması + tutarlılık + testler).
+**GERÇEK KÖK NEDEN:** `Result`→HTTP eşlemesi diye merkezî bir yer YOKTU. Her uç kendi
+`Results.Problem(...)` çağrısını elle yazıyordu. 108 çağrının taraması:
+
+| Bulgu | Sayı |
+|---|---|
+| `"forbidden"` kodunu hiç bilmiyor (→ sahiplik reddi 400) | 103 |
+| `statusCode` parametresini hiç vermiyor (→ **varsayılan 500**) | 24 |
+
+**İkinci satır G19'dan daha ağır ve denetimin aradığı şey değildi — eşleme dağınıklığını
+tararken çıktı.** ASP.NET Core'da `Results.Problem(detail)` varsayılanı 500'dür. Yani
+"bu saat dolu", "kod yanlış" gibi sıradan kullanıcı hataları istemciye **sunucu arızası**
+olarak dönüyordu. Sonuçları: mobil istemci 5xx'i geçici arıza sayıp "tekrar dene" gösteriyor
+(`mobile/src/lib/classify-error.ts`), kullanıcı gerçek sebebi hiç görmüyor, Sentry gerçek
+olmayan alarm üretiyor.
+
+**✅ KAPATILDI 2026-08-11.** Eşleme tek noktaya alındı: `backend/src/Kuaforum.Api/Common/ResultHttp.cs`.
+Uçlar artık statusCode HESAPLAMIYOR; hata türünü Application/Domain `Error.X()` fabrikasıyla
+söylüyor, HTTP karşılığı yalnız orada duruyor. Result kaynaklı 108 çağrının tamamı taşındı
+(kalan 9 `Results.Problem` sabit metinli, Result'tan gelmiyor, kodları zaten doğruydu).
+
+Regresyon kilidi: `backend/tests/Kuaforum.Tests.Integration/ErrorStatusMappingTests.cs` —
+403 (başkasının salonu, kontrol vakasıyla), 404, 400-ve-asla-500, 401.
+
+Refactor iki eski testi kırdı ve **ikisi de düzelme çıktı**: izin-randevu çakışması ve
+"fatura tutarı ödeme başlatıldıktan sonra değişti" artık `400` değil `409 Conflict` dönüyor.
+Kaynak ikisinde de zaten `Error.Conflict` üretiyordu; testler eski yanlış eşlemeyi
+sabitliyormuş. Testler gerekçeleriyle güncellendi.
+
+**Efor (gerçekleşen):** ~3 saat.
 
 ---
 
@@ -362,7 +393,36 @@ Kendi salonunda aynı istek `204`. Yani **yetki kontrolü çalışıyor** — so
 | G16 | DTO alan adı değişince gövde sessizce sıfırlanıyor (kalıpsal para riski) | Yüksek → tekil düzeltildi | 2-3 saat (admin-only katı mod) |
 | G17 | Demo verisi bir gecede bayatlıyordu (founder her sabah boş panel) | Yüksek (süreç) | ✅ kapatıldı 2026-08-07 |
 | G18 | Yeni müşteri kaydında isim sorulmuyor — kuaför kimin geldiğini bilmiyor | Orta-Yüksek | 1 gün |
-| G19 | Yetki reddi 400 dönüyor, 403 değil (semantik) | Düşük | 2-3 saat |
+| G19 | Yetki reddi 400 dönüyor, 403 değil + **24 uç hata durumunda 500 dönüyordu** | Düşük → **Yüksek** | ✅ kapatıldı 2026-08-11 |
+| G20 | Kullanıcı görünen adını boşaltabiliyor (`""` → `null`, 204) — ürün kararı bekliyor | Düşük-Orta | 1 saat (karar sonrası) |
+
+---
+
+## G20. Kullanıcı görünen adını boşaltabiliyor — ürün kararı bekliyor
+
+**Kanıt (2026-08-11):** `PATCH /v1/users/me` gövdesi `{"displayName": ""}` → **204 No Content**.
+İsim `null`'a düşüyor. Sebep `User.NormalizeDisplayName` (`User.cs:200-208`): boş/whitespace
+metni hata saymıyor, `null` döndürüyor.
+
+**Bu davranış KAYIT anında doğru** — telefonla kayıtta isim henüz sorulmuyor (G18), `null`
+meşru bir başlangıç değeri. Sorun `UpdateProfile` yolunda aynı kodun paylaşılması: orada
+`""` göndermek "adımı temizle" anlamına geliyor.
+
+**Etki:** G18'in diğer yüzü. Kuaför randevu listesinde "isimsiz müşteri" görüyor — bu kez
+kaydın eksikliğinden değil, kullanıcının adını silmesinden. Güvenlik açığı değil, veri
+kalitesi sorunu.
+
+**Karar gerekiyor (otonom değiştirilmedi):** Kullanıcı adını silebilmeli mi?
+- (a) Hayır — `UpdateProfile`'da boş isim `Error.Validation` olsun. Ad bir kez konduysa
+  kalır. Basit; ama kullanıcı yanlış yazdığı adı "geçici olarak" temizleyemez.
+- (b) Evet, ama kuaför tarafında görünen ad "Müşteri" gibi bir yedeğe düşsün. Kullanıcı
+  mahremiyeti korunur, kuaför yine boş satır görmez.
+- (c) Bırakıldığı gibi kalsın — o zaman G18 mobil tarafında isim ZORUNLU alan olmalı, yoksa
+  aynı boşluk iki kapıdan geri girer.
+
+Nerede yakalandı: `ErrorStatusMappingTests.Validation_failure_returns_400_and_never_500`
+yazılırken — boş isimle 400 bekleniyordu, 204 geldi. Test kesin bir doğrulama hatasıyla
+(81 karakter) kuruldu, boş-isim varsayımı yapılmadı.
 
 ---
 
