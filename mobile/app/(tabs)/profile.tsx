@@ -6,7 +6,8 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { AuthPrompt } from '@/components/AuthPrompt';
-import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
+import { Icon, IconName } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Radius, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
@@ -168,7 +169,7 @@ export default function ProfileScreen() {
             <Text style={styles.sectionTitle}>İşletme</Text>
             <Card style={styles.section} padded={false}>
               <ListRow
-                icon="💈"
+                icon="store"
                 label="Kuaför müsün? Salonunu ekle"
                 onPress={() => router.push('/onboarding/shop' as never)}
               />
@@ -178,26 +179,26 @@ export default function ProfileScreen() {
 
         <Text style={styles.sectionTitle}>Hesap</Text>
         <Card style={styles.section} padded={false}>
-          <ListRow icon="✏️" label="Profili düzenle" onPress={() => router.push('/account/edit-profile' as never)} />
+          <ListRow icon="edit" label="Profili düzenle" onPress={() => router.push('/account/edit-profile' as never)} />
           <Divider />
-          <ListRow icon="📱" label="Telefon değiştir" onPress={() => router.push('/account/change-phone' as never)} />
+          <ListRow icon="phone" label="Telefon değiştir" onPress={() => router.push('/account/change-phone' as never)} />
           <Divider />
-          <ListRow icon="🔐" label="Aktif oturumlar" onPress={() => router.push('/account/sessions' as never)} />
+          <ListRow icon="lock" label="Aktif oturumlar" onPress={() => router.push('/account/sessions' as never)} />
           <Divider />
-          <ListRow icon="🛡️" label="Gizlilik & Rızalar (KVKK)" onPress={() => router.push('/account/consents' as never)} />
+          <ListRow icon="shield" label="Gizlilik & Rızalar (KVKK)" onPress={() => router.push('/account/consents' as never)} />
           <Divider />
-          <ListRow icon="⬇️" label="Verilerimi indir" hint="KVKK m.11" onPress={handleExportData} />
+          <ListRow icon="document" label="Verilerimi indir" hint="KVKK m.11" onPress={handleExportData} />
           <Divider />
-          <ListRow icon="🌐" label="Dil" value="Türkçe" disabled />
+          <ListRow icon="globe" label="Dil" value="Türkçe" disabled />
         </Card>
 
         <Text style={styles.sectionTitle}>Yardım</Text>
         <Card style={styles.section} padded={false}>
-          <ListRow icon="💬" label="Destek" hint="Yakında" disabled />
+          <ListRow icon="document" label="Destek" hint="Yakında" disabled />
           <Divider />
-          <ListRow icon="📄" label="Kullanım Koşulları" onPress={() => router.push('/legal/kullanim-kosullari' as never)} />
+          <ListRow icon="document" label="Kullanım Koşulları" onPress={() => router.push('/legal/kullanim-kosullari' as never)} />
           <Divider />
-          <ListRow icon="🏷️" label="Sürüm" value="0.0.1" disabled />
+          <ListRow icon="info" label="Sürüm" value="0.0.1" disabled />
         </Card>
 
         <View style={styles.actions}>
@@ -219,7 +220,7 @@ function ListRow({
   disabled,
   onPress,
 }: {
-  icon: string;
+  icon: IconName;
   label: string;
   value?: string;
   hint?: string;
@@ -230,14 +231,18 @@ function ListRow({
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityLabel={label}
       style={({ pressed }) => [styles.listRow, pressed && !disabled && styles.pressed]}
     >
-      <Text style={styles.listIcon}>{icon}</Text>
-      <Text style={styles.listLabel}>{label}</Text>
+      <View style={styles.listIconWrap}>
+        <Icon name={icon} size={18} color={disabled ? Colors.textMuted : Colors.textSecondary} />
+      </View>
+      <Text style={[styles.listLabel, disabled && { color: Colors.textMuted }]}>{label}</Text>
       <View style={{ flex: 1 }} />
       {value ? <Text style={styles.listValue}>{value}</Text> : null}
       {hint ? <Text style={styles.listHint}>{hint}</Text> : null}
-      {!value && !hint ? <Text style={styles.chevron}>›</Text> : null}
+      {!value && !hint && onPress ? <Icon name="chevronRight" size={16} color={Colors.textMuted} /> : null}
     </Pressable>
   );
 }
@@ -260,13 +265,13 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: Radius.full,
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.ink,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
   },
   avatarText: { color: Colors.textInverse, fontSize: 38, fontWeight: FontWeight.bold },
-  name: { fontSize: FontSize.xl, fontWeight: FontWeight.semibold, color: Colors.text },
+  name: { fontSize: FontSize.xl, fontWeight: FontWeight.semibold, color: Colors.text, letterSpacing: LetterSpacing.title },
   phone: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
   sectionTitle: {
     fontSize: FontSize.xs,
@@ -288,11 +293,10 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   pressed: { backgroundColor: Colors.surfaceAlt },
-  listIcon: { fontSize: 20, width: 24, textAlign: 'center' },
+  listIconWrap: { width: 24, alignItems: 'center', justifyContent: 'center' },
   listLabel: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.medium },
   listValue: { fontSize: FontSize.sm, color: Colors.textSecondary },
   listHint: { fontSize: FontSize.xs, color: Colors.textMuted },
-  chevron: { fontSize: 22, color: Colors.textMuted },
   divider: { height: 1, backgroundColor: Colors.divider, marginLeft: 56 },
   actions: { gap: Spacing.sm, marginTop: Spacing.xl },
   footer: {

@@ -9,8 +9,9 @@ import { Chip } from '@/components/Chip';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { AuthPrompt } from '@/components/AuthPrompt';
+import { Icon } from '@/components/Icon';
 import { Skeleton, SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
 import { useAuthStore } from '@/store/auth-store';
 import {
@@ -89,7 +90,7 @@ export default function BookingsScreen() {
           <RefreshControl
             refreshing={query.isFetching && !query.isLoading}
             onRefresh={() => query.refetch()}
-            tintColor={Colors.primary}
+            tintColor={Colors.ink}
           />
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
@@ -109,7 +110,7 @@ export default function BookingsScreen() {
             />
           ) : all.length === 0 ? (
             <EmptyState
-              emoji="📅"
+              icon="calendar"
               title="Henüz randevun yok"
               description="Keşfet sekmesinden bir kuaför bul ve ilk randevunu oluştur."
               actionLabel="Kuaför bul"
@@ -117,7 +118,7 @@ export default function BookingsScreen() {
             />
           ) : (
             <EmptyState
-              emoji="🔎"
+              icon="search"
               title={emptyFilterTitle(filter)}
               description="Bu filtreye uyan randevu yok. Başka bir filtre dene."
               actionLabel="Tüm randevuları göster"
@@ -151,10 +152,16 @@ function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => voi
         <View style={{ flex: 1 }}>
           <Text style={styles.dateText}>{formatDateTime(booking.scheduledAt)}</Text>
           {booking.shopName ? (
-            <Text style={styles.shopText} numberOfLines={1}>📍 {booking.shopName}</Text>
+            <View style={styles.metaRow}>
+              <Icon name="mapPin" size={12} color={Colors.textMuted} />
+              <Text style={styles.shopText} numberOfLines={1}>{booking.shopName}</Text>
+            </View>
           ) : null}
           {booking.stylistName ? (
-            <Text style={styles.shopText} numberOfLines={1}>✂️ {booking.stylistName}</Text>
+            <View style={styles.metaRow}>
+              <Icon name="scissors" size={12} color={Colors.textMuted} />
+              <Text style={styles.shopText} numberOfLines={1}>{booking.stylistName}</Text>
+            </View>
           ) : null}
         </View>
         <Badge label={status.label} tone={status.tone} />
@@ -189,7 +196,10 @@ function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => voi
 
       {isBookingCompleted(booking.status) && booking.hasReview === false ? (
         <View style={styles.reviewPrompt}>
-          <Text style={styles.reviewPromptText}>⭐ Bu randevu için yorum yazmadın</Text>
+          <View style={styles.metaRow}>
+            <Icon name="star" size={12} color={Colors.warning} />
+            <Text style={styles.reviewPromptText}>Bu randevu için yorum yazmadın</Text>
+          </View>
           <Text style={styles.reviewPromptHint}>Karta dokun → "Yorum yap"</Text>
         </View>
       ) : null}
@@ -200,7 +210,7 @@ function BookingRow({ booking, onPress }: { booking: Booking; onPress: () => voi
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
   filtersRow: {
     flexDirection: 'row',
@@ -218,10 +228,11 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
   dateText: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.semibold },
-  shopText: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  shopText: { fontSize: FontSize.xs, color: Colors.textMuted },
   servicesBlock: { gap: 4, marginTop: 2 },
   serviceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  serviceDot: { color: Colors.primary, fontWeight: FontWeight.bold },
+  serviceDot: { color: Colors.ink, fontWeight: FontWeight.bold },
   serviceText: { flex: 1, fontSize: FontSize.sm, color: Colors.text },
   serviceMeta: { fontSize: FontSize.xs, color: Colors.textMuted },
   moreText: { fontSize: FontSize.xs, color: Colors.textMuted, fontStyle: 'italic' },
@@ -234,7 +245,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.divider,
   },
   totalLabel: { fontSize: FontSize.xs, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  amount: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.primary },
+  amount: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.ink },
   upcomingHint: {
     flexDirection: 'row',
     alignItems: 'center',

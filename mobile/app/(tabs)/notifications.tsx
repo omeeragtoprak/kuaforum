@@ -17,5 +17,5 @@ export default function CustomerNotifications() {
     );
   }
 
-  return <NotificationsScreen accent={Colors.primary} />;
+  return <NotificationsScreen accent={Colors.accent} />;
 }
