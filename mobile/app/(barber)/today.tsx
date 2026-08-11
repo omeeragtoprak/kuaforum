@@ -5,8 +5,9 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Layout, Radius } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -83,7 +84,7 @@ export default function BarberTodayScreen() {
             <Text style={styles.statLabel}>Bekleyen</Text>
           </View>
           <View style={styles.statBox}>
-            <Text style={styles.statValue}>{formatTry(totalRevenue)}</Text>
+            <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{formatTry(totalRevenue)}</Text>
             <Text style={styles.statLabel}>Ciro</Text>
           </View>
         </View>
@@ -128,7 +129,7 @@ export default function BarberTodayScreen() {
           <RefreshControl
             refreshing={query.isFetching && !query.isLoading}
             onRefresh={() => query.refetch()}
-            tintColor="#0EA5E9"
+            tintColor={Colors.ink}
           />
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
@@ -137,7 +138,7 @@ export default function BarberTodayScreen() {
             <SkeletonList count={3} render={() => <SkeletonBookingRow />} />
           ) : query.isError ? (
             <EmptyState
-              emoji="⚠️"
+              icon="alert"
               title="Bağlantı hatası"
               description="Bugünkü randevular yüklenemedi. Sunucu erişilebilir mi?"
               actionLabel="Tekrar dene"
@@ -145,7 +146,7 @@ export default function BarberTodayScreen() {
             />
           ) : (
             <EmptyState
-              emoji="☕"
+              icon="calendar"
               title="Bugün boş"
               description="Randevun yok — kahve molası vereceksin demek."
             />
@@ -209,9 +210,13 @@ function BookingRow({
   const status = bookingStatusInfo(booking.status);
   const canStart = isBookingConfirmed(booking.status);
   const canComplete = isBookingInProgress(booking.status);
+  // Ödenmiş ama hâlâ owner onayı bekleyen tek talep türü — kuaförün ekranda aksiyon
+  // alması gereken tek şey bu, o yüzden yalnız renkle değil kenar çizgisiyle de
+  // (biçimle) ayırt ediliyor.
+  const needsAttention = isBookingPending(booking.status) && booking.paymentKind != null;
 
   return (
-    <Card style={{ gap: Spacing.sm }}>
+    <Card style={[{ gap: Spacing.sm }, needsAttention && styles.attentionCard]}>
       <View style={styles.head}>
         <View style={styles.timeBlock}>
           <Text style={styles.time}>{formatTime(booking.scheduledAt)}</Text>
@@ -225,27 +230,32 @@ function BookingRow({
       {/* RFC-013 C4/C5c: ödeme booking'i otomatik onaylamıyor — kapora/tam online ödemesi
           alınmış ama hâlâ Pending (owner onayı bekleyen) talepler burada öne çıkarılıyor ki
           kuaför bunlara öncelik versin (para zaten yatmış, yanıt bekliyor). */}
-      {isBookingPending(booking.status) && booking.paymentKind != null ? (
+      {needsAttention ? (
         <View
           accessible
           accessibilityLabel="Ödendi, onayınız bekleniyor. Öncelik verin."
         >
-          <Badge label="💰 Ödendi · onay bekliyor" tone="warning" />
+          <Badge label="Ödendi · onay bekliyor" tone="warning" />
         </View>
       ) : null}
 
       <View style={styles.customerBlock}>
-        <Text style={styles.customerName}>
-          👤 {booking.customerName ?? `Müşteri #${booking.customerId.slice(0, 8)}`}
-        </Text>
+        <View style={styles.customerLine}>
+          <Icon name="user" size={14} color={Colors.textMuted} />
+          <Text style={styles.customerName}>
+            {booking.customerName ?? `Müşteri #${booking.customerId.slice(0, 8)}`}
+          </Text>
+        </View>
         {booking.customerPhone ? (
           <Pressable
             onPress={() => Linking.openURL(`tel:${booking.customerPhone}`)}
             hitSlop={6}
+            style={styles.customerLine}
             accessibilityRole="link"
             accessibilityLabel={`Müşteriyi ara ${booking.customerPhone}`}
           >
-            <Text style={styles.customerPhone}>📞 {formatPhoneTr(booking.customerPhone)}</Text>
+            <Icon name="phone" size={14} color={Colors.accent} />
+            <Text style={styles.customerPhone}>{formatPhoneTr(booking.customerPhone)}</Text>
           </Pressable>
         ) : null}
         {booking.customerNote ? (
@@ -300,9 +310,9 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.lg, paddingBottom: Spacing.lg },
   dayLabel: {
     fontSize: FontSize.xs,
-    color: '#0EA5E9',
+    color: Colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LetterSpacing.label,
     fontWeight: FontWeight.bold,
   },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 4 },
@@ -315,28 +325,28 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  statValue: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
+  statValue: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text, fontVariant: ['tabular-nums'] },
   statLabel: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
   trendCard: {
     flexDirection: 'row',
     alignItems: 'center',
     flexWrap: 'wrap',
-    backgroundColor: '#F0F9FF',
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.md,
     padding: Spacing.md,
     marginTop: Spacing.md,
     gap: Spacing.md,
     borderWidth: 1,
-    borderColor: '#BAE6FD',
+    borderColor: Colors.border,
   },
   trendLabel: {
     fontSize: 10,
-    color: '#0369A1',
+    color: Colors.textMuted,
     fontWeight: FontWeight.bold,
     letterSpacing: 0.5,
   },
-  trendValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#0C4A6E', marginTop: 2 },
-  trendSub: { fontSize: FontSize.xs, color: '#0369A1', marginTop: 2 },
+  trendValue: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 2, fontVariant: ['tabular-nums'] },
+  trendSub: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
   deltaPill: {
     paddingHorizontal: Spacing.sm,
     paddingVertical: 6,
@@ -345,7 +355,7 @@ const styles = StyleSheet.create({
   },
   deltaPillPositive: { backgroundColor: Colors.successSoft },
   deltaPillNegative: { backgroundColor: Colors.errorSoft },
-  deltaText: { fontSize: FontSize.md, fontWeight: FontWeight.bold },
+  deltaText: { fontSize: FontSize.md, fontWeight: FontWeight.bold, fontVariant: ['tabular-nums'] },
   deltaTextPositive: { color: Colors.success },
   deltaTextNegative: { color: Colors.error },
   deltaCompare: { fontSize: 9, color: Colors.textMuted, marginTop: 2 },
@@ -353,11 +363,11 @@ const styles = StyleSheet.create({
     flexBasis: '100%',
     paddingTop: Spacing.sm,
     borderTopWidth: 1,
-    borderTopColor: '#BAE6FD',
+    borderTopColor: Colors.border,
   },
-  topServiceLabel: { fontSize: 10, color: '#0369A1', fontWeight: FontWeight.bold, letterSpacing: 0.5 },
-  topServiceName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: '#0C4A6E', marginTop: 2 },
-  topServiceCount: { fontSize: FontSize.xs, color: '#0369A1' },
+  topServiceLabel: { fontSize: 10, color: Colors.textMuted, fontWeight: FontWeight.bold, letterSpacing: 0.5 },
+  topServiceName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text, marginTop: 2 },
+  topServiceCount: { fontSize: FontSize.xs, color: Colors.textSecondary },
   list: {
     paddingHorizontal: Layout.screenPaddingX,
     paddingBottom: Spacing.xl,
@@ -367,20 +377,27 @@ const styles = StyleSheet.create({
   },
   head: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   timeBlock: { flexDirection: 'column' },
-  time: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: '#0EA5E9' },
+  time: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, fontVariant: ['tabular-nums'] },
   duration: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  customerBlock: { gap: 4 },
+  // Onay bekleyen ödenmiş randevu: sol kenar bakır çizgi — renk körlüğünde/güneş
+  // altında da "buna bak" sinyali versin diye yalnız Badge'e güvenilmiyor.
+  attentionCard: {
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.accent,
+  },
+  customerBlock: { gap: 6 },
+  customerLine: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   customerName: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.semibold },
-  customerPhone: { fontSize: FontSize.sm, color: '#0EA5E9', fontWeight: FontWeight.medium },
+  customerPhone: { fontSize: FontSize.sm, color: Colors.accent, fontWeight: FontWeight.medium },
   noteBox: {
     marginTop: 4,
-    backgroundColor: Colors.primarySoft,
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.sm,
     padding: Spacing.sm,
   },
   noteLabel: {
     fontSize: FontSize.xs,
-    color: Colors.primary,
+    color: Colors.textSecondary,
     fontWeight: FontWeight.bold,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -389,7 +406,7 @@ const styles = StyleSheet.create({
   noteText: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 18 },
   servicesBlock: { gap: 4 },
   serviceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  serviceDot: { color: Colors.primary, fontSize: 16, fontWeight: FontWeight.bold },
+  serviceDot: { color: Colors.textMuted, fontSize: 16, fontWeight: FontWeight.bold },
   serviceName: { flex: 1, fontSize: FontSize.sm, color: Colors.text },
   serviceMeta: { fontSize: FontSize.xs, color: Colors.textMuted },
   amountRow: {
@@ -401,6 +418,6 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.divider,
   },
   amountLabel: { fontSize: FontSize.xs, color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
-  amount: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.primary },
+  amount: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text, fontVariant: ['tabular-nums'] },
   actions: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.xs },
 });

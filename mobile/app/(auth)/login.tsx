@@ -4,8 +4,9 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Screen } from '@/components/Screen';
+import { Icon } from '@/components/Icon';
 import { RoleQuickLogin, DemoRole } from '@/components/RoleQuickLogin';
-import { Colors, FontSize, FontWeight, Layout, Radius, Spacing } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, Layout, LetterSpacing, Radius, Spacing } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError, getApiBaseUrl } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
@@ -94,9 +95,9 @@ export default function LoginScreen() {
           <>
             <View style={styles.section}>
               <View style={styles.testBuildBanner} accessibilityRole="text">
+                <Icon name="alert" size={14} color={Colors.textSecondary} strokeWidth={1.6} />
                 <Text style={styles.testBuildBannerText}>
-                  ⚠️ TEST BUILD — bu ekran yalnız iç test için. Gerçek kullanıcıya
-                  dağıtma.
+                  TEST BUILD — bu ekran yalnız iç test için. Gerçek kullanıcıya dağıtma.
                 </Text>
               </View>
 
@@ -217,23 +218,31 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   brand: { alignItems: 'center', marginTop: Spacing.xl, marginBottom: Spacing.xl },
-  logo: { fontSize: FontSize.display, fontWeight: FontWeight.bold, color: Colors.primary, letterSpacing: -1 },
+  logo: {
+    fontSize: FontSize.display,
+    fontWeight: FontWeight.bold,
+    color: Colors.ink,
+    letterSpacing: LetterSpacing.display,
+  },
   tagline: { fontSize: FontSize.md, color: Colors.textSecondary, marginTop: 4 },
   section: { marginBottom: Spacing.xl },
   testBuildBanner: {
-    backgroundColor: Colors.warningSoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: Colors.warning,
+    borderColor: Colors.borderStrong,
     paddingVertical: Spacing.sm,
     paddingHorizontal: Spacing.md,
     marginBottom: Spacing.md,
   },
   testBuildBannerText: {
+    flex: 1,
     fontSize: FontSize.xs,
-    fontWeight: FontWeight.semibold,
-    color: Colors.text,
-    textAlign: 'center',
+    fontWeight: FontWeight.medium,
+    color: Colors.textSecondary,
   },
   serverRow: {
     flexDirection: 'row',
@@ -257,7 +266,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   serverChangeBtnText: {
-    color: Colors.primary,
+    color: Colors.ink,
     fontSize: FontSize.xs,
     fontWeight: FontWeight.bold,
     textDecorationLine: 'underline',
@@ -285,7 +294,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  legalLink: { color: Colors.primary, textDecorationLine: 'underline' },
+  // accentInk (bakırın koyu tonu), ham `accent` DEĞİL — accent beyaz zeminde ~3.6:1
+  // kontrast ölçüyor (AA metin eşiği 4.5:1'in altında); accentInk ~6.6:1 ile geçiyor.
+  legalLink: { color: Colors.accentInk, textDecorationLine: 'underline' },
   guestLink: {
     marginTop: Spacing.lg,
     alignSelf: 'center',

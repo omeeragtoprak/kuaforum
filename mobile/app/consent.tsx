@@ -4,7 +4,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useMutation } from '@tanstack/react-query';
 import { Button } from '@/components/Button';
-import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
+import { Badge } from '@/components/Badge';
+import { Icon, IconName } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Radius, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
@@ -71,7 +73,9 @@ export default function ConsentScreen() {
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={styles.emoji}>🔐</Text>
+          <View style={styles.iconBubble}>
+            <Icon name="lock" size={28} color={Colors.ink} strokeWidth={1.6} />
+          </View>
           <Text style={styles.heading}>Gizliliğin bizim için önemli</Text>
           <Text style={styles.subtitle}>
             Devam etmeden önce aşağıdaki metinleri incele ve Kullanım Koşulları'nı onayla.
@@ -79,12 +83,12 @@ export default function ConsentScreen() {
         </View>
 
         <LegalLinkRow
-          icon="📄"
+          icon="shield"
           label="Kişisel Verilerin İşlenmesine İlişkin Aydınlatma Metni"
           onPress={() => router.push('/legal/aydinlatma' as never)}
         />
         <LegalLinkRow
-          icon="📜"
+          icon="document"
           label="Kullanım Koşulları"
           onPress={() => router.push('/legal/kullanim-kosullari' as never)}
         />
@@ -100,7 +104,7 @@ export default function ConsentScreen() {
           <ConsentCheckboxRow
             checked={marketingAccepted}
             onToggle={() => setMarketingAccepted((v) => !v)}
-            label="Kampanya ve fırsatlardan haberdar olmak istiyorum (opsiyonel)."
+            label="Kampanya ve fırsatlardan haberdar olmak istiyorum."
             testID="consent-marketing-checkbox"
           />
         </View>
@@ -130,7 +134,7 @@ export default function ConsentScreen() {
   );
 }
 
-function LegalLinkRow({ icon, label, onPress }: { icon: string; label: string; onPress: () => void }) {
+function LegalLinkRow({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
   return (
     <Pressable
       onPress={onPress}
@@ -138,9 +142,9 @@ function LegalLinkRow({ icon, label, onPress }: { icon: string; label: string; o
       accessibilityRole="link"
       accessibilityLabel={label}
     >
-      <Text style={styles.linkIcon}>{icon}</Text>
+      <Icon name={icon} size={18} color={Colors.textSecondary} strokeWidth={1.6} />
       <Text style={styles.linkText}>{label}</Text>
-      <Text style={styles.chevron}>›</Text>
+      <Icon name="chevronRight" size={18} color={Colors.textMuted} strokeWidth={1.6} />
     </Pressable>
   );
 }
@@ -170,12 +174,17 @@ function ConsentCheckboxRow({
       hitSlop={8}
     >
       <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-        {checked ? <Text style={styles.checkboxMark}>✓</Text> : null}
+        {checked ? <Icon name="check" size={14} color={Colors.textInverse} strokeWidth={2.4} /> : null}
       </View>
-      <Text style={styles.checkboxLabel}>
-        {label}
-        {required ? <Text style={styles.required}> *</Text> : null}
-      </Text>
+      <View style={styles.checkboxBody}>
+        <Text style={styles.checkboxLabel}>{label}</Text>
+        {/* Zorunlu/opsiyonel ayrımı rozetle NET ama kırmızı/uyarı rengi olmadan — korkutmadan bilgilendirir. */}
+        <Badge
+          label={required ? 'Zorunlu' : 'Opsiyonel'}
+          tone={required ? 'brand' : 'neutral'}
+          style={styles.checkboxBadge}
+        />
+      </View>
     </Pressable>
   );
 }
@@ -192,8 +201,22 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   header: { alignItems: 'center', marginBottom: Spacing.lg },
-  emoji: { fontSize: 48, marginBottom: Spacing.sm },
-  heading: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
+  iconBubble: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  heading: {
+    fontSize: FontSize.xl,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    letterSpacing: LetterSpacing.title,
+    textAlign: 'center',
+  },
   subtitle: {
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
@@ -213,13 +236,11 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
   },
   linkRowPressed: { backgroundColor: Colors.surfaceAlt },
-  linkIcon: { fontSize: 18 },
   linkText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium },
-  chevron: { fontSize: 20, color: Colors.textMuted },
-  checkboxGroup: { marginTop: Spacing.lg, gap: Spacing.xs },
+  checkboxGroup: { marginTop: Spacing.lg, gap: Spacing.sm },
   checkboxRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     minHeight: Layout.tapTargetMin,
     paddingVertical: Spacing.sm,
     gap: Spacing.md,
@@ -233,11 +254,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: Colors.surface,
+    marginTop: 2,
   },
-  checkboxChecked: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  checkboxMark: { color: Colors.textInverse, fontSize: 15, fontWeight: FontWeight.bold },
-  checkboxLabel: { flex: 1, fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
-  required: { color: Colors.error },
+  checkboxChecked: { backgroundColor: Colors.ink, borderColor: Colors.ink },
+  checkboxBody: { flex: 1, gap: 6 },
+  checkboxBadge: { alignSelf: 'flex-start' },
+  checkboxLabel: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
   errorText: {
     color: Colors.error,
     fontSize: FontSize.sm,

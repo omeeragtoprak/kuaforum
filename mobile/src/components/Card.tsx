@@ -1,10 +1,15 @@
-import { Pressable, StyleSheet, View, ViewStyle } from 'react-native';
+import { Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { Colors, Radius, Spacing } from '@/lib/theme';
 
 type CardProps = {
   children: React.ReactNode;
   onPress?: () => void;
-  style?: ViewStyle;
+  /**
+   * Dizi de kabul eder: `style={[base, cond && extra]}` kalıbı React Native'de
+   * yaygın ve koşullu vurgu (ör. "onay bekliyor" kartının kenar çizgisi) için
+   * gerekli. Tek nesneye kısıtlamak çağıran ekranları derlenemez hâle getiriyordu.
+   */
+  style?: StyleProp<ViewStyle>;
   padded?: boolean;
   testID?: string;
   /**

@@ -3,7 +3,8 @@ import { View, Text, StyleSheet, KeyboardAvoidingView, Platform, Alert, Pressabl
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button } from '@/components/Button';
 import { Screen } from '@/components/Screen';
-import { Colors, FontSize, FontWeight, Spacing, Radius } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Radius } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { maskPhone } from '@/lib/format';
@@ -80,13 +81,20 @@ export default function OtpScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}
       >
-        <Pressable onPress={() => router.back()} style={styles.back}>
-          <Text style={styles.backText}>← Telefon değiştir</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.back}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Telefon numarasını değiştir, geri dön"
+        >
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={1.8} />
+          <Text style={styles.backText}>Telefon değiştir</Text>
         </Pressable>
 
         <View style={styles.header}>
           <View style={styles.iconBubble}>
-            <Text style={styles.icon}>📨</Text>
+            <Icon name="phone" size={30} color={Colors.ink} strokeWidth={1.6} />
           </View>
           <Text style={styles.heading}>Doğrulama kodu</Text>
           <Text style={styles.helper}>
@@ -164,20 +172,32 @@ export default function OtpScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  back: { paddingVertical: Spacing.sm, alignSelf: 'flex-start', marginBottom: Spacing.md },
-  backText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  back: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: Spacing.sm,
+    alignSelf: 'flex-start',
+    marginBottom: Spacing.md,
+  },
+  backText: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   header: { alignItems: 'center', marginBottom: Spacing.xl, paddingHorizontal: Spacing.md },
   iconBubble: {
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: Colors.primarySoft,
+    backgroundColor: Colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
   },
-  icon: { fontSize: 32 },
-  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginBottom: 6 },
+  heading: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    letterSpacing: LetterSpacing.title,
+    marginBottom: 6,
+  },
   helper: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
   helperEmphasis: { color: Colors.text, fontWeight: FontWeight.semibold },
   cellsRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 8, marginBottom: Spacing.lg },
@@ -191,8 +211,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cellActive: { borderColor: Colors.primary, backgroundColor: Colors.primarySoft },
-  cellFilled: { borderColor: Colors.primary, backgroundColor: Colors.surface },
+  cellActive: { borderColor: Colors.ink, backgroundColor: Colors.surfaceAlt },
+  cellFilled: { borderColor: Colors.ink, backgroundColor: Colors.surface },
   cellText: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
   hiddenInput: { position: 'absolute', opacity: 0, height: 1, width: 1 },
   timer: {
@@ -203,9 +223,11 @@ const styles = StyleSheet.create({
   },
   timerNumber: { color: Colors.text, fontWeight: FontWeight.semibold },
   resendBtn: { paddingVertical: Spacing.sm, alignSelf: 'center' },
-  resend: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.semibold },
+  // accentInk — bu ekranın tek "vurgulanan" eylemi (kodu tekrar iste). Ham `accent`
+  // beyaz zeminde AA metin eşiğini (4.5:1) geçmiyor, accentInk geçiyor (bkz. login.tsx).
+  resend: { fontSize: FontSize.md, color: Colors.accentInk, fontWeight: FontWeight.semibold },
   actions: { marginTop: Spacing.xl },
   resendInline: { paddingVertical: Spacing.lg, alignSelf: 'center' },
-  resendText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  resendText: { color: Colors.accentInk, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   resendDisabled: { color: Colors.textMuted },
 });

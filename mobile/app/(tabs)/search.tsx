@@ -7,9 +7,10 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
+import { Icon } from '@/components/Icon';
 import { EmptyState } from '@/components/EmptyState';
 import { SkeletonShopCard, SkeletonList } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout, monogramFor } from '@/lib/theme';
 import { BarberApi, BarberSearchResult } from '@/api/barber';
 import { formatTry, salonGenderLabel, salonGenderTone } from '@/lib/format';
 
@@ -44,8 +45,9 @@ export default function SearchScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.back}>← Geri</Text>
+        <Pressable onPress={() => router.back()} style={styles.backBtn} hitSlop={8}>
+          <Icon name="chevronLeft" size={18} color={Colors.textSecondary} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
         <Text style={styles.title}>{params.cityName ?? 'Tüm kuaförler'}</Text>
         <Text style={styles.subtitle}>
@@ -65,7 +67,7 @@ export default function SearchScreen() {
           accessibilityLabel={`Gelişmiş filtre, ${advancedActiveCount} aktif`}
         >
           <Text style={[styles.filterTriggerText, advancedActiveCount > 0 && styles.filterTriggerTextActive]}>
-            ⚙ Filtre{advancedActiveCount > 0 ? ` · ${advancedActiveCount}` : ''}
+            Filtre{advancedActiveCount > 0 ? ` · ${advancedActiveCount}` : ''}
           </Text>
         </Pressable>
         <Chip label="Tümü" selected={filter === 'all'} onPress={() => setFilter('all')} />
@@ -94,7 +96,7 @@ export default function SearchScreen() {
           <RefreshControl
             refreshing={query.isFetching && !query.isLoading}
             onRefresh={() => query.refetch()}
-            tintColor={Colors.primary}
+            tintColor={Colors.ink}
           />
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
@@ -103,7 +105,7 @@ export default function SearchScreen() {
             <SkeletonList count={4} render={() => <SkeletonShopCard />} />
           ) : query.isError ? (
             <EmptyState
-              emoji="⚠️"
+              icon="alert"
               title="Bağlantı hatası"
               description="Sunucuya ulaşılamadı."
               actionLabel="Tekrar dene"
@@ -111,7 +113,7 @@ export default function SearchScreen() {
             />
           ) : (
             <EmptyState
-              emoji="✂️"
+              icon="scissors"
               title="Bu kriterde kuaför yok"
               description="Filtreyi değiştir veya başka bir şehir seç."
             />
@@ -129,25 +131,30 @@ function BarberCard({ barber, onPress }: { barber: BarberSearchResult; onPress: 
   const genderTone = salonGenderTone(barber.genderType);
   const genderLabel = salonGenderLabel(barber.genderType);
   const hasRating = barber.ratingCount > 0 && barber.ratingAverage != null;
+  const mono = monogramFor(barber.name);
   return (
     <Card onPress={onPress} style={{ gap: Spacing.sm }}>
       <View style={styles.cardHeader}>
+        <View style={[styles.monogram, { backgroundColor: mono.bg }]}>
+          <Text style={[styles.monogramText, { color: mono.fg }]}>{mono.initials}</Text>
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.shopName} numberOfLines={1}>{barber.name}</Text>
           <View style={styles.ratingRow}>
             {hasRating ? (
               <>
-                <Text style={styles.ratingStars}>⭐</Text>
+                <Text style={styles.ratingStars}>★</Text>
                 <Text style={styles.ratingValue}>{barber.ratingAverage!.toFixed(1)}</Text>
                 <Text style={styles.ratingCount}>({barber.ratingCount})</Text>
               </>
             ) : (
-              <Text style={styles.ratingNew}>✨ Yeni</Text>
+              <Badge label="Yeni" tone="brand" />
             )}
             {barber.addressLine1 ? (
               <>
                 <Text style={styles.ratingDot}>·</Text>
-                <Text style={styles.address} numberOfLines={1}>📍 {barber.addressLine1}</Text>
+                <Icon name="mapPin" size={11} color={Colors.textMuted} />
+                <Text style={styles.address} numberOfLines={1}>{barber.addressLine1}</Text>
               </>
             ) : null}
           </View>
@@ -161,9 +168,11 @@ function BarberCard({ barber, onPress }: { barber: BarberSearchResult; onPress: 
 
       <View style={styles.footerRow}>
         <View style={styles.statsRow}>
-          <Text style={styles.stat}>👥 {barber.stylistCount}</Text>
+          <Icon name="users" size={13} color={Colors.textSecondary} />
+          <Text style={styles.stat}>{barber.stylistCount}</Text>
           <Text style={styles.statDivider}>·</Text>
-          <Text style={styles.stat}>✂️ {barber.serviceCount}</Text>
+          <Icon name="scissors" size={13} color={Colors.textSecondary} />
+          <Text style={styles.stat}>{barber.serviceCount}</Text>
         </View>
         {barber.minPriceMinor != null ? (
           <Text style={styles.price}>{formatTry(barber.minPriceMinor)}'den</Text>
@@ -236,9 +245,15 @@ function FilterModal({
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
-  backBtn: { alignSelf: 'flex-start', paddingVertical: 4 },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 4 },
+  back: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  title: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    marginTop: 6,
+    letterSpacing: LetterSpacing.title,
+  },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
   filtersRow: {
     paddingHorizontal: Layout.screenPaddingX,
@@ -251,15 +266,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: 8,
     borderRadius: Radius.full,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     borderWidth: 1,
-    borderColor: Colors.borderStrong,
+    borderColor: Colors.border,
   },
-  filterTriggerActive: { backgroundColor: Colors.primarySoft, borderColor: Colors.primary },
+  filterTriggerActive: { backgroundColor: Colors.accentSoft, borderColor: Colors.accent },
   filterTriggerText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
-  filterTriggerTextActive: { color: Colors.primary },
+  filterTriggerTextActive: { color: Colors.accentInk },
 
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalBackdrop: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
   modalCard: {
     backgroundColor: Colors.surface,
     borderTopLeftRadius: Radius.lg,
@@ -288,12 +303,16 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
+  monogram: {
+    width: 44, height: 44, borderRadius: Radius.full,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  monogramText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
   shopName: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, flexWrap: 'wrap' },
-  ratingStars: { fontSize: 12 },
+  ratingStars: { fontSize: 13, color: Colors.star },
   ratingValue: { fontSize: FontSize.xs, color: Colors.text, fontWeight: FontWeight.bold },
   ratingCount: { fontSize: FontSize.xs, color: Colors.textMuted },
-  ratingNew: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
   ratingDot: { fontSize: FontSize.xs, color: Colors.textMuted, marginHorizontal: 2 },
   address: { fontSize: FontSize.xs, color: Colors.textMuted, flexShrink: 1 },
   description: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
@@ -308,7 +327,7 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stat: { fontSize: FontSize.xs, color: Colors.textSecondary },
   statDivider: { color: Colors.textMuted },
-  price: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
+  price: { fontSize: FontSize.sm, color: Colors.ink, fontWeight: FontWeight.bold },
   walkInRow: {
     flexDirection: 'row',
     alignItems: 'center',

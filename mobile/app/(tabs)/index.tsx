@@ -8,10 +8,11 @@ import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Chip } from '@/components/Chip';
+import { Icon } from '@/components/Icon';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
 import { SkeletonShopCard, SkeletonList } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout, Shadow } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout, monogramFor } from '@/lib/theme';
 import { GeographyApi, City } from '@/api/geography';
 import { BarberApi, BarberSearchResult } from '@/api/barber';
 import { useAuthStore } from '@/store/auth-store';
@@ -22,7 +23,7 @@ type GenderFilter = 'all' | 'unisex' | 'female' | 'male' | 'walkin';
 
 /**
  * Keşfet — varsayılan olarak kullanıcının (demo: Erzurum) şehrindeki kuaförleri
- * direkt gösterir. "📍 Şehir · Değiştir" banner'ından farklı şehir seçilebilir.
+ * direkt gösterir. Bölge satırından farklı şehir seçilebilir.
  * Üst arama input'u şehir değiştirme modalı yerine, kullanıcı şehir kartlarını
  * görmek istemiyorsa hızlı kuaför adı arar (V2 feature, şu an chip filter).
  */
@@ -76,38 +77,33 @@ export default function DiscoverScreen() {
           <RefreshControl
             refreshing={shopsQuery.isFetching && !shopsQuery.isLoading}
             onRefresh={() => shopsQuery.refetch()}
-            tintColor={Colors.primary}
+            tintColor={Colors.ink}
           />
         }
         ListHeaderComponent={
           <View>
             <View style={styles.hero}>
-              <Text style={styles.greeting}>
-                Merhaba{user?.displayName ? `, ${user.displayName.split(' ')[0]}` : ''} 👋
-              </Text>
+              {user?.displayName ? (
+                <Text style={styles.greeting}>Merhaba, {user.displayName.split(' ')[0]}</Text>
+              ) : null}
               <Text style={styles.title}>Salonunu bul</Text>
             </View>
 
-            {/* Aktif şehir banner — büyük, tıklanır, "değiştir" CTA */}
+            {/* Bölge satırı — aktif şehir, tıklanır, "değiştir" tek vurgulu aksiyon */}
             <Pressable
               onPress={() => setCityModalOpen(true)}
-              style={styles.cityBanner}
+              style={({ pressed }) => [styles.regionRow, pressed && styles.regionRowPressed]}
               accessibilityRole="button"
               accessibilityLabel={`Aktif şehir: ${cityName ?? DEFAULT_CITY_NAME}. Değiştirmek için bas.`}
             >
-              <View style={styles.cityBannerLeft}>
-                <Text style={styles.cityPin}>📍</Text>
-                <View>
-                  <Text style={styles.cityBannerLabel}>BÖLGEN</Text>
-                  <Text style={styles.cityBannerName}>{cityName ?? DEFAULT_CITY_NAME}</Text>
-                </View>
-              </View>
-              <View style={styles.cityBannerRight}>
-                <Text style={styles.cityBannerCount}>
-                  {shopsQuery.isLoading ? '…' : `${totalShops} kuaför`}
-                </Text>
-                <Text style={styles.cityBannerChange}>değiştir ›</Text>
-              </View>
+              <Icon name="mapPin" size={18} color={Colors.textSecondary} />
+              <Text style={styles.regionName}>{cityName ?? DEFAULT_CITY_NAME}</Text>
+              <Text style={styles.regionCount}>
+                {shopsQuery.isLoading ? '…' : `${totalShops} kuaför`}
+              </Text>
+              <View style={{ flex: 1 }} />
+              <Text style={styles.regionChange}>Değiştir</Text>
+              <Icon name="chevronRight" size={16} color={Colors.accent} strokeWidth={2} />
             </Pressable>
 
             {/* Filter chips */}
@@ -149,7 +145,7 @@ export default function DiscoverScreen() {
             />
           ) : (
             <EmptyState
-              emoji="✂️"
+              icon="scissors"
               title={`${cityName ?? '—'}'da henüz kuaför yok`}
               description="Yakında açılan ilk kuaföre sen olabilirsin. Başka bir şehir dene."
               actionLabel="Şehir değiştir"
@@ -178,25 +174,30 @@ function ShopCard({ barber, onPress }: { barber: BarberSearchResult; onPress: ()
   const genderTone = salonGenderTone(barber.genderType);
   const genderLabel = salonGenderLabel(barber.genderType);
   const hasRating = barber.ratingCount > 0 && barber.ratingAverage != null;
+  const mono = monogramFor(barber.name);
   return (
     <Card onPress={onPress} style={{ gap: Spacing.sm }}>
       <View style={styles.cardHeader}>
+        <View style={[styles.monogram, { backgroundColor: mono.bg }]}>
+          <Text style={[styles.monogramText, { color: mono.fg }]}>{mono.initials}</Text>
+        </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.shopName} numberOfLines={1}>{barber.name}</Text>
           <View style={styles.ratingRow}>
             {hasRating ? (
               <>
-                <Text style={styles.ratingStars}>⭐</Text>
+                <Text style={styles.ratingStars}>★</Text>
                 <Text style={styles.ratingValue}>{barber.ratingAverage!.toFixed(1)}</Text>
                 <Text style={styles.ratingCount}>({barber.ratingCount})</Text>
               </>
             ) : (
-              <Text style={styles.ratingNew}>✨ Yeni</Text>
+              <Badge label="Yeni" tone="brand" />
             )}
             {barber.addressLine1 ? (
               <>
                 <Text style={styles.ratingDot}>·</Text>
-                <Text style={styles.address} numberOfLines={1}>📍 {barber.addressLine1}</Text>
+                <Icon name="mapPin" size={11} color={Colors.textMuted} />
+                <Text style={styles.address} numberOfLines={1}>{barber.addressLine1}</Text>
               </>
             ) : null}
           </View>
@@ -210,9 +211,11 @@ function ShopCard({ barber, onPress }: { barber: BarberSearchResult; onPress: ()
 
       <View style={styles.footerRow}>
         <View style={styles.statsRow}>
-          <Text style={styles.stat}>👥 {barber.stylistCount}</Text>
+          <Icon name="users" size={13} color={Colors.textSecondary} />
+          <Text style={styles.stat}>{barber.stylistCount}</Text>
           <Text style={styles.statDivider}>·</Text>
-          <Text style={styles.stat}>✂️ {barber.serviceCount}</Text>
+          <Icon name="scissors" size={13} color={Colors.textSecondary} />
+          <Text style={styles.stat}>{barber.serviceCount}</Text>
         </View>
         {barber.minPriceMinor != null ? (
           <Text style={styles.price}>{formatTry(barber.minPriceMinor)}'den</Text>
@@ -262,7 +265,7 @@ function CityPickerModal({
           <View style={{ width: 50 }} />
         </View>
         <View style={styles.modalSearchBox}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <Icon name="search" size={17} color={Colors.textMuted} />
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -274,7 +277,7 @@ function CityPickerModal({
           />
           {query ? (
             <Pressable onPress={() => setQuery('')} hitSlop={8}>
-              <Text style={styles.clearIcon}>✕</Text>
+              <Icon name="x" size={16} color={Colors.textMuted} />
             </Pressable>
           ) : null}
         </View>
@@ -327,32 +330,30 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   hero: { paddingTop: Spacing.lg, paddingBottom: Spacing.sm },
-  greeting: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 6 },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  greeting: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: 4 },
+  title: {
+    fontSize: FontSize.display,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    letterSpacing: LetterSpacing.display,
+  },
 
-  cityBanner: {
+  regionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: Colors.primary,
+    gap: 8,
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.lg,
-    padding: Spacing.lg,
-    marginVertical: Spacing.md,
-    ...Shadow.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    marginTop: Spacing.lg,
+    marginBottom: Spacing.md,
+    minHeight: Layout.tapTargetMin,
   },
-  cityBannerLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md, flex: 1 },
-  cityPin: { fontSize: 28 },
-  cityBannerLabel: {
-    fontSize: 10,
-    color: Colors.textInverse,
-    opacity: 0.7,
-    fontWeight: FontWeight.bold,
-    letterSpacing: 1,
-  },
-  cityBannerName: { fontSize: FontSize.xl, color: Colors.textInverse, fontWeight: FontWeight.bold },
-  cityBannerRight: { alignItems: 'flex-end' },
-  cityBannerCount: { fontSize: FontSize.sm, color: Colors.textInverse, fontWeight: FontWeight.semibold },
-  cityBannerChange: { fontSize: FontSize.xs, color: Colors.textInverse, opacity: 0.85, marginTop: 2 },
+  regionRowPressed: { backgroundColor: Colors.border },
+  regionName: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.semibold },
+  regionCount: { fontSize: FontSize.xs, color: Colors.textMuted },
+  regionChange: { fontSize: FontSize.sm, color: Colors.accent, fontWeight: FontWeight.semibold },
 
   filtersRow: {
     flexDirection: 'row',
@@ -362,12 +363,16 @@ const styles = StyleSheet.create({
   },
 
   cardHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.sm },
+  monogram: {
+    width: 44, height: 44, borderRadius: Radius.full,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  monogramText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
   shopName: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, flexWrap: 'wrap' },
-  ratingStars: { fontSize: 12 },
+  ratingStars: { fontSize: 13, color: Colors.star },
   ratingValue: { fontSize: FontSize.xs, color: Colors.text, fontWeight: FontWeight.bold },
   ratingCount: { fontSize: FontSize.xs, color: Colors.textMuted },
-  ratingNew: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.semibold },
   ratingDot: { fontSize: FontSize.xs, color: Colors.textMuted, marginHorizontal: 2 },
   address: { fontSize: FontSize.xs, color: Colors.textMuted, flexShrink: 1 },
   description: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
@@ -382,7 +387,7 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   stat: { fontSize: FontSize.xs, color: Colors.textSecondary },
   statDivider: { color: Colors.textMuted },
-  price: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
+  price: { fontSize: FontSize.sm, color: Colors.ink, fontWeight: FontWeight.bold },
   walkInRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -407,24 +412,20 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
   },
-  modalClose: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.semibold },
+  modalClose: { fontSize: FontSize.md, color: Colors.ink, fontWeight: FontWeight.semibold },
   modalTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
   modalSearchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.full,
     paddingHorizontal: Spacing.lg,
     minHeight: 48,
-    borderWidth: 1,
-    borderColor: Colors.border,
     marginHorizontal: Layout.screenPaddingX,
     marginVertical: Spacing.md,
     gap: 8,
   },
-  searchIcon: { fontSize: 16 },
   modalSearchInput: { flex: 1, fontSize: FontSize.md, color: Colors.text, paddingVertical: 10 },
-  clearIcon: { color: Colors.textMuted, fontSize: 16, paddingHorizontal: 4 },
   modalList: { paddingHorizontal: Layout.screenPaddingX, paddingBottom: Spacing.xl },
   modalCityRow: {
     flexDirection: 'row',
@@ -436,11 +437,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  modalCityRowActive: { borderColor: Colors.primary, backgroundColor: Colors.primarySoft },
+  modalCityRowActive: { borderColor: Colors.accent, backgroundColor: Colors.accentSoft },
   modalCityRowPressed: { opacity: 0.85 },
   modalCityName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
-  modalCityNameActive: { color: Colors.primary },
+  modalCityNameActive: { color: Colors.accentInk },
   modalCityCount: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.semibold },
-  modalCityCountActive: { color: Colors.primary },
+  modalCityCountActive: { color: Colors.accentInk },
   modalCitySoon: { fontSize: FontSize.xs, color: Colors.textMuted, fontStyle: 'italic' },
 });
