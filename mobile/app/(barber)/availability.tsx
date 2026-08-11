@@ -17,7 +17,8 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
-import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Radius, Layout } from '@/lib/theme';
 import { BarberApi, Stylist, WorkingHours, TimeOff, DayOfWeekKey, AffectedBookingDto } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -305,7 +306,7 @@ export default function AvailabilityScreen() {
   if (shopQuery.isLoading || stylistsQuery.isLoading) {
     return (
       <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 80 }} />
+        <ActivityIndicator size="large" color={Colors.ink} style={{ marginTop: 80 }} />
       </SafeAreaView>
     );
   }
@@ -316,7 +317,7 @@ export default function AvailabilityScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="📡"
+          icon="globe"
           title="Bağlantı kurulamadı"
           description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
           actionLabel="Tekrar dene"
@@ -329,7 +330,7 @@ export default function AvailabilityScreen() {
   if (!shopQuery.data) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
-        <EmptyState emoji="🏪" title="Salon yok" description="Önce profil sekmesinden salon bilgilerini gir." />
+        <EmptyState icon="store" title="Salon yok" description="Önce profil sekmesinden salon bilgilerini gir." />
       </SafeAreaView>
     );
   }
@@ -368,14 +369,15 @@ export default function AvailabilityScreen() {
             accessibilityRole="button"
             accessibilityLabel="Yeni çalışan ekle"
           >
-            <Text style={styles.chipAddText}>+ Yeni çalışan</Text>
+            <Icon name="plus" size={13} color={Colors.ink} strokeWidth={2} />
+            <Text style={styles.chipAddText}>Yeni çalışan</Text>
           </Pressable>
         </View>
 
         <Text style={styles.sectionTitle}>Çalışma saatleri</Text>
         <Card>
           {hoursQuery.isLoading ? (
-            <ActivityIndicator color={Colors.primary} />
+            <ActivityIndicator color={Colors.ink} />
           ) : (
             (hoursQuery.data ?? []).map((wh, idx) => (
               <Pressable
@@ -389,7 +391,7 @@ export default function AvailabilityScreen() {
                 <Text style={[styles.dayValue, wh.isClosed && styles.dayClosed]}>
                   {wh.isClosed ? 'Kapalı' : `${fmtTime(wh.openTime)} – ${fmtTime(wh.closeTime)}`}
                 </Text>
-                <Text style={styles.dayChevron}>›</Text>
+                <Icon name="chevronRight" size={16} color={Colors.textMuted} />
               </Pressable>
             ))
           )}
@@ -398,12 +400,13 @@ export default function AvailabilityScreen() {
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>İzin günlerim</Text>
           <Pressable onPress={() => setShowAddTimeOff(true)} style={styles.addBtn} accessibilityRole="button">
-            <Text style={styles.addBtnText}>+ Yeni</Text>
+            <Icon name="plus" size={13} color={Colors.ink} strokeWidth={2} />
+            <Text style={styles.addBtnText}>Yeni</Text>
           </Pressable>
         </View>
         <Card>
           {timeOffQuery.isLoading ? (
-            <ActivityIndicator color={Colors.primary} />
+            <ActivityIndicator color={Colors.ink} />
           ) : (timeOffQuery.data ?? []).length === 0 ? (
             <Text style={styles.emptyTimeOff}>Planlanmış izin yok.</Text>
           ) : (
@@ -419,15 +422,18 @@ export default function AvailabilityScreen() {
                   <Text style={styles.timeOffRange}>{formatRange(t)}</Text>
                   {t.reason ? <Text style={styles.timeOffReason}>{t.reason}</Text> : null}
                 </View>
-                <Text style={styles.deleteIcon}>🗑️</Text>
+                <Icon name="x" size={16} color={Colors.error} />
               </Pressable>
             ))
           )}
         </Card>
 
-        <Text style={styles.note}>
-          ℹ️ İzin saatlerin müşteriye kapalı olarak gösterilir. Geçmiş randevular etkilenmez.
-        </Text>
+        <View style={styles.noteRow}>
+          <Icon name="info" size={13} color={Colors.textMuted} />
+          <Text style={styles.note}>
+            İzin saatlerin müşteriye kapalı olarak gösterilir. Geçmiş randevular etkilenmez.
+          </Text>
+        </View>
       </ScrollView>
 
       <Modal visible={!!editing} transparent animationType="slide" onRequestClose={() => setEditing(null)}>
@@ -440,7 +446,7 @@ export default function AvailabilityScreen() {
               <Switch
                 value={editingClosed}
                 onValueChange={setEditingClosed}
-                trackColor={{ true: Colors.primary, false: '#E5E7EB' }}
+                trackColor={{ true: Colors.ink, false: Colors.border }}
               />
             </View>
 
@@ -742,7 +748,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginBottom: Spacing.sm },
 
   stylistChips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.sm },
@@ -754,11 +760,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  chipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  chipActive: { backgroundColor: Colors.ink, borderColor: Colors.ink },
   chipText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
   chipTextActive: { color: Colors.textInverse },
-  chipAdd: { backgroundColor: Colors.surfaceAlt, borderStyle: 'dashed', borderColor: Colors.borderStrong },
-  chipAddText: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
+  chipAdd: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.surfaceAlt, borderStyle: 'dashed', borderColor: Colors.borderStrong,
+  },
+  chipAddText: { fontSize: FontSize.sm, color: Colors.ink, fontWeight: FontWeight.bold },
 
   stylistHint: { fontSize: FontSize.xs, color: Colors.textSecondary, lineHeight: 16, marginBottom: Spacing.sm },
   stylistDangerRow: {
@@ -795,8 +804,11 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   sectionHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: Spacing.md },
-  addBtn: { paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: Colors.primarySoft },
-  addBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.primary },
+  addBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    paddingHorizontal: Spacing.md, paddingVertical: 6, borderRadius: Radius.full, backgroundColor: Colors.surfaceAlt,
+  },
+  addBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.ink },
 
   dayRow: {
     flexDirection: 'row',
@@ -808,19 +820,18 @@ const styles = StyleSheet.create({
   dayName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text, width: 110 },
   dayValue: { flex: 1, fontSize: FontSize.md, color: Colors.text, textAlign: 'right' },
   dayClosed: { color: Colors.textMuted, fontStyle: 'italic' },
-  dayChevron: { fontSize: FontSize.lg, color: Colors.textMuted },
 
   emptyTimeOff: { fontSize: FontSize.sm, color: Colors.textMuted, paddingVertical: Spacing.md, textAlign: 'center' },
   timeOffRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: Spacing.md, gap: Spacing.md },
   timeOffRange: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
   timeOffReason: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  deleteIcon: { fontSize: FontSize.lg },
 
-  note: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: Spacing.md, lineHeight: 16 },
+  noteRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginTop: Spacing.md },
+  note: { flex: 1, fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 16 },
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: Colors.overlay,
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -851,7 +862,7 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: 'row', gap: Spacing.sm, justifyContent: 'flex-end', marginTop: Spacing.md },
 
   timeOption: { paddingVertical: 14, paddingHorizontal: Spacing.md, borderRadius: Radius.md },
-  timeOptionActive: { backgroundColor: Colors.primarySoft },
+  timeOptionActive: { backgroundColor: Colors.surfaceAlt },
   timeOptionText: { fontSize: FontSize.md, color: Colors.text },
-  timeOptionTextActive: { color: Colors.primary, fontWeight: FontWeight.bold },
+  timeOptionTextActive: { color: Colors.ink, fontWeight: FontWeight.bold },
 });

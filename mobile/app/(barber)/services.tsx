@@ -11,8 +11,9 @@ import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { SkeletonShopCard } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi, type Service } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { formatDuration, formatTry, serviceGenderLabel } from '@/lib/format';
@@ -149,7 +150,7 @@ export default function BarberServicesScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="📡"
+          icon="globe"
           title="Bağlantı kurulamadı"
           description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
           actionLabel="Tekrar dene"
@@ -163,7 +164,7 @@ export default function BarberServicesScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="🏪"
+          icon="store"
           title="Salon yok"
           description="Önce Profil sekmesinden salon bilgilerini girmelisin."
         />
@@ -178,7 +179,13 @@ export default function BarberServicesScreen() {
           <Text style={styles.title}>Hizmetler</Text>
           <Text style={styles.subtitle}>{servicesQuery.data?.length ?? 0} aktif hizmet</Text>
         </View>
-        <Button label="+ Yeni" size="sm" fullWidth={false} onPress={openCreate} />
+        <Button
+          label="Yeni"
+          icon={<Icon name="plus" size={16} color={Colors.textInverse} strokeWidth={2} />}
+          size="sm"
+          fullWidth={false}
+          onPress={openCreate}
+        />
       </View>
 
       <FlatList
@@ -190,7 +197,7 @@ export default function BarberServicesScreen() {
         ListEmptyComponent={
           servicesQuery.isLoading ? null : servicesQuery.isError ? (
             <EmptyState
-              emoji="⚠️"
+              icon="alert"
               title="Bağlantı hatası"
               description="Hizmetler yüklenemedi."
               actionLabel="Tekrar dene"
@@ -198,7 +205,7 @@ export default function BarberServicesScreen() {
             />
           ) : (
             <EmptyState
-              emoji="✂️"
+              icon="scissors"
               title="Henüz hizmet yok"
               description="Hizmetlerini tanımla — fiyat ve süreyle birlikte."
               actionLabel="İlk hizmetini ekle"
@@ -358,7 +365,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.md,
   },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
   list: {
     paddingHorizontal: Layout.screenPaddingX,
@@ -369,7 +376,7 @@ const styles = StyleSheet.create({
   },
   serviceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: Spacing.sm },
   serviceName: { flex: 1, fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
-  servicePrice: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.primary },
+  servicePrice: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.ink, fontVariant: ['tabular-nums'] },
   serviceDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   actionsRow: {
@@ -382,7 +389,7 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.divider,
   },
   actionBtn: { paddingVertical: 6, paddingHorizontal: 4 },
-  actionEdit: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.primary },
+  actionEdit: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.accent },
   actionDelete: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.error },
 
   modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },

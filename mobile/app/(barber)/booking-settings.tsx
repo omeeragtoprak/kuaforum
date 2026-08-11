@@ -6,11 +6,12 @@ import { useRouter } from 'expo-router';
 import { AxiosError } from 'axios';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { Skeleton } from '@/components/Skeleton';
 import { DepositSection } from '@/components/booking-policy/DepositSection';
 import { AutoConfirmSection } from '@/components/booking-policy/AutoConfirmSection';
 import { BookingRulesSection } from '@/components/booking-policy/BookingRulesSection';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -160,7 +161,7 @@ export default function BookingSettingsScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <ScreenHeader onBack={() => router.back()} style={styles.headerPadX} />
         <EmptyState
-          emoji="🏪"
+          icon="store"
           title="Salon yok"
           description="Önce Profil sekmesinden salon bilgilerini girmelisin."
         />
@@ -173,7 +174,7 @@ export default function BookingSettingsScreen() {
       <SafeAreaView style={styles.container} edges={['top']}>
         <ScreenHeader onBack={() => router.back()} style={styles.headerPadX} />
         <EmptyState
-          emoji="⚠️"
+          icon="alert"
           title="Bağlantı hatası"
           description="Randevu ayarların yüklenemedi."
           actionLabel="Tekrar dene"
@@ -258,8 +259,9 @@ export default function BookingSettingsScreen() {
 function ScreenHeader({ onBack, subtitle, style }: { onBack: () => void; subtitle?: string; style?: ViewStyle }) {
   return (
     <View style={[styles.header, style]}>
-      <Pressable onPress={onBack} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="Geri">
-        <Text style={styles.back}>← Geri</Text>
+      <Pressable onPress={onBack} style={styles.backBtn} hitSlop={8} accessibilityRole="button" accessibilityLabel="Geri dön">
+        <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+        <Text style={styles.back}>Geri</Text>
       </Pressable>
       <Text style={styles.title}>Randevu Ayarları</Text>
       {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
@@ -288,9 +290,9 @@ const styles = StyleSheet.create({
   // ya da hiç padding (standalone'da) olurdu.
   header: { paddingTop: Spacing.lg, paddingBottom: Spacing.md },
   headerPadX: { paddingHorizontal: Layout.screenPaddingX },
-  backBtn: { paddingVertical: 6, marginBottom: Spacing.sm, minHeight: Layout.tapTargetMin, justifyContent: 'center', alignSelf: 'flex-start' },
-  back: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.semibold },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, marginBottom: Spacing.sm, marginLeft: -4, minHeight: Layout.tapTargetMin, justifyContent: 'center', alignSelf: 'flex-start' },
+  back: { fontSize: FontSize.md, color: Colors.ink, fontWeight: FontWeight.semibold },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
   saveRow: { marginTop: Spacing.xl },
 });

@@ -10,8 +10,9 @@ import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
 import { ReviewApi, Review } from '@/api/review';
 import { extractApiError } from '@/api/client';
@@ -51,8 +52,15 @@ export default function BarberReviewsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.back}>← Geri</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Geri dön"
+        >
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
         <Text style={styles.title}>Yorumlar</Text>
         {summary ? (
@@ -74,7 +82,7 @@ export default function BarberReviewsScreen() {
           <RefreshControl
             refreshing={reviewsQuery.isFetching && !reviewsQuery.isLoading}
             onRefresh={() => reviewsQuery.refetch()}
-            tintColor={Colors.primary}
+            tintColor={Colors.ink}
           />
         }
         ItemSeparatorComponent={() => <View style={{ height: Spacing.md }} />}
@@ -86,7 +94,7 @@ export default function BarberReviewsScreen() {
             // YALANI söylüyordu — `getMyShop()` artık gerçek hatayı yutmuyor (bkz. api/barber.ts),
             // burada da ayrı dal şart.
             <EmptyState
-              emoji="📡"
+              icon="globe"
               title="Bağlantı kurulamadı"
               description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
               actionLabel="Tekrar dene"
@@ -94,13 +102,13 @@ export default function BarberReviewsScreen() {
             />
           ) : !shopId ? (
             <EmptyState
-              emoji="🏪"
+              icon="store"
               title="Salon yok"
               description="Önce Profil sekmesinden salon bilgilerini girmelisin."
             />
           ) : reviewsQuery.isError ? (
             <EmptyState
-              emoji="⚠️"
+              icon="alert"
               title="Bağlantı hatası"
               description="Yorumlar yüklenemedi."
               actionLabel="Tekrar dene"
@@ -108,7 +116,7 @@ export default function BarberReviewsScreen() {
             />
           ) : (
             <EmptyState
-              emoji="💬"
+              icon="document"
               title="Henüz yorum yok"
               description="Müşterilerin randevuyu tamamlayınca yorumları burada görüneceksin."
             />
@@ -143,7 +151,8 @@ export default function BarberReviewsScreen() {
                 onPress={() => { setReplyTarget(item); setReplyBody(''); }}
                 accessibilityRole="button"
               >
-                <Text style={styles.replyBtnText}>💬 Cevap yaz</Text>
+                <Icon name="document" size={14} color={Colors.accentInk} />
+                <Text style={styles.replyBtnText}>Cevap yaz</Text>
               </Pressable>
             )}
           </Card>
@@ -182,9 +191,12 @@ export default function BarberReviewsScreen() {
               maxLength={500}
               hint={`${replyBody.length}/500 (en az 3 karakter)`}
             />
-            <Text style={styles.modalHint}>
-              ℹ️ Yanıtın herkese açıktır ve düzenlenemez. Sadece bir kez cevap verebilirsin.
-            </Text>
+            <View style={styles.modalHintRow}>
+              <Icon name="info" size={13} color={Colors.textMuted} />
+              <Text style={styles.modalHint}>
+                Yanıtın herkese açıktır ve düzenlenemez. Sadece bir kez cevap verebilirsin.
+              </Text>
+            </View>
             <View style={styles.modalActions}>
               <Button
                 label="Vazgeç"
@@ -210,9 +222,9 @@ export default function BarberReviewsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
-  backBtn: { alignSelf: 'flex-start', paddingVertical: 4 },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 4, marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6, letterSpacing: LetterSpacing.title },
   summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 },
   summaryText: { fontSize: FontSize.sm, color: Colors.textSecondary },
   list: {
@@ -233,19 +245,22 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     padding: Spacing.sm,
     borderLeftWidth: 3,
-    borderLeftColor: Colors.primary,
+    borderLeftColor: Colors.ink,
   },
-  replyLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.bold, letterSpacing: 0.5 },
+  replyLabel: { fontSize: FontSize.xs, color: Colors.ink, fontWeight: FontWeight.bold, letterSpacing: LetterSpacing.label },
   replyText: { fontSize: FontSize.sm, color: Colors.text, marginTop: 4, lineHeight: 20 },
   replyDate: { fontSize: 10, color: Colors.textMuted, marginTop: 4 },
   replyBtn: {
-    backgroundColor: Colors.primarySoft,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.accentSoft,
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
     borderRadius: Radius.sm,
     alignSelf: 'flex-start',
   },
-  replyBtnText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
+  replyBtnText: { color: Colors.accentInk, fontSize: FontSize.sm, fontWeight: FontWeight.semibold },
 
   modalOverlay: { flex: 1, backgroundColor: Colors.overlay, justifyContent: 'flex-end' },
   modalSheet: {
@@ -266,6 +281,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   modalContextBody: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 18 },
-  modalHint: { fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18 },
+  modalHintRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  modalHint: { flex: 1, fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18 },
   modalActions: { flexDirection: 'row', gap: Spacing.sm, justifyContent: 'flex-end' },
 });
