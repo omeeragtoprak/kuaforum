@@ -128,7 +128,17 @@ app.UseSerilogRequestLogging();
 app.UseExceptionHandler();
 app.UseStatusCodePages();
 
-if (!app.Environment.IsDevelopment())
+// TLS'i ters vekil (reverse proxy) sonlandırıyorsa container'a düz HTTP gelir; burada
+// HTTPS'e yönlendirmek proxy'nin İÇ isteklerini 307'ye düşürür. Render'da deploy tam
+// olarak buna takıldı: uygulama açıldı, portu doğru dinledi, ama Render'ın /health
+// yoklaması 307 aldığı için "Timed Out" ile başarısız sayıldı ve servis canlıya
+// alınmadı. Gerçek istemci istekleri X-Forwarded-Proto taşıdığı için etkilenmezdi —
+// yani hata YALNIZ sağlık kontrolünde görünüyordu, uygulamanın kendisi sağlamdı.
+//
+// Hetzner/Caddy kurulumunda bu bayrak VERİLMEZ (varsayılan false) — orada davranış
+// değişmiyor. Render gibi TLS'i kendi kenarında bitiren platformlarda true yapılır.
+var disableHttpsRedirect = builder.Configuration.GetValue<bool>("Hosting:DisableHttpsRedirect");
+if (!app.Environment.IsDevelopment() && !disableHttpsRedirect)
 {
     app.UseHttpsRedirection();
     app.UseHsts();

@@ -38,6 +38,14 @@ services:
       - key: ASPNETCORE_ENVIRONMENT
         value: Production
 
+      # Render TLS'i kendi kenarında sonlandırır ve container'a düz HTTP gönderir.
+      # Uygulamanın HTTPS yönlendirmesi açık kalırsa Render'ın /health yoklaması 307
+      # alır ve deploy "Timed Out" ile düşer (bir kez fiilen yaşandı). Gerçek istemci
+      # istekleri X-Forwarded-Proto taşıdığı için etkilenmiyordu — hata yalnız sağlık
+      # kontrolünde görünüyordu.
+      - key: Hosting__DisableHttpsRedirect
+        value: "true"
+
       # PORT'u Render kendisi enjekte eder; docker-entrypoint.sh ASPNETCORE_URLS'i
       # ondan türetiyor. Burada sabitlemeye ÇALIŞMA — Render'ın değeriyle çakışır.
 
