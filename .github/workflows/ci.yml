@@ -36,11 +36,24 @@ jobs:
 
       - name: Restore
         working-directory: backend
-        run: dotnet restore
+        # NOT: `dotnet restore`/`build` ÇIPLAK çağrılamaz — solution dosyası `.slnx`
+        # formatında ve kurulu .NET 8 SDK'sı onu tanımıyor ("Specify a project or
+        # solution file" ile düşer). Yerelde de bu yüzden proje bazlı çalışıyoruz.
+        # Api projesi tüm katmanları referansladığı için restore/build ondan yapılıyor;
+        # test projeleri ayrıca restore ediliyor.
+        run: |
+          dotnet restore src/Kuaforum.Api/Kuaforum.Api.csproj
+          dotnet restore tests/Kuaforum.Tests.Domain/Kuaforum.Tests.Domain.csproj
+          dotnet restore tests/Kuaforum.Tests.Application/Kuaforum.Tests.Application.csproj
+          dotnet restore tests/Kuaforum.Tests.Integration/Kuaforum.Tests.Integration.csproj
 
       - name: Build
         working-directory: backend
-        run: dotnet build --no-restore --configuration Release
+        run: |
+          dotnet build src/Kuaforum.Api/Kuaforum.Api.csproj --no-restore --configuration Release
+          dotnet build tests/Kuaforum.Tests.Domain/Kuaforum.Tests.Domain.csproj --no-restore --configuration Release
+          dotnet build tests/Kuaforum.Tests.Application/Kuaforum.Tests.Application.csproj --no-restore --configuration Release
+          dotnet build tests/Kuaforum.Tests.Integration/Kuaforum.Tests.Integration.csproj --no-restore --configuration Release
 
       - name: Domain unit tests
         working-directory: backend
