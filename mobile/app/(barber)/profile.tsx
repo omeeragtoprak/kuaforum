@@ -104,6 +104,18 @@ export default function BarberProfileScreen() {
           // G15 fix: "Salonum" kartı düz "Yükleniyor…" yerine gerçek karta yakın
           // şekilli bir iskelet gösteriyor (isim + adres + rozet satırı).
           <SkeletonShopCard />
+        ) : shopQuery.isError ? (
+          // G12 fix: eskiden isError de "Henüz salonun yok" dalına düşüyordu — bir ağ
+          // hatasında sahibine "salonun yok, yakında oluşturulacak" YALANI söyleniyordu.
+          <Card>
+            <Text style={styles.emptyTitle}>Bağlantı kurulamadı</Text>
+            <Text style={styles.emptyDesc}>
+              Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene.
+            </Text>
+            <View style={{ marginTop: Spacing.md }}>
+              <Button label="Tekrar dene" onPress={() => shopQuery.refetch()} />
+            </View>
+          </Card>
         ) : (
           <Card>
             <Text style={styles.emptyTitle}>Henüz salonun yok</Text>

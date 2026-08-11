@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { EmptyState } from '@/components/EmptyState';
+import { Skeleton } from '@/components/Skeleton';
 import { Button } from '@/components/Button';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi, KycDocumentRequest } from '@/api/barber';
@@ -64,6 +65,33 @@ export default function BarberKycScreen() {
   const isUnderReview = statusVal === 1 || statusVal === 'UnderReview';
   const isRejected = statusVal === 3 || statusVal === 'Rejected';
   const formDisabled = isApproved || isPending || isUnderReview;
+
+  if (shopQuery.isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.scroll}>
+          <Skeleton height={28} width={'60%'} style={{ marginBottom: Spacing.md }} />
+          <Skeleton height={120} radius={Radius.md} />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // G12 fix: shopQuery hatası (ağ/5xx) eskiden aynı dalda "salon yok" YALANI söylüyordu —
+  // `getMyShop()` artık gerçek hatayı yutmuyor (bkz. api/barber.ts), burada ayrı dal şart.
+  if (shopQuery.isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <EmptyState
+          emoji="📡"
+          title="Bağlantı kurulamadı"
+          description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
+          actionLabel="Tekrar dene"
+          onAction={() => shopQuery.refetch()}
+        />
+      </SafeAreaView>
+    );
+  }
 
   if (!shopQuery.data && !shopQuery.isLoading) {
     return (

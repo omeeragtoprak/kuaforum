@@ -42,9 +42,27 @@ export default function OnboardingShopScreen() {
   // Customer için gerek yok (her zaman adım 1) — yalnız zaten BarberOwner/Stylist
   // olup bu ekrana geri dönenler için "kaldığı yerden devam" kontrolü.
   const [resuming, setResuming] = useState(!isCustomer);
+  // G12 fix: eskiden getMyShop() ağ hatasında sessizce null dönüyordu, bu da "salon yok,
+  // adım 1'den başla" ile AYNI sonuca gidiyordu — zaten var olan bir salonu ikinci kez
+  // oluşturmaya kalkışabilirdi. Artık gerçek hata ayrı bir dalda, retry ile.
+  const [resumeError, setResumeError] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const mountedRef = useRef(true);
   useEffect(() => () => { mountedRef.current = false; }, []);
+
+  async function checkExistingShop() {
+    setResumeError(false);
+    setResuming(true);
+    try {
+      const shop = await BarberApi.getMyShop();
+      if (!mountedRef.current) return;
+      routeForExistingShop(shop);
+    } catch {
+      if (!mountedRef.current) return;
+      setResuming(false);
+      setResumeError(true);
+    }
+  }
 
   useEffect(() => {
     if (isCustomer) return;
@@ -53,11 +71,7 @@ export default function OnboardingShopScreen() {
       setResuming(false);
       return;
     }
-    (async () => {
-      const shop = await BarberApi.getMyShop();
-      if (!mountedRef.current) return;
-      routeForExistingShop(shop);
-    })();
+    checkExistingShop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -120,16 +134,28 @@ export default function OnboardingShopScreen() {
       const status = (err as { response?: { status?: number } })?.response?.status;
       if (status === 409) {
         // Zaten bir işletmesi var — kaldığı adıma yönlendir (idempotent devam).
-        const shop = await BarberApi.getMyShop();
-        if (!mountedRef.current) return;
-        setSubmitting(false);
-        if (!shop) {
-          // 409 ama işletme yok (ör. slug çakışması) — sessiz kalma, gerçek hatayı göster.
+        try {
+          const shop = await BarberApi.getMyShop();
+          if (!mountedRef.current) return;
+          setSubmitting(false);
+          if (!shop) {
+            // 409 ama işletme yok (ör. slug çakışması) — sessiz kalma, gerçek hatayı göster.
+            Haptics.error();
+            Alert.alert('Hata', extractApiError(err));
+            return;
+          }
+          routeForExistingShop(shop);
+        } catch {
+          // G12 fix: getMyShop() artık ağ hatasında sessizce null dönmüyor — burada da
+          // "işletme yok" YALANI söylemek yerine gerçek durumu anlat, tekrar denetsin.
+          if (!mountedRef.current) return;
+          setSubmitting(false);
           Haptics.error();
-          Alert.alert('Hata', extractApiError(err));
-          return;
+          Alert.alert(
+            'Bağlantı hatası',
+            'Salonun zaten var gibi görünüyor ama şu an bilgisine ulaşılamadı. Tekrar dene.',
+          );
         }
-        routeForExistingShop(shop);
         return;
       }
       setSubmitting(false);
@@ -159,6 +185,20 @@ export default function OnboardingShopScreen() {
           <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>Salon bilgin kontrol ediliyor…</Text>
         </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (resumeError) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <EmptyState
+          emoji="📡"
+          title="Bağlantı kurulamadı"
+          description="Mevcut salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
+          actionLabel="Tekrar dene"
+          onAction={checkExistingShop}
+        />
       </SafeAreaView>
     );
   }

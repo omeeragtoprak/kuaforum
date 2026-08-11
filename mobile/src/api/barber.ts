@@ -220,13 +220,16 @@ export const BarberApi = {
   },
 
   // Owner self-service
+  // G12 fix: eskiden buradaki try/catch TÜM hataları (ağ kopukluğu, 5xx, timeout) yutup
+  // `null` döndürüyordu — çağıran ekranlar bunu "salonun yok" ile AYNI şekilde yorumluyordu.
+  // Backend zaten "salon yok" durumunu 200 + null gövdeyle temsil ediyor (bkz.
+  // GetMyBarberShopQueryHandler — `Result.Success(shop)`, shop null olsa bile). Yani gerçek
+  // bir hata asla meşru bir "salon yok" durumu DEĞİL; burada yutulmamalı, çağırana (useQuery
+  // `isError`'a) düşmeli ki ekran "bağlantı hatası" ile "önce salon oluştur"u birbirinden
+  // ayırabilsin. İmperatif çağıranlar (örn. onboarding/shop.tsx) kendi try/catch'ini taşır.
   async getMyShop(): Promise<BarberShop | null> {
-    try {
-      const res = await apiClient.get<BarberShop>('/v1/owner/barber-shop');
-      return res.data;
-    } catch (err) {
-      return null;
-    }
+    const res = await apiClient.get<BarberShop | null>('/v1/owner/barber-shop');
+    return res.data;
   },
   async createService(shopId: string, body: {
     name: string;

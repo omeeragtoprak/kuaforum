@@ -310,6 +310,22 @@ export default function AvailabilityScreen() {
     );
   }
 
+  // G12 fix: shopQuery hatası (ağ/5xx) eskiden `!shopQuery.data` dalına düşüp "salon yok"
+  // YALANI söylüyordu — `getMyShop()` artık gerçek hatayı yutmuyor (bkz. api/barber.ts).
+  if (shopQuery.isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <EmptyState
+          emoji="📡"
+          title="Bağlantı kurulamadı"
+          description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
+          actionLabel="Tekrar dene"
+          onAction={() => shopQuery.refetch()}
+        />
+      </SafeAreaView>
+    );
+  }
+
   if (!shopQuery.data) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>

@@ -4,6 +4,7 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
 import { EmptyState } from '@/components/EmptyState';
+import { SkeletonList, SkeletonBookingRow } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
 import { AuthApi, Consent, ConsentPurposeKey } from '@/api/auth';
 import { extractApiError } from '@/api/client';
@@ -117,7 +118,13 @@ export default function ConsentsScreen() {
           />
         }
       >
-        {consentsQuery.isError ? (
+        {consentsQuery.isLoading ? (
+          // G11/G12 fix: eskiden yükleme sırasında bu dal hiç kontrol edilmiyordu — sunucudan
+          // henüz veri gelmeden 4 rıza da "kapalı" olarak render ediliyordu. Bu bir gizlilik/rıza
+          // ekranında YANLIŞ bir sinyal: kullanıcı gerçekte açık olan bir rızayı anlık da olsa
+          // kapalı görebiliyordu. Artık gerçek veri gelene kadar iskelet gösteriliyor.
+          <SkeletonList count={4} render={() => <SkeletonBookingRow />} />
+        ) : consentsQuery.isError ? (
           <EmptyState
             emoji="⚠️"
             title="Bağlantı hatası"

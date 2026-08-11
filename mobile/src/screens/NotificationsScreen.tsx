@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { EmptyState } from '@/components/EmptyState';
+import { SkeletonList, SkeletonBookingRow } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
 import { NotificationApi, NotificationFeedItem } from '@/api/notification';
 import { extractApiError } from '@/api/client';
@@ -94,7 +95,11 @@ export function NotificationsScreen({ accent }: { accent: string }) {
           />
         }
         ListEmptyComponent={
-          query.isLoading ? null : query.isError ? (
+          query.isLoading ? (
+            // G11 fix: eskiden yükleme sırasında liste alanı tamamen boştu (null) —
+            // başlık görünür ama içerik alanı "beyaz ekran" gibi kalıyordu.
+            <SkeletonList count={4} render={() => <SkeletonBookingRow />} />
+          ) : query.isError ? (
             <EmptyState
               emoji="⚠️"
               title="Bağlantı hatası"

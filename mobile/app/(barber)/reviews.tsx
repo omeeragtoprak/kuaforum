@@ -81,6 +81,17 @@ export default function BarberReviewsScreen() {
         ListEmptyComponent={
           shopQuery.isLoading || reviewsQuery.isLoading ? (
             <SkeletonList count={3} render={() => <SkeletonBookingRow />} />
+          ) : shopQuery.isError ? (
+            // G12 fix: shopQuery hatası (ağ/5xx) eskiden `!shopId` dalına düşüp "salon yok"
+            // YALANI söylüyordu — `getMyShop()` artık gerçek hatayı yutmuyor (bkz. api/barber.ts),
+            // burada da ayrı dal şart.
+            <EmptyState
+              emoji="📡"
+              title="Bağlantı kurulamadı"
+              description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
+              actionLabel="Tekrar dene"
+              onAction={() => shopQuery.refetch()}
+            />
           ) : !shopId ? (
             <EmptyState
               emoji="🏪"

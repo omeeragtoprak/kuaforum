@@ -11,6 +11,7 @@ import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { EmptyState } from '@/components/EmptyState';
+import { SkeletonShopCard } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi, type Service } from '@/api/barber';
 import { extractApiError } from '@/api/client';
@@ -126,7 +127,39 @@ export default function BarberServicesScreen() {
     );
   }
 
-  if (!shopQuery.data && !shopQuery.isLoading) {
+  // G12 fix: `getMyShop()` artık ağ/5xx hatasında sessizce null dönmüyor (bkz. src/api/barber.ts),
+  // bu yüzden burada `isError` ile "gerçekten salon yok" ayrı dallara ayrılmalı — aksi halde bir
+  // WiFi kopukluğunda kuaföre "salonun yok, önce oluştur" YALANI söylenir.
+  if (shopQuery.isLoading) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <View style={styles.header}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Hizmetler</Text>
+          </View>
+        </View>
+        <View style={styles.list}>
+          <SkeletonShopCard />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (shopQuery.isError) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top']}>
+        <EmptyState
+          emoji="📡"
+          title="Bağlantı kurulamadı"
+          description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
+          actionLabel="Tekrar dene"
+          onAction={() => shopQuery.refetch()}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  if (!shopQuery.data) {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
