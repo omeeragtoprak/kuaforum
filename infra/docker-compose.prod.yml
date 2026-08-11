@@ -56,6 +56,11 @@ services:
       - .env.prod
     environment:
       ASPNETCORE_ENVIRONMENT: Production
+      # Dockerfile'ın docker-entrypoint.sh'i $PORT'u okuyup ASPNETCORE_URLS'i kurar
+      # (Koyeb free-tier deploy hazırlığı — bkz. docs/DEPLOY-FREE-TIER.md); Hetzner'de
+      # bu değişmesin diye burada explicit 8080 pinleniyor (Caddyfile + aşağıdaki
+      # healthcheck hâlâ 8080 varsayıyor).
+      PORT: "8080"
     depends_on:
       postgres:
         condition: service_healthy

@@ -37,6 +37,8 @@ Dosyalar:
 
 Bu compose dosyasında **sadece `caddy` servisi host'a port publish ediyor** (80/443). `postgres`, `redis`, `backend`, `web-admin` internal Docker network'te (`internal`), host'tan erişilemez — Caddy tek public giriş noktası. Bu, agent tanımındaki "internal services Docker network'de izole, sadece API public" kuralının bir adım ötesi: burada API bile doğrudan public değil, Caddy arkasında. Gerekçe: TLS terminasyonu + tek bir yerden rate-limit/WAF (ileride Cloudflare) + backend'i tamamen ağdan izole tutmak.
 
+**Not (2026-08 — Koyeb free-tier deploy hazırlığı):** `backend/Dockerfile`'ın `ENTRYPOINT`'i artık sabit `ASPNETCORE_URLS=http://+:8080` yerine `docker-entrypoint.sh` script'i üzerinden runtime'da `$PORT` env'ini okuyup URL'i kurar (Koyeb gibi PaaS'lar portu deploy anında `PORT` ile bildirir; Docker `ENV` build-time'da donduğu için bunu karşılayamaz). Bu compose dosyasında (`docker-compose.prod.yml`) davranış DEĞİŞMEDİ — backend servisine explicit `PORT: "8080"` verildi, Caddyfile/healthcheck hâlâ 8080 varsayıyor. Koyeb-specific detaylar `docs/DEPLOY-FREE-TIER.md`'de.
+
 ### 2.2 Deploy runbook (Hetzner sunucusu hazır olduğunda, tek seferlik)
 
 ```bash
@@ -67,7 +69,6 @@ Tüm backend değerleri `.env.prod` üzerinden `env_file:` ile container'a enjek
 | Env var | appsettings key | Eksikse ne olur | Nerede fail-fast |
 |---|---|---|---|
 | `ConnectionStrings__Postgres` | `ConnectionStrings:Postgres` | Boot anında `InvalidOperationException` | `DependencyInjection.AddInfrastructure` (service registration, `Build()` öncesi) |
-| `ConnectionStrings__Redis` | `ConnectionStrings:Redis` | Boot anında `InvalidOperationException` | Aynı yer |
 | `Jwt__SigningKey` | `Jwt:SigningKey` | Boot anında `InvalidOperationException` ("32+ bytes") | `AuthSetup.AddKuaforumAuth` |
 | `Encryption__Key` | `Encryption:Key` | Boot anında `InvalidOperationException` | `AesEncryptionService` ctor — `AdminSeeder` her boot'ta resolve edildiği için eager tetiklenir |
 | `Otp__Pepper` | `Otp:Pepper` | Boot anında `InvalidOperationException` | `Program.cs` — bu cycle'da eklendi |
@@ -78,6 +79,10 @@ Min 32 byte önerilir (`openssl rand -base64 32`) — `Jwt__SigningKey`, `Otp__P
 
 | Env var | Eksikse davranış |
 |---|---|
+| `ConnectionStrings__Redis` | **(2026-08 — Koyeb free-tier deploy hazırlığı ile OPSİYONEL'e alındı.)** Boşsa `IConnectionMultiplexer` hiç register edilmez; `IRateLimiter`/`IDistributedLock` in-memory karşılıklara düşer (`InMemoryRateLimiter`/`InMemoryDistributedLock`, bkz. `backend/src/Kuaforum.Infrastructure/Caching/`) ve boot'ta **bir kez** `RedisUnavailableStartupNotice` WARNING log basar. Randevu slot çakışma garantisi zaten PostgreSQL EXCLUDE constraint'inden gelir (M15_BookingSlotExclusion) — tek-örnekli (single-instance) bir dağıtımda bu güvenli. **ÇOK ÖRNEKLİ (multi-instance/K8s) bir dağıtımda Redis tekrar ZORUNLU hale gelir** — in-memory fallback'ler süreç-içi (process-local), örnekler arası paylaşılmaz. `/health/ready` de Redis yokken `checks.redis.status="not_configured"` döner (bu `allOk`'u ETKİLEMEZ, "degraded" değildir — bilinçli bir konfigürasyondur). Hetzner `docker-compose.prod.yml` hâlâ bir `redis` servisi çalıştırıyor ve `ConnectionStrings__Redis` set ediyor — bu değişiklik davranışını BOZMAZ, yalnız Redis'siz dağıtımları (Koyeb) mümkün kılar. Detaylı gerekçe: `docs/DEPLOY-FREE-TIER.md`. |
+| `DevTools__Enabled` | Development DIŞINDA (`ASPNETCORE_ENVIRONMENT=Production` dahil) varsayılan `false` — `POST /v1/auth/dev-login` ve `/v1/dev/*` route'ları hiç map edilmez (404). `true` yapılırsa bu route'lar Production'da da açılır (bkz. `Kuaforum.Api.Configuration.DevToolsGate`) — **dev-login `AllowAnonymous`'tur ve herhangi bir role, kimlik doğrulaması olmadan token verir**, bu yüzden internete açık bir dağıtımda ciddi bir risktir. Yalnız gerçek OTP/NetGSM kurulana kadar founder'ın test amaçlı Koyeb dağıtımı için düşünüldü — bkz. `docs/DEPLOY-FREE-TIER.md` güvenlik değerlendirmesi. Açıldığında boot log'unda GÜRÜLTÜLÜ bir WARNING basılır (fail-fast değil, bilinçli kabul). |
+| `DevTools__AccessKey` | `DevTools:Enabled=true` iken bu boşsa dev-login/dev-endpoints TAMAMEN anonim erişime açıktır (boot'ta ayrıca ikinci, daha kritik bir WARNING basılır). Set edilirse dev-only uçlara gelen her istek `X-Dev-Access-Key` header'ının bu değerle eşleşmesini ister (sabit-zaman karşılaştırma, 403 aksi halde). |
+| `Hangfire__QueuePollIntervalSeconds` | Boşsa Hangfire.PostgreSql'in kendi default'u (15s) — Hetzner'de her zaman-açık Postgres için DEĞİŞTİRİLMEDİ. Serverless/otomatik-uyuyan Postgres'lerde (örn. Neon, bkz. `docs/DEPLOY-FREE-TIER.md` § 4.3) sürekli 15s'lik polling compute'un hiç uyumamasına ve ücretsiz compute-hour bütçesinin hızla tükenmesine yol açabilir — bu env ile büyütülebilir (örn. `120`). |
 | `NetGsm__UserCode`, `NetGsm__Password`, `NetGsm__Originator` | OTP SMS gönderimi `false` döner + **Error log** (kod loglanmaz — bkz. § 5). NetGSM hesabı açılana kadar beklenen durum. |
 | `Resend__ApiKey` | Email gönderimi mock/log-only kanala düşer (crash yok). |
 | `PayTr__MerchantId`, `PayTr__MerchantKey`, `PayTr__MerchantSalt` | Ödeme denemesi runtime'da başarısız olur, boot etkilenmez. PayTR hesabı açılana kadar beklenen durum. |
@@ -186,3 +191,4 @@ Bu ikisi birlikte "önceden `${VAR}` placeholder prod'u sessizce bozuyordu" bulg
 - [`docs/PHASE-0-MASTER-SPEC.md`](../docs/PHASE-0-MASTER-SPEC.md)
 - [`docs/12-devops/01-ci-cd.md`](../docs/12-devops/01-ci-cd.md) — aspirational plan; bazı detaylar (image namespace, migration stratejisi) bu cycle'daki gerçek implementasyondan farklı, güncellenmedi (kapsam dışı).
 - [`docs/12-devops/02-environments.md`](../docs/12-devops/02-environments.md)
+- [`docs/DEPLOY-FREE-TIER.md`](../docs/DEPLOY-FREE-TIER.md) — Koyeb (backend) + Neon (Postgres) kartsız/ücretsiz alternatif deploy runbook'u (2026-08). Bu Hetzner runbook'unu DEĞİŞTİRMİYOR, ikinci bir hedef ortam.

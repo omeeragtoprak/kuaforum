@@ -83,6 +83,33 @@ if (app.Environment.IsProduction() && string.IsNullOrWhiteSpace(app.Configuratio
         "See infra/README.md 'Zorunlu environment değişkenleri' tablosu.");
 }
 
+// DevTools:Enabled=true (bkz. Kuaforum.Api.Configuration.DevToolsGate) Development DIŞINDA bir
+// ortamda dev-login + /v1/dev/* uçlarını AÇIKÇA açar — internete açık bir dağıtımda (Koyeb
+// free-tier test ortamı gibi) bu bilinçli bir risk kabulüdür, boot log'unda GÜRÜLTÜLÜ görünmeli
+// (fail-fast DEĞİL — founder'ın bilerek açtığı bir test modu, boot'u engellemez). AccessKey de
+// yoksa ikinci, daha kritik bir uyarı: dev-login TAMAMEN anonim erişime açık.
+if (Kuaforum.Api.Configuration.DevToolsGate.IsEnabledOutsideDevelopment(app.Environment, app.Configuration))
+{
+    var bootLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    if (string.IsNullOrEmpty(app.Configuration["DevTools:AccessKey"]))
+    {
+        bootLogger.LogWarning(
+            "DevTools:Enabled=true ve {Environment} ortamındasınız AMA DevTools:AccessKey BOŞ — " +
+            "POST /v1/auth/dev-login internete TAMAMEN anonim açık ve herhangi bir role (Admin " +
+            "dahil) hiçbir kimlik doğrulaması olmadan token verir. Bu bilinçli bir risk kabulü " +
+            "değilse hemen DevTools:Enabled=false yapın veya DevTools:AccessKey set edin. " +
+            "Bkz. docs/DEPLOY-FREE-TIER.md güvenlik değerlendirmesi.",
+            app.Environment.EnvironmentName);
+    }
+    else
+    {
+        bootLogger.LogWarning(
+            "DevTools:Enabled=true — {Environment} ortamında dev-login + /v1/dev/* açık " +
+            "(DevTools:AccessKey ile korunuyor). Bkz. docs/DEPLOY-FREE-TIER.md.",
+            app.Environment.EnvironmentName);
+    }
+}
+
 // Caddy/Cloudflare arkasında çalışırken gerçek şema (https) ve client IP'yi
 // X-Forwarded-Proto / X-Forwarded-For header'larından geri kazanır. Bu, en
 // başta (routing/auth/HTTPS redirect'ten ÖNCE) uygulanmalı. KnownProxies/
@@ -118,7 +145,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok", timestamp = DateTime
 
 app.MapGet("/health/ready", async (
     Kuaforum.Infrastructure.Persistence.ApplicationDbContext db,
-    StackExchange.Redis.IConnectionMultiplexer redis,
+    IServiceProvider sp,
     CancellationToken ct) =>
 {
     var checks = new Dictionary<string, object>();
@@ -138,18 +165,47 @@ app.MapGet("/health/ready", async (
         allOk = false;
     }
 
-    // Redis ping
+    // Redis ping — OPSİYONEL: ConnectionStrings:Redis boşsa IConnectionMultiplexer hiç
+    // register edilmemiştir (bkz. Infrastructure.DependencyInjection.AddInfrastructure), bu
+    // durumda "redis" anahtarı hiç görünmez ve allOk'u ETKİLEMEZ — çünkü uygulama bilerek
+    // in-memory rate limiter/lock'a düşmüş tek-örnekli bir dağıtımdır (Koyeb free-tier), bu
+    // "degraded" değil, TASARLANMIŞ bir konfigürasyondur.
+    //
+    // ÖNEMLİ (yerel Docker smoke test'inde yakalanan gerçek bug — 2026-08-11): IConnectionMultiplexer
+    // AddSingleton factory'si (`_ => ConnectionMultiplexer.Connect(...)`) ilk resolve'da SENKRON
+    // throw eder (abortConnect=true varsayılan) — yani ConnectionStrings:Redis SET AMA
+    // ERİŞİLEMEZ ise (yanlış host/port/parola) GetService<T>() bile exception fırlatır, sp.GetService
+    // çağrısı try/catch DIŞINDA olsaydı bu endpoint çıplak 500 dönerdi (UseExceptionHandler'a düşer,
+    // "checks" body'si hiç görünmez). Bu yüzden GetService çağrısının kendisi de try/catch içinde.
+    StackExchange.Redis.IConnectionMultiplexer? redis = null;
     try
     {
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        var pong = await redis.GetDatabase().PingAsync();
-        sw.Stop();
-        checks["redis"] = new { status = "ok", latencyMs = sw.ElapsedMilliseconds, pingMs = pong.TotalMilliseconds };
+        redis = sp.GetService<StackExchange.Redis.IConnectionMultiplexer>();
     }
     catch (Exception ex)
     {
         checks["redis"] = new { status = "fail", error = ex.Message };
         allOk = false;
+    }
+
+    if (redis is not null)
+    {
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var pong = await redis.GetDatabase().PingAsync();
+            sw.Stop();
+            checks["redis"] = new { status = "ok", latencyMs = sw.ElapsedMilliseconds, pingMs = pong.TotalMilliseconds };
+        }
+        catch (Exception ex)
+        {
+            checks["redis"] = new { status = "fail", error = ex.Message };
+            allOk = false;
+        }
+    }
+    else if (!checks.ContainsKey("redis"))
+    {
+        checks["redis"] = new { status = "not_configured", note = "in-memory rate limiter/lock kullanılıyor (tek-örnekli dağıtım için beklenen davranış)" };
     }
 
     var payload = new { status = allOk ? "ok" : "degraded", timestamp = DateTimeOffset.UtcNow, checks };
@@ -161,7 +217,7 @@ app.MapGet("/health/ready", async (
 app.MapGet("/", () => Results.Redirect("/health"))
     .ExcludeFromDescription();
 
-app.MapAuthEndpoints(app.Environment);
+app.MapAuthEndpoints(app.Environment, app.Configuration);
 app.MapUserEndpoints();
 app.MapLegalEndpoints();
 app.MapGeographyEndpoints();
@@ -176,7 +232,7 @@ app.MapDeviceTokenEndpoints();
 app.MapAdminEndpoints();
 app.MapBillingEndpoints(app.Environment);
 app.MapWebhookEndpoints();
-app.MapDevEndpoints(app.Environment);
+app.MapDevEndpoints(app.Environment, app.Configuration);
 
 // Hangfire dashboard + recurring jobs ancak Hangfire DI'a register edildiyse
 // (Hangfire:Enabled config flag). Test ortamında Postgres yokken eager bağlanma

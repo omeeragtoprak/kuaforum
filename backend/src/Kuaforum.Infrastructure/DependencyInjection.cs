@@ -42,9 +42,27 @@ public static class DependencyInjection
 
         services.AddScoped<IApplicationDbContext>(sp => sp.GetRequiredService<ApplicationDbContext>());
 
-        var redisConnString = configuration.GetConnectionString("Redis")
-            ?? throw new InvalidOperationException("Connection string 'Redis' is missing.");
-        services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnString));
+        // Redis OPSİYONEL (2026-08 — Koyeb free-tier deploy hazırlığı, kredi kartsız/serverless
+        // ücretsiz hosting hedefi Redis içermiyor). Boş/yok ise IConnectionMultiplexer HİÇ
+        // register edilmez — bunu tüketen IRateLimiter/IDistributedLock in-memory karşılıklarına
+        // düşer (bkz. InMemoryRateLimiter/InMemoryDistributedLock XML doc'ları: asıl garanti
+        // zaten PostgreSQL EXCLUDE constraint'i — M15 — olduğundan tek-örnekli dağıtımda bu
+        // güvenli bir davranış). Redis varsa davranış öncekiyle birebir aynı. Program.cs
+        // /health/ready da IConnectionMultiplexer'ı IServiceProvider üzerinden OPSİYONEL
+        // çözer — burada register edilmemesi orayı bozmaz.
+        var redisConnString = configuration.GetConnectionString("Redis");
+        if (!string.IsNullOrWhiteSpace(redisConnString))
+        {
+            services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnString));
+            services.AddScoped<IRateLimiter, RedisRateLimiter>();
+            services.AddSingleton<IDistributedLock, RedisDistributedLock>();
+        }
+        else
+        {
+            services.AddSingleton<IRateLimiter, InMemoryRateLimiter>();
+            services.AddSingleton<IDistributedLock, InMemoryDistributedLock>();
+            services.AddHostedService<RedisUnavailableStartupNotice>();
+        }
 
         services.AddHttpContextAccessor();
 
@@ -84,8 +102,8 @@ public static class DependencyInjection
         services.AddSingleton<IPasswordHasher, PasswordHasherService>();
         services.AddSingleton<ITotpService, TotpService>();
         services.AddSingleton<ISymmetricEncryption, AesEncryptionService>();
-        services.AddScoped<IRateLimiter, RedisRateLimiter>();
-        services.AddSingleton<IDistributedLock, RedisDistributedLock>();
+        // IRateLimiter / IDistributedLock: Redis varsa/yoksa yukarıda (redisConnString kontrolü)
+        // koşullu register edildi — burada tekrar edilmiyor.
         services.AddSingleton<IOAuthProvider, GoogleOAuthProvider>();
         services.AddSingleton<IOAuthProvider, AppleOAuthProvider>();
 
@@ -158,9 +176,24 @@ public static class DependencyInjection
         var hangfireEnabled = configuration.GetValue<bool?>("Hangfire:Enabled") ?? true;
         if (hangfireEnabled)
         {
+            // Hangfire:QueuePollIntervalSeconds (opsiyonel, VARSAYILAN Hangfire.PostgreSql'in
+            // kendi default'u — 15s, DEĞİŞTİRİLMEDİ, Hetzner'deki her zaman-açık Postgres için
+            // bu gayet makul). Koyeb free-tier + Neon serverless deploy hazırlığı (2026-08):
+            // Neon free tier ayda yalnız 100 CU-hour compute veriyor ve Hangfire'ın sürekli DB
+            // polling'i (varsayılan 15s'de bir) Neon compute'unu HİÇ scale-to-zero'ya
+            // düşürtmeyip bu bütçeyi ~16-17 günde tüketebilir [unverified 2026-08-11 — Neon'un
+            // "hangi sorgu aktivite sayılır" davranışı ölçülmedi, ama polling sorgusu da bir
+            // sorgudur]. Bu yüzden bu tek değer env'den override edilebilir hale getirildi —
+            // Koyeb/Neon dağıtımında founder'ın örn. 120s'ye çekmesi için (bkz.
+            // docs/DEPLOY-FREE-TIER.md).
+            var queuePollIntervalSeconds = configuration.GetValue<int?>("Hangfire:QueuePollIntervalSeconds");
+            var storageOptions = new PostgreSqlStorageOptions();
+            if (queuePollIntervalSeconds is > 0)
+                storageOptions.QueuePollInterval = TimeSpan.FromSeconds(queuePollIntervalSeconds.Value);
+
             services.AddHangfire(cfg =>
             {
-                cfg.UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(pgConnString));
+                cfg.UsePostgreSqlStorage(opts => opts.UseNpgsqlConnection(pgConnString), storageOptions);
                 cfg.UseSimpleAssemblyNameTypeSerializer();
                 cfg.UseRecommendedSerializerSettings();
             });

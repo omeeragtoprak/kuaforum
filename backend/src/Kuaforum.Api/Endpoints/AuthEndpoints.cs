@@ -1,3 +1,4 @@
+using Kuaforum.Api.Configuration;
 using Kuaforum.Application.Modules.Identity.Auth;
 using Kuaforum.Domain.Modules.Identity;
 using MediatR;
@@ -7,11 +8,11 @@ namespace Kuaforum.Api.Endpoints;
 
 public static class AuthEndpoints
 {
-    public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app, IWebHostEnvironment env)
+    public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder app, IWebHostEnvironment env, IConfiguration config)
     {
         var group = app.MapGroup("/v1/auth").WithTags("Auth");
 
-        if (env.IsDevelopment())
+        if (DevToolsGate.IsEnabled(env, config))
         {
             group.MapPost("/dev-login", DevLoginAsync)
                 .WithName("DevLogin")
@@ -53,8 +54,14 @@ public static class AuthEndpoints
         [FromBody] DevLoginRequest request,
         HttpContext httpContext,
         IMediator mediator,
+        IConfiguration config,
         CancellationToken ct)
     {
+        // Bkz. DevToolsGate XML doc: bu endpoint AllowAnonymous ve Admin dahil herhangi bir
+        // rolü kimlik doğrulaması olmadan verir. DevTools:AccessKey set edilmişse ek katman.
+        var accessKeyError = DevToolsGate.CheckAccessKey(httpContext, config);
+        if (accessKeyError is not null) return accessKeyError;
+
         var ip = httpContext.Connection.RemoteIpAddress?.ToString();
         var deviceFingerprint = request.DeviceFingerprint
             ?? $"dev-{request.Role.ToString().ToLowerInvariant()}-{httpContext.Connection.Id}";

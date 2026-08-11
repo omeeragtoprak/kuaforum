@@ -39,20 +39,31 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-ENV ASPNETCORE_URLS=http://+:8080 \
-    ASPNETCORE_ENVIRONMENT=Production \
+# ASPNETCORE_URLS ARTIK burada sabitlenmiyor — docker-entrypoint.sh runtime'da
+# $PORT env'ini okuyup kurar (Koyeb gibi PaaS'lar portu deploy anında $PORT ile
+# verir; Docker ENV build-time'da donduğu için başka bir env'e referans veremez,
+# bu yüzden shell entrypoint şart). Hetzner docker-compose.prod.yml PORT=8080
+# explicit veriyor (mevcut Caddyfile/healthcheck davranışı korunuyor).
+ENV ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_EnableDiagnostics=0
 
 COPY --from=build /app/publish .
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Non-root: .NET 8+ base images ship a built-in "app" user, UID exposed via
 # $APP_UID. See infra/README.md for the source on this ("What's new in
 # containers for .NET 8", Microsoft Learn).
 USER $APP_UID
 
-EXPOSE 8080
+# EXPOSE metadata amaçlı — Docker bunu fiilen publish etmez (ports: mapping ile
+# yapılır) ve Koyeb kendi PORT taramasını kullanır. 8000 = Koyeb default'u.
+EXPOSE 8000
 
+# Shell form (no brackets after CMD) — Docker runs it via `/bin/sh -c`, which
+# expands $PORT at healthcheck-run time. PORT set değilse 8000'e düşer —
+# entrypoint.sh'deki default ile tutarlı.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
-    CMD curl -fsS http://localhost:8080/health/ready || exit 1
+    CMD curl -fsS "http://localhost:${PORT:-8000}/health/ready" || exit 1
 
-ENTRYPOINT ["dotnet", "Kuaforum.Api.dll"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]

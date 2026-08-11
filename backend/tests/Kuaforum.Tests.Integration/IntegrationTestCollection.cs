@@ -8,7 +8,12 @@ namespace Kuaforum.Tests.Integration;
 // hit "Sequence contains no elements" reading demo-seed data under the added load). Keeping both
 // factories in one collection forces full sequential execution across all integration tests,
 // trading a bit of wall-clock time for eliminating that whole class of interference.
+// NoRedisIntegrationTestFactory (2026-08 — Koyeb free-tier deploy hazırlığı) aynı gerekçeyle
+// (Testcontainers kaynak çakışması / sıralı yürütme) bu koleksiyona üçüncü fixture olarak eklendi.
 [CollectionDefinition(nameof(IntegrationTestCollection))]
-public sealed class IntegrationTestCollection : ICollectionFixture<IntegrationTestFactory>, ICollectionFixture<OnlinePaymentsDisabledFactory>
+public sealed class IntegrationTestCollection
+    : ICollectionFixture<IntegrationTestFactory>,
+      ICollectionFixture<OnlinePaymentsDisabledFactory>,
+      ICollectionFixture<NoRedisIntegrationTestFactory>
 {
 }
