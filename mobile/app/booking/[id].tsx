@@ -7,8 +7,9 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { ErrorState } from '@/components/ErrorState';
+import { Icon, IconName } from '@/components/Icon';
 import { SkeletonBookingDetail } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
 import { PaymentApi, PaymentKind } from '@/api/payment';
 import { extractApiError } from '@/api/client';
@@ -22,6 +23,13 @@ import { useAuthStore } from '@/store/auth-store';
 import { estimateDepositMinor } from '@/lib/deposit';
 import { resolveBookingConfirmMode } from '@/lib/booking-confirm';
 import { canFileBookingComplaint, complaintConfirmMessage, complaintSuccessMessage } from '@/lib/salon-changes';
+
+/** Buton içi ikon rengi: birincil/yıkıcı zemin koyu → beyaz ikon; diğerleri mürekkep. */
+function btnIconColor(variant?: 'primary' | 'secondary' | 'ghost' | 'destructive' | 'outline'): string {
+  return variant === 'primary' || variant === undefined || variant === 'destructive'
+    ? Colors.textInverse
+    : Colors.ink;
+}
 
 export default function BookingDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -266,7 +274,7 @@ export default function BookingDetailScreen() {
         <ErrorState
           error={query.error}
           onRetry={() => query.refetch()}
-          notFoundEmoji="🚫"
+          notFoundIcon="x"
           notFoundTitle="Bu randevu bulunamadı"
           notFoundDescription="Bu randevu silinmiş veya artık mevcut olmayabilir."
           notFoundActionLabel="Geri dön"
@@ -348,8 +356,15 @@ export default function BookingDetailScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.back}>← Geri</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Geri dön"
+        >
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
 
         <View style={styles.headerBlock}>
@@ -366,23 +381,23 @@ export default function BookingDetailScreen() {
 
         <Text style={styles.sectionTitle}>Detay</Text>
         <Card style={{ gap: 0 }} padded={false}>
-          {b.shopName ? <><DetailRow icon="🏪" label="Salon" value={b.shopName} /><Divider /></> : null}
-          {b.stylistName ? <><DetailRow icon="✂️" label="Stilist" value={b.stylistName} /><Divider /></> : null}
-          <DetailRow icon="📅" label="Başlangıç" value={formatDateTime(b.scheduledAt)} />
+          {b.shopName ? <><DetailRow icon="store" label="Salon" value={b.shopName} /><Divider /></> : null}
+          {b.stylistName ? <><DetailRow icon="scissors" label="Stilist" value={b.stylistName} /><Divider /></> : null}
+          <DetailRow icon="calendar" label="Başlangıç" value={formatDateTime(b.scheduledAt)} />
           <Divider />
-          <DetailRow icon="⏱️" label="Bitiş" value={formatDateTime(b.scheduledEndsAt)} />
+          <DetailRow icon="clock" label="Bitiş" value={formatDateTime(b.scheduledEndsAt)} />
           <Divider />
-          <DetailRow icon="💰" label="Toplam" value={formatTry(b.totalAmountMinor)} />
+          <DetailRow icon="wallet" label="Toplam" value={formatTry(b.totalAmountMinor)} />
           {b.paymentKind === 'Deposit' && b.remainingAtShopMinor && !isBookingCancelled(b.status) ? (
             <>
               <Divider />
-              <DetailRow icon="💵" label="Salonda ödenecek" value={formatTry(b.remainingAtShopMinor)} />
+              <DetailRow icon="wallet" label="Salonda ödenecek" value={formatTry(b.remainingAtShopMinor)} />
             </>
           ) : null}
           {b.refundPercentage != null ? (
             <>
               <Divider />
-              <DetailRow icon="↩️" label="İade oranı" value={`%${b.refundPercentage}`} />
+              <DetailRow icon="refresh" label="İade oranı" value={`%${b.refundPercentage}`} />
             </>
           ) : null}
         </Card>
@@ -392,16 +407,21 @@ export default function BookingDetailScreen() {
             <Text style={styles.sectionTitle}>Müşteri</Text>
             <Card style={{ gap: Spacing.sm }}>
               {b.customerName ? (
-                <Text style={styles.customerNameText}>👤 {b.customerName}</Text>
+                <View style={styles.inlineRow}>
+                  <Icon name="user" size={15} color={Colors.textSecondary} />
+                  <Text style={styles.customerNameText}>{b.customerName}</Text>
+                </View>
               ) : null}
               {b.customerPhone ? (
                 <Pressable
                   onPress={() => Linking.openURL(`tel:${b.customerPhone}`)}
                   hitSlop={6}
+                  style={styles.inlineRow}
                   accessibilityRole="link"
                   accessibilityLabel={`Müşteriyi ara ${b.customerPhone}`}
                 >
-                  <Text style={styles.customerPhoneText}>📞 {formatPhoneTr(b.customerPhone)}</Text>
+                  <Icon name="phone" size={15} color={Colors.accent} />
+                  <Text style={styles.customerPhoneText}>{formatPhoneTr(b.customerPhone)}</Text>
                 </Pressable>
               ) : null}
               {b.customerNote ? (
@@ -461,14 +481,16 @@ export default function BookingDetailScreen() {
         <View style={styles.actions}>
           {canCompletePayment ? (
             <Button
-              label="💳 Ödemeyi tamamla"
+              label="Ödemeyi tamamla"
+              icon={<Icon name="creditCard" size={17} color={btnIconColor('primary')} />}
               onPress={handleCompletePayment}
               loading={payMutation.isPending}
             />
           ) : null}
           {showOwnerApprovalPending ? (
             <View style={styles.pendingApprovalBox} accessible accessibilityLabel="Kuaför onayı bekleniyor">
-              <Text style={styles.pendingApprovalText}>⏳ Kuaför onayı bekleniyor</Text>
+              <Icon name="clock" size={15} color={Colors.info} />
+              <Text style={styles.pendingApprovalText}>Kuaför onayı bekleniyor</Text>
             </View>
           ) : null}
           {showPaidPendingApproval ? (
@@ -477,7 +499,10 @@ export default function BookingDetailScreen() {
               accessible
               accessibilityLabel="Ödendi, kuaför onayı bekleniyor. Kuaför onaylamazsa ödemen tam olarak iade edilir."
             >
-              <Text style={styles.paidPendingApprovalText}>💰 Ödendi · kuaför onayı bekliyor</Text>
+              <View style={styles.inlineRowCenter}>
+                <Icon name="wallet" size={15} color={Colors.warning} />
+                <Text style={styles.paidPendingApprovalText}>Ödendi · kuaför onayı bekliyor</Text>
+              </View>
               <Text style={styles.paidPendingApprovalSub}>
                 Kuaför onaylayınca bildirim alacaksın. Onaylamazsa ödediğin tutar tam olarak iade
                 edilir (birkaç iş günü sürebilir).
@@ -486,21 +511,23 @@ export default function BookingDetailScreen() {
           ) : null}
           {ownerCanConfirm ? (
             <Button
-              label="✅ Randevuyu onayla"
+              label="Randevuyu onayla"
+              icon={<Icon name="check" size={17} color={btnIconColor('primary')} />}
               onPress={handleOwnerConfirm}
               loading={ownerConfirmMutation.isPending}
             />
           ) : null}
           {ownerCanStart ? (
             <Button
-              label="▶️ Başlat"
+              label="Başlat"
               onPress={handleStart}
               loading={startMutation.isPending}
             />
           ) : null}
           {ownerCanComplete ? (
             <Button
-              label="🏁 Tamamla"
+              label="Tamamla"
+              icon={<Icon name="check" size={17} color={btnIconColor('primary')} />}
               onPress={handleComplete}
               loading={completeMutation.isPending}
             />
@@ -515,8 +542,9 @@ export default function BookingDetailScreen() {
           ) : null}
           {canReschedule && !showRescheduleForm ? (
             <Button
-              label="🗓️ Yeniden planla"
+              label="Yeniden planla"
               variant="outline"
+              icon={<Icon name="calendar" size={17} color={btnIconColor('outline')} />}
               onPress={startReschedule}
               loading={rescheduleMutation.isPending}
             />
@@ -531,26 +559,30 @@ export default function BookingDetailScreen() {
           ) : null}
           {canReview ? (
             <Button
-              label="⭐ Yorum yap"
+              label="Yorum yap"
+              icon={<Icon name="star" size={17} color={btnIconColor('primary')} />}
               onPress={() => router.push({ pathname: '/review/submit', params: { bookingId: b.id } })}
             />
           ) : null}
           {alreadyReviewed ? (
             <View style={styles.reviewDoneBox} accessible accessibilityLabel="Bu randevuya yorum yazıldı">
-              <Text style={styles.reviewDoneText}>✅ Bu randevu için yorumun alındı, teşekkürler.</Text>
+              <Icon name="check" size={15} color={Colors.success} />
+              <Text style={styles.reviewDoneText}>Bu randevu için yorumun alındı, teşekkürler.</Text>
             </View>
           ) : null}
           {canFileComplaintNow ? (
             <Button
-              label="🚩 Kuaför gelmedi / salon kapalıydı"
+              label="Kuaför gelmedi / salon kapalıydı"
               variant="outline"
+              icon={<Icon name="flag" size={17} color={btnIconColor('outline')} />}
               onPress={handleComplaint}
               loading={complaintMutation.isPending}
             />
           ) : null}
           {showComplaintPending ? (
             <View style={styles.pendingApprovalBox} accessible accessibilityLabel="Bildirimin inceleniyor">
-              <Text style={styles.pendingApprovalText}>🚩 Bildirimin inceleniyor</Text>
+              <Icon name="flag" size={15} color={Colors.info} />
+              <Text style={styles.pendingApprovalText}>Bildirimin inceleniyor</Text>
             </View>
           ) : null}
         </View>
@@ -587,20 +619,23 @@ function CountdownBadge({ scheduledAt }: { scheduledAt: string }) {
   const days = Math.floor(hours / 24);
 
   let label: string;
+  let icon: IconName;
   let tone: 'urgent' | 'soon' | 'normal';
   if (minutes < 60) {
-    label = `⏱️ ${minutes} dk kaldı`;
+    label = `${minutes} dk kaldı`;
+    icon = 'clock';
     tone = 'urgent';
   } else if (hours < 24) {
-    label = `⏱️ ${hours} saat kaldı`;
+    label = `${hours} saat kaldı`;
+    icon = 'clock';
     tone = 'soon';
-  } else if (days < 7) {
-    label = `📅 ${days} gün kaldı`;
-    tone = 'normal';
   } else {
-    label = `📅 ${days} gün kaldı`;
+    label = `${days} gün kaldı`;
+    icon = 'calendar';
     tone = 'normal';
   }
+
+  const iconColor = tone === 'urgent' ? Colors.error : tone === 'soon' ? Colors.warning : Colors.info;
 
   return (
     <View style={[
@@ -608,6 +643,7 @@ function CountdownBadge({ scheduledAt }: { scheduledAt: string }) {
       tone === 'urgent' && styles.countdownUrgent,
       tone === 'soon' && styles.countdownSoon,
     ]}>
+      <Icon name={icon} size={12} color={iconColor} />
       <Text style={[
         styles.countdownText,
         tone === 'urgent' && styles.countdownTextUrgent,
@@ -619,10 +655,10 @@ function CountdownBadge({ scheduledAt }: { scheduledAt: string }) {
   );
 }
 
-function DetailRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+function DetailRow({ icon, label, value }: { icon: IconName; label: string; value: string }) {
   return (
     <View style={styles.detailRow}>
-      <Text style={styles.detailIcon}>{icon}</Text>
+      <Icon name={icon} size={16} color={Colors.textSecondary} />
       <Text style={styles.detailLabel}>{label}</Text>
       <View style={{ flex: 1 }} />
       <Text style={styles.detailValue}>{value}</Text>
@@ -644,29 +680,40 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  backBtn: { paddingVertical: 6, alignSelf: 'flex-start' },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, alignSelf: 'flex-start', marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   headerBlock: { paddingTop: Spacing.sm, paddingBottom: Spacing.md },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
-  headerStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
+  headerStatusRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8, alignItems: 'center' },
   countdown: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: Radius.full,
     backgroundColor: Colors.infoSoft,
   },
+  inlineRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  inlineRowCenter: { flexDirection: 'row', alignItems: 'center', gap: 6, justifyContent: 'center' },
   reviewDoneBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     backgroundColor: Colors.successSoft,
     borderRadius: Radius.md,
     padding: Spacing.md,
-    alignItems: 'center',
   },
   reviewDoneText: { fontSize: FontSize.sm, color: Colors.success, fontWeight: FontWeight.semibold },
   pendingApprovalBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
     backgroundColor: Colors.infoSoft,
     borderRadius: Radius.md,
     padding: Spacing.md,
-    alignItems: 'center',
   },
   pendingApprovalText: { fontSize: FontSize.sm, color: Colors.info, fontWeight: FontWeight.semibold },
   paidPendingApprovalBox: {
@@ -688,7 +735,7 @@ const styles = StyleSheet.create({
     fontSize: FontSize.xs,
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LetterSpacing.label,
     fontWeight: FontWeight.semibold,
     paddingHorizontal: 4,
     marginTop: Spacing.sm,
@@ -702,7 +749,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     minHeight: 52,
   },
-  detailIcon: { fontSize: 18, width: 24, textAlign: 'center' },
   detailLabel: { fontSize: FontSize.sm, color: Colors.textSecondary },
   detailValue: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
   divider: { height: 1, backgroundColor: Colors.divider, marginLeft: 56 },
@@ -716,7 +762,7 @@ const styles = StyleSheet.create({
   },
   itemName: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.medium },
   itemMeta: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  itemPrice: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.bold },
+  itemPrice: { fontSize: FontSize.md, color: Colors.ink, fontWeight: FontWeight.bold },
   actions: { gap: Spacing.sm, marginTop: Spacing.lg },
   textInput: {
     borderWidth: 1,
@@ -730,17 +776,17 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   customerNameText: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.semibold },
-  customerPhoneText: { fontSize: FontSize.sm, color: '#0EA5E9', fontWeight: FontWeight.medium },
+  customerPhoneText: { fontSize: FontSize.sm, color: Colors.accent, fontWeight: FontWeight.medium },
   customerNoteBox: {
-    backgroundColor: Colors.primarySoft,
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.sm,
     padding: Spacing.sm,
   },
   customerNoteLabel: {
     fontSize: FontSize.xs,
-    color: Colors.primary,
+    color: Colors.textSecondary,
     fontWeight: FontWeight.bold,
-    letterSpacing: 0.5,
+    letterSpacing: LetterSpacing.label,
     marginBottom: 2,
   },
   customerNoteText: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 18 },

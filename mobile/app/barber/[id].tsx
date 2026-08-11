@@ -9,8 +9,9 @@ import { Chip } from '@/components/Chip';
 import { Button } from '@/components/Button';
 import { EmptyState } from '@/components/EmptyState';
 import { ErrorState } from '@/components/ErrorState';
+import { Icon } from '@/components/Icon';
 import { SkeletonBarberDetail } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout, Shadow } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout, Shadow, monogramFor } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
 import { ReviewApi } from '@/api/review';
 import { formatDuration, formatTime, formatTry, salonGenderLabel } from '@/lib/format';
@@ -149,7 +150,7 @@ export default function BarberDetailScreen() {
         <ErrorState
           error={shopQuery.error}
           onRetry={() => shopQuery.refetch()}
-          notFoundEmoji="🚫"
+          notFoundIcon="x"
           notFoundTitle="Bu kuaför artık yayında değil"
           notFoundDescription="Bu salon kaldırılmış veya profili yayından kaldırılmış olabilir."
           notFoundActionLabel="Geri dön"
@@ -161,6 +162,7 @@ export default function BarberDetailScreen() {
 
   const shop = shopQuery.data;
   const summary = reviewsQuery.data?.summary;
+  const mono = monogramFor(shop.name);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -169,12 +171,19 @@ export default function BarberDetailScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.back}>← Geri</Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Geri dön"
+          >
+            <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+            <Text style={styles.back}>Geri</Text>
           </Pressable>
 
-          <View style={styles.heroBubble}>
-            <Text style={styles.heroEmoji}>✂️</Text>
+          <View style={[styles.heroBubble, { backgroundColor: mono.bg }]}>
+            <Text style={[styles.heroInitials, { color: mono.fg }]}>{mono.initials}</Text>
           </View>
           <Text style={styles.shopName}>{shop.name}</Text>
           {shop.description ? (
@@ -184,16 +193,20 @@ export default function BarberDetailScreen() {
           <View style={styles.metaRow}>
             <Badge label={salonGenderLabel(shop.genderType)} tone="brand" />
             {summary && summary.count > 0 ? (
-              <Badge label={`⭐ ${summary.average.toFixed(1)} (${summary.count})`} tone="warning" />
+              <View style={styles.ratingInline}>
+                <Icon name="star" size={13} color={Colors.star} />
+                <Text style={styles.ratingInlineValue}>{summary.average.toFixed(1)}</Text>
+                <Text style={styles.ratingInlineCount}>({summary.count})</Text>
+              </View>
             ) : null}
           </View>
 
           {shop.addressLine1 ? (
             <View style={styles.addressRow}>
-              <Text style={styles.addressIcon}>📍</Text>
+              <Icon name="mapPin" size={16} color={Colors.textSecondary} />
               <Text style={styles.addressText} numberOfLines={2}>{shop.addressLine1}</Text>
               {shop.latitude && shop.longitude ? (
-                <Pressable onPress={openDirections} style={styles.directionsBtn}>
+                <Pressable onPress={openDirections} style={styles.directionsBtn} hitSlop={6}>
                   <Text style={styles.directionsText}>Yol tarifi</Text>
                 </Pressable>
               ) : null}
@@ -209,9 +222,12 @@ export default function BarberDetailScreen() {
                 key={s.id}
                 onPress={() => toggleService(s.id)}
                 style={[styles.serviceCard, selected && styles.serviceCardSelected]}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={`${s.name}, ${formatTry(s.priceMinor)}`}
               >
                 <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
-                  {selected ? <Text style={styles.checkmark}>✓</Text> : null}
+                  {selected ? <Icon name="check" size={13} color={Colors.textInverse} strokeWidth={2.4} /> : null}
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.serviceName}>{s.name}</Text>
@@ -242,7 +258,7 @@ export default function BarberDetailScreen() {
               <Text style={styles.muted}>Hesaplanıyor…</Text>
             ) : slotsQuery.isError ? (
               <EmptyState
-                emoji="⚠️"
+                icon="alert"
                 title="Slotlar alınamadı"
                 description="Bağlantı hatası — tekrar dene."
                 actionLabel="Yenile"
@@ -250,7 +266,7 @@ export default function BarberDetailScreen() {
               />
             ) : (slotsQuery.data?.length ?? 0) === 0 ? (
               <EmptyState
-                emoji="🗓️"
+                icon="calendar"
                 title="Müsait slot yok"
                 description="Farklı bir stilist veya hizmet seçimi dene."
               />
@@ -268,6 +284,8 @@ export default function BarberDetailScreen() {
                             styles.slotChip,
                             selectedSlot === slot.startsAt && styles.slotChipSelected,
                           ]}
+                          accessibilityRole="radio"
+                          accessibilityState={{ checked: selectedSlot === slot.startsAt }}
                         >
                           <Text style={[
                             styles.slotText,
@@ -286,7 +304,7 @@ export default function BarberDetailScreen() {
         ) : null}
 
         {summary && (reviewsQuery.data?.items?.length ?? 0) > 0 ? (
-          <Section title={`Yorumlar (${summary.count})`} subtitle={`Ortalama ⭐ ${summary.average.toFixed(1)}`}>
+          <Section title={`Yorumlar (${summary.count})`} subtitle={`Ortalama ${summary.average.toFixed(1)} ★`}>
             {(reviewsQuery.data?.items ?? []).map((r) => (
               <Card key={r.id} style={{ gap: 6 }}>
                 <View style={styles.reviewHead}>
@@ -346,45 +364,59 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.lg,
     alignItems: 'flex-start',
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
   },
-  backBtn: { paddingVertical: 6 },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   heroBubble: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: Colors.primarySoft,
+    width: 72,
+    height: 72,
+    borderRadius: Radius.full,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: Spacing.md,
   },
-  heroEmoji: { fontSize: 32 },
-  shopName: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: Spacing.md },
+  heroInitials: { fontSize: FontSize.xl, fontWeight: FontWeight.bold },
+  shopName: {
+    fontSize: FontSize.xxl,
+    fontWeight: FontWeight.bold,
+    color: Colors.text,
+    marginTop: Spacing.md,
+    letterSpacing: LetterSpacing.title,
+  },
   shopDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, lineHeight: 20 },
-  metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: Spacing.md },
+  metaRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10, marginTop: Spacing.md },
+  ratingInline: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  ratingInlineValue: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.bold },
+  ratingInlineCount: { fontSize: FontSize.xs, color: Colors.textMuted },
   addressRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     marginTop: Spacing.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     paddingHorizontal: Spacing.md,
     paddingVertical: 10,
     borderRadius: Radius.md,
-    borderWidth: 1,
-    borderColor: Colors.border,
     alignSelf: 'stretch',
   },
-  addressIcon: { fontSize: 16 },
   addressText: { flex: 1, fontSize: FontSize.sm, color: Colors.textSecondary },
   directionsBtn: {
-    backgroundColor: Colors.primarySoft,
+    backgroundColor: Colors.accentSoft,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: Radius.sm,
   },
-  directionsText: { fontSize: FontSize.xs, color: Colors.primaryDark, fontWeight: FontWeight.semibold },
-  section: { paddingHorizontal: Layout.screenPaddingX, marginTop: Spacing.lg },
+  directionsText: { fontSize: FontSize.xs, color: Colors.accentInk, fontWeight: FontWeight.semibold },
+  section: {
+    paddingHorizontal: Layout.screenPaddingX,
+    marginTop: Spacing.lg,
+    maxWidth: Layout.maxContentWidth,
+    width: '100%',
+    alignSelf: 'center',
+  },
   sectionTitle: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
   sectionSub: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2, marginBottom: Spacing.md },
   muted: { fontSize: FontSize.sm, color: Colors.textMuted },
@@ -398,17 +430,16 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: Colors.border,
   },
-  serviceCardSelected: { borderColor: Colors.primary, backgroundColor: Colors.primarySoft },
+  serviceCardSelected: { borderColor: Colors.ink, backgroundColor: Colors.surfaceAlt },
   checkbox: {
     width: 24, height: 24, borderRadius: 12,
     borderWidth: 2, borderColor: Colors.borderStrong,
     alignItems: 'center', justifyContent: 'center',
   },
-  checkboxSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  checkmark: { color: Colors.textInverse, fontSize: 14, fontWeight: FontWeight.bold },
+  checkboxSelected: { backgroundColor: Colors.ink, borderColor: Colors.ink },
   serviceName: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.medium },
   serviceMeta: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
-  servicePrice: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.bold },
+  servicePrice: { fontSize: FontSize.md, color: Colors.ink, fontWeight: FontWeight.bold },
   chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   slotGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   dayHeader: {
@@ -416,7 +447,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.bold,
     color: Colors.textSecondary,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LetterSpacing.label,
   },
   slotChip: {
     paddingHorizontal: 14,
@@ -428,7 +459,7 @@ const styles = StyleSheet.create({
     minWidth: 76,
     alignItems: 'center',
   },
-  slotChipSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  slotChipSelected: { backgroundColor: Colors.ink, borderColor: Colors.ink },
   slotText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
   slotTextSelected: { color: Colors.textInverse },
   reviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -438,12 +469,12 @@ const styles = StyleSheet.create({
   replyBox: {
     marginTop: Spacing.sm,
     padding: 10,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.surfaceAlt,
     borderRadius: Radius.sm,
     borderLeftWidth: 3,
-    borderLeftColor: Colors.primary,
+    borderLeftColor: Colors.ink,
   },
-  replyLabel: { fontSize: FontSize.xs, color: Colors.primary, fontWeight: FontWeight.bold, marginBottom: 2 },
+  replyLabel: { fontSize: FontSize.xs, color: Colors.ink, fontWeight: FontWeight.bold, marginBottom: 2 },
   footerBar: {
     position: 'absolute',
     left: 0,
@@ -458,9 +489,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: Colors.border,
     gap: Spacing.md,
-    ...Shadow.lg,
+    ...Shadow.sm,
   },
-  footerTotalLabel: { fontSize: 11, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.5 },
-  footerTotal: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.primary },
+  footerTotalLabel: { fontSize: 11, color: Colors.textMuted, textTransform: 'uppercase', letterSpacing: LetterSpacing.label },
+  footerTotal: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.ink },
   footerDuration: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
 });

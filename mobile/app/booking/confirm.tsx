@@ -6,8 +6,9 @@ import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
+import { Icon, IconName } from '@/components/Icon';
 import { AuthPrompt } from '@/components/AuthPrompt';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi, ConflictingBooking } from '@/api/booking';
 import { PaymentApi, PaymentKind, InitiatePaymentResponse } from '@/api/payment';
 import { extractApiError } from '@/api/client';
@@ -199,8 +200,15 @@ export default function ConfirmBookingScreen() {
         contentContainerStyle={styles.scroll}
         showsVerticalScrollIndicator={false}
       >
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.back}>← Geri</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Geri dön"
+        >
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
 
         <Text style={styles.heading}>Randevuyu onayla</Text>
@@ -209,20 +217,20 @@ export default function ConfirmBookingScreen() {
         <Card style={{ gap: 0 }} padded={false}>
           {params.shopName ? (
             <>
-              <DetailRow icon="🏪" label="Salon" value={params.shopName} />
+              <DetailRow icon="store" label="Salon" value={params.shopName} />
               <Divider />
             </>
           ) : null}
-          <DetailRow icon="📅" label="Tarih & Saat" value={formatDateTime(params.scheduledAt!)} />
+          <DetailRow icon="calendar" label="Tarih & Saat" value={formatDateTime(params.scheduledAt!)} />
           <Divider />
           <DetailRow
-            icon="✂️"
+            icon="scissors"
             label={serviceIds.length > 1 ? `${serviceIds.length} hizmet` : 'Hizmet'}
             value={params.serviceLabels || `${serviceIds.length} hizmet`}
           />
           <Divider />
           <DetailRow
-            icon="👤"
+            icon="user"
             label="Stilist"
             value={params.stylistName || `#${params.stylistId!.slice(0, 8)}`}
           />
@@ -230,7 +238,7 @@ export default function ConfirmBookingScreen() {
             <>
               <Divider />
               <DetailRow
-                icon="💰"
+                icon="wallet"
                 label="Toplam"
                 value={`${formatTry(parseInt(params.totalAmount, 10))} · ${formatDuration(parseInt(params.totalDuration, 10))}`}
               />
@@ -253,7 +261,7 @@ export default function ConfirmBookingScreen() {
 
         {confirmMode === 'online-payment' ? (
         <Card style={{ gap: 8 }}>
-          <Text style={styles.policyTitle}>📋 İptal politikası</Text>
+          <CardTitle icon="document" label="İptal politikası" />
           <View style={styles.policyRow}>
             <Badge label="24+ saat" tone="success" />
             <Text style={styles.policyText}>%100 iade</Text>
@@ -271,7 +279,7 @@ export default function ConfirmBookingScreen() {
 
         {confirmMode === 'online-payment' ? (
           <Card style={{ gap: Spacing.sm }}>
-            <Text style={styles.policyTitle}>💳 Ödeme</Text>
+            <CardTitle icon="creditCard" label="Ödeme" />
             <View accessibilityRole="radiogroup" style={{ gap: Spacing.sm }}>
               <PayOption
                 selected={payKind === 'Deposit'}
@@ -311,11 +319,18 @@ export default function ConfirmBookingScreen() {
                   : 'Ödeme, randevuyu otomatik onaylamaz. Talebin kuaföre iletilir; kuaför onayladığında randevun kesinleşir. Kuaför onaylamazsa kaporan tam olarak iade edilir.'
               }
             >
+              <View style={{ marginTop: 2 }}>
+                <Icon
+                  name={shopAutoConfirmEnabled ? 'check' : 'info'}
+                  size={15}
+                  color={Colors.info}
+                />
+              </View>
               <Text style={styles.approvalNoteText}>
                 {shopAutoConfirmEnabled ? (
-                  `⚡ ${bookingPromise} Ödemeni tamamlamazsan randevu talebin süresi dolunca kendiliğinden iptal olur.`
+                  `${bookingPromise} Ödemeni tamamlamazsan randevu talebin süresi dolunca kendiliğinden iptal olur.`
                 ) : (
-                  `ℹ️ Ödeme randevuyu otomatik onaylamaz. Kaporanı ödediğinde talebin kuaföre
+                  `Ödeme randevuyu otomatik onaylamaz. Kaporanı ödediğinde talebin kuaföre
                 iletilir; kuaför onayladığında randevun kesinleşir ve bildirim alırsın. Kuaför
                 onaylamazsa (ya da randevu saatine kadar yanıt vermezse) ödediğin tutar tam olarak
                 iade edilir — iade, ödeme sağlayıcına bağlı olarak birkaç iş günü sürebilir.`
@@ -333,9 +348,10 @@ export default function ConfirmBookingScreen() {
                   : 'Randevu kuaför onayına gönderilecek, ödeme salonda yapılır'
               }
             >
-              <Text style={styles.policyTitle}>
-                {shopAutoConfirmEnabled ? '⚡ Randevun anında kesinleşecek' : '💈 Randevu kuaför onayına gönderilecek'}
-              </Text>
+              <CardTitle
+                icon={shopAutoConfirmEnabled ? 'check' : 'clock'}
+                label={shopAutoConfirmEnabled ? 'Randevun anında kesinleşecek' : 'Randevu kuaför onayına gönderilecek'}
+              />
               <Text style={styles.policySub}>
                 Ödeme salonda yapılır. {bookingPromise}
               </Text>
@@ -366,14 +382,25 @@ export default function ConfirmBookingScreen() {
   );
 }
 
-function DetailRow({ icon, label, value }: { icon: string; label: string; value: string }) {
+function DetailRow({ icon, label, value }: { icon: IconName; label: string; value: string }) {
   return (
     <View style={styles.detailRow}>
-      <Text style={styles.detailIcon}>{icon}</Text>
+      <View style={styles.detailIconWrap}>
+        <Icon name={icon} size={17} color={Colors.textSecondary} />
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.detailLabel}>{label}</Text>
         <Text style={styles.detailValue}>{value}</Text>
       </View>
+    </View>
+  );
+}
+
+function CardTitle({ icon, label }: { icon: IconName; label: string }) {
+  return (
+    <View style={styles.cardTitleRow}>
+      <Icon name={icon} size={16} color={Colors.textSecondary} />
+      <Text style={styles.policyTitle}>{label}</Text>
     </View>
   );
 }
@@ -404,9 +431,9 @@ function PayOption({
         pressed && styles.pressed,
       ]}
     >
-      <Text style={[styles.payRadio, selected && styles.payRadioSelected]}>
-        {selected ? '●' : '○'}
-      </Text>
+      <View style={[styles.payRadio, selected && styles.payRadioSelected]}>
+        {selected ? <View style={styles.payRadioDot} /> : null}
+      </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.payTitle}>{title}</Text>
         <Text style={styles.payDetail}>{detail}</Text>
@@ -425,9 +452,9 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  backBtn: { paddingVertical: 6, alignSelf: 'flex-start' },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, alignSelf: 'flex-start', marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   helper: { fontSize: FontSize.sm, color: Colors.textSecondary },
   detailRow: {
     flexDirection: 'row',
@@ -436,23 +463,26 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.lg,
   },
-  detailIcon: { fontSize: 22, width: 28, textAlign: 'center' },
+  detailIconWrap: { width: 28, alignItems: 'center' },
   detailLabel: { fontSize: FontSize.xs, color: Colors.textMuted, fontWeight: FontWeight.medium },
   detailValue: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.semibold, marginTop: 2 },
   divider: { height: 1, backgroundColor: Colors.divider, marginLeft: 64 },
   section: {},
-  policyTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text, marginBottom: 4 },
+  cardTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  policyTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
   policySub: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
   policyRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   policyText: { fontSize: FontSize.sm, color: Colors.text },
   approvalNote: {
+    flexDirection: 'row',
+    gap: 8,
     backgroundColor: Colors.infoSoft,
     borderRadius: Radius.md,
     padding: Spacing.md,
   },
-  approvalNoteText: { fontSize: FontSize.xs, color: Colors.info, lineHeight: 18 },
+  approvalNoteText: { flex: 1, fontSize: FontSize.xs, color: Colors.info, lineHeight: 18 },
   kvkk: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', lineHeight: 16, marginTop: Spacing.sm },
-  kvkkLink: { color: Colors.primary, textDecorationLine: 'underline' },
+  kvkkLink: { color: Colors.accent, textDecorationLine: 'underline' },
   payOption: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -466,12 +496,17 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   payOptionSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: Colors.primarySoft,
+    borderColor: Colors.ink,
+    backgroundColor: Colors.surfaceAlt,
   },
   pressed: { opacity: 0.85 },
-  payRadio: { fontSize: 18, color: Colors.borderStrong, width: 20, textAlign: 'center' },
-  payRadioSelected: { color: Colors.primary },
+  payRadio: {
+    width: 20, height: 20, borderRadius: 10,
+    borderWidth: 1.5, borderColor: Colors.borderStrong,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  payRadioSelected: { borderColor: Colors.ink },
+  payRadioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: Colors.ink },
   payTitle: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
   payDetail: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
 });
