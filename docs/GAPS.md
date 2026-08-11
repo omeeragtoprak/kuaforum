@@ -259,6 +259,38 @@ Coğrafya (81 il/ilçe/mahalle) ve plan tanımlarına dokunulmaz — yeniden ür
 
 ---
 
+## G18. Yeni müşteri kaydında isim hiç sorulmuyor — kuaför "kim geliyor" bilmiyor
+
+**Kanıt:** `backend/src/Kuaforum.Application/Modules/Identity/Auth/VerifyOtpCommand.cs:76` →
+`User.CreateCustomerByPhone(phoneResult.Value)` — ikinci parametre (`displayName`) **geçilmiyor**.
+Oysa `User.CreateCustomerByPhone(PhoneE164 phone, string? displayName = null)` (`User.cs:29`) ismi
+kabul ediyor ve `VerifyOtpCommand` kaydının kendisinde `string? DisplayName` alanı **var** (satır 21) —
+yani alan taşınıyor ama kullanılmadan düşüyor. Mobil taraf da OTP doğrulamasında isim göndermiyor
+(`mobile/app/(auth)/otp.tsx`).
+
+**Etki:** Orta-Yüksek (ürün). Telefonla kaydolan her yeni müşteri **isimsiz** oluşuyor. Sonuçları:
+- Kuaför panelinde randevu satırında müşteri adı boş → "kim geliyor" belli değil. Kuaförün en temel
+  ihtiyacı bu; demo veride isimler seeder'dan geldiği için sorun **görünmüyor**, gerçek kayıtta çıkacak.
+- Bildirim ve hatırlatma metinlerinde hitap yok.
+- Yorum yazıldığında yazar adı boş.
+
+**Neden şimdiye kadar görünmedi:** Tüm test verisi seeder'dan geliyor ve seeder isim atıyor. Gerçek
+kayıt akışı (telefon → OTP → hesap oluştur) hiç uçtan uca denenmedi. `[unverified 2026-08-11]`
+canlı OTP akışıyla doğrulanmadı — üretimde OTP kodu loglanmadığı için (doğru davranış) dışarıdan
+test edilemedi; kanıt kod okumasına dayanıyor.
+
+**Çözüm:** OTP doğrulaması **yeni kullanıcı** yarattığında isim iste. İki seçenek:
+(a) Doğrulama ekranında kod girildikten sonra aynı ekranda "Adın nedir?" alanı belirir (tek adım, az sürtünme).
+(b) Doğrulama sonrası ayrı bir "Seni nasıl çağıralım?" ekranı — KVKK rıza ekranıyla birleştirilebilir,
+zaten yeni kullanıcı oradan geçiyor.
+Backend değişikliği küçük: `VerifyOtpCommand`'daki `DisplayName`'i `CreateCustomerByPhone`'a geçir.
+İsim **zorunlu mu opsiyonel mi** — ürün kararı; opsiyonelse kuaför yine boş görebilir, zorunluysa
+kayıt sürtünmesi artar.
+
+**Efor:** backend 1 saat + mobil 2-3 saat + testler.
+
+---
+
 ## Özet Tablo
 
 | # | Başlık | Etki | Efor |
@@ -280,6 +312,7 @@ Coğrafya (81 il/ilçe/mahalle) ve plan tanımlarına dokunulmaz — yeniden ür
 | G15 | G11/G12 düzeltmesi kapsam dışı ekranlarda uygulanmadı (randevu detayı öncelikli) | Orta | ✅ kapatıldı 2026-08-07 |
 | G16 | DTO alan adı değişince gövde sessizce sıfırlanıyor (kalıpsal para riski) | Yüksek → tekil düzeltildi | 2-3 saat (admin-only katı mod) |
 | G17 | Demo verisi bir gecede bayatlıyordu (founder her sabah boş panel) | Yüksek (süreç) | ✅ kapatıldı 2026-08-07 |
+| G18 | Yeni müşteri kaydında isim sorulmuyor — kuaför kimin geldiğini bilmiyor | Orta-Yüksek | 1 gün |
 
 ---
 
