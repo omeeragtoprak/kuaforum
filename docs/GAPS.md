@@ -86,6 +86,14 @@ Yalnız geçmiş randevularda; randevu başına tek kayıt (uygulama katmanı gu
 - **Önerilen çözüm:** (a) Ucuz: `CreateBarberShopCommand`'da owner'ı otomatik ilk `Stylist` olarak ekle (owner adı/soyadını kullan, sonradan owner isterse pasifleştirir/düzenler); (b) veya onboarding sihirbazına 4. zorunlu adım olarak "en az 1 çalışan ekle" koy. (a) daha az sürtünmeli, "sahip = tek çalışan" varsayılan senaryoyu (Türkiye pazarında muhtemelen en yaygın) day-1 karşılar.
 - **Tahmini efor:** (a) 2-4 saat; (b) 0.5 gün.
 
+**Denendi ve GERİ ALINDI (2026-08-11) — açık kalıyor.** (a) seçeneği uygulandı: `CreateBarberShopCommandHandler` owner'ı otomatik ilk `Stylist` olarak ekliyor + `DefaultWorkingHoursFactory` ile Pzt-Cmt 09:00-19:00 varsayılan çalışma saati veriyordu. Kod ve gerekçeleri sağlamdı (entitlement kenar durumu, isim uzunluğu kırpma, atomiklik hepsi düşünülmüştü) ve `OwnerOnboardingTests` yeşildi.
+
+**Ama `RichDemoSeederTests.SeedAsync_DevLoginOwnerShop_...` kırıldı:** dev-login kuaförünün salonunda bugüne ait **Completed randevu üretilmiyordu**. G5 kaynaklı olduğu `git stash` ile kanıtlandı (stash → test geçti, geri koy → kırıldı). Kök neden makul sürede bulunamadı; ilk şüphe (`RichDemoSeeder.cs:661` stylist listesini `OrderBy(DisplayName)` ile çekip `[0]`/`[1]` indeksliyor — owner eklenince sıra kayıyor) **doğrulanamadı**, çünkü dev salon `BarberShop.Create` ile doğrudan oluşuyor ve `CreateBarberShopCommand`'dan geçmiyor. Yani kırılmanın yolu hâlâ belirsiz.
+
+**Neden geri alındı:** Yarım bir düzeltmeyi commit etmek yerine temiz ağaçla devam etmek tercih edildi. Founder'ın demo ortamının dolu kalması (her sabah boş panel görmemek) bu iyileştirmeden daha kritik; ayrıca testi gevşetip geçirmek **reddedildi** — "bugün ≥5 randevu, içinde Completed ve Pending" iddiası tam da o garantiyi koruyan şey.
+
+**Tekrar denerken:** önce seeder'ın stylist seçimini indeks-bazlı olmaktan çıkar (isim sırasına bağlı `[0]`/`[1]` kırılgan), sonra G5'i uygula. Tanı testi yazarken **tüm seeder zincirini** (`AdminSeeder` → `DemoBarberSeeder` → `RichDemoSeeder`) çalıştır — yalnız `RichDemoSeeder` çağıran bir tanı, dev salonu hiç oluşturmadığı için yanıltıcı veri üretir (bu tuzağa bir kez düşüldü).
+
 ---
 
 ## G6. Salon askıya alınınca müşteriye bildirim gitmiyor — yalnız owner bilgilendiriliyor
@@ -255,7 +263,7 @@ Coğrafya (81 il/ilçe/mahalle) ve plan tanımlarına dokunulmaz — yeniden ür
 | G2 | WorkingHours değişimi mevcut randevuları kontrol etmiyor | Orta | ✅ kapatıldı 2026-08-10 |
 | G3 | Stylist deaktivasyonu randevuları sessizce askıda bırakıyor | Orta-Kritik | ✅ kapatıldı 2026-08-10 |
 | G4 | Müşteri-tarafı no-show/şikayet bildirimi yok | Orta | ✅ kapatıldı 2026-08-10 (min sürüm) |
-| G5 | Owner=tek-çalışan otomatik stylist yaratılmıyor | Düşük-Orta | 2 saat-0.5 gün |
+| G5 | Owner=tek-çalışan otomatik stylist yaratılmıyor | Düşük-Orta | ⚠️ denendi, geri alındı 2026-08-11 |
 | G6 | Askıya alınan salonun müşterisine bildirim yok | — | ❌ kusur DEĞİL (RFC-015 D4) |
 | G7 | "Stylist" policy/rol isimlendirmesi yanıltıcı — founder kararı bekliyor | Düşük | 1 saat (karar) + değişken |
 | G8 | Bildirim idempotency merkezi değil (kısmi doğrulama) | Düşük `[unverified]` | 2-3 saat audit |
