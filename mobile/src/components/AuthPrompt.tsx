@@ -2,7 +2,8 @@ import { View, Text, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Button } from './Button';
-import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
+import { Icon } from './Icon';
+import { Colors, Radius, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
 
 type AuthPromptProps = {
   /** Neden giriş gerektiğini açıklayan, ekrana özel metin (örn. "Randevu almak için..."). */
@@ -29,7 +30,9 @@ export function AuthPrompt({ description, redirectTo, title = 'Giriş yapman ger
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.card} accessible accessibilityLabel={`${title}. ${description}`}>
-        <Text style={styles.emoji}>🔒</Text>
+        <View style={styles.iconWrap}>
+          <Icon name="lock" size={30} color={Colors.textSecondary} strokeWidth={1.5} />
+        </View>
         <Text style={styles.title}>{title}</Text>
         <Text style={styles.description}>{description}</Text>
         <Button
@@ -56,7 +59,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: Layout.screenPaddingX,
     gap: Spacing.sm,
   },
-  emoji: { fontSize: 56, marginBottom: Spacing.sm },
+  iconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.sm,
+  },
   title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
   description: {
     fontSize: FontSize.sm,

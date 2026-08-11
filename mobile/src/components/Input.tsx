@@ -63,14 +63,17 @@ const styles = StyleSheet.create({
   field: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Çerçeve yerine dolgu — "Vitrin" ayrımı çizgiyle değil zeminle yapar.
+    // Kenarlık genişliği sabit tutulur (transparent), odakta yalnız renk değişir;
+    // böylece ink çerçeve belirince metin/ikonlar 1-2px kaymaz (layout shift yok).
     borderWidth: 1.5,
-    borderColor: Colors.border,
+    borderColor: 'transparent',
     borderRadius: Radius.md,
-    backgroundColor: Colors.surface,
+    backgroundColor: Colors.surfaceAlt,
     minHeight: 52,
     paddingHorizontal: Spacing.md,
   },
-  fieldFocused: { borderColor: Colors.primary, backgroundColor: '#FFFFFF' },
+  fieldFocused: { borderColor: Colors.ink },
   fieldError: { borderColor: Colors.error },
   slot: { marginHorizontal: 4 },
   input: {

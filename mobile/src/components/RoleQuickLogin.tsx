@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
-import { Colors, Radius, Spacing, FontSize, FontWeight, Shadow } from '@/lib/theme';
+import { Colors, Radius, Spacing, FontSize, FontWeight } from '@/lib/theme';
+import { Icon, IconName } from './Icon';
 
 export type DemoRole = 'Customer' | 'CustomerFresh' | 'BarberOwner' | 'BarberOwnerDraft' | 'Admin';
 
@@ -9,44 +10,37 @@ type RoleQuickLoginProps = {
   onPress?: () => void;
 };
 
-const META: Record<
-  DemoRole,
-  { emoji: string; title: string; subtitle: string; bg: string; fg: string }
-> = {
+/**
+ * Önceki sürüm her rolü ayrı bir dolgu rengiyle (mor, mavi, amber…) kodluyordu —
+ * "Vitrin"in tam karşıtı: renk kodlaması yerine ikon + isim ayırt edici olmalı.
+ * Bu yalnız geliştirici/test aracı bir ekran (__DEV__ hızlı-giriş), ama aynı
+ * bileşen kütüphanesini kullandığı için görsel dilden sapmamalı.
+ */
+const META: Record<DemoRole, { icon: IconName; title: string; subtitle: string }> = {
   Customer: {
-    emoji: '👤',
+    icon: 'user',
     title: 'Müşteri olarak gir',
     subtitle: 'Randevu al, kuaför keşfet',
-    bg: Colors.primary,
-    fg: Colors.textInverse,
   },
   CustomerFresh: {
-    emoji: '🔐',
+    icon: 'lock',
     title: 'Müşteri (rıza ekranı)',
     subtitle: 'Her girişte KVKK rıza akışı yeniden sorulur',
-    bg: '#8B5CF6',
-    fg: Colors.textInverse,
   },
   BarberOwner: {
-    emoji: '✂️',
+    icon: 'scissors',
     title: 'Kuaför olarak gir',
     subtitle: 'Salonunu yönet, randevuları gör',
-    bg: '#0EA5E9',
-    fg: Colors.textInverse,
   },
   BarberOwnerDraft: {
-    emoji: '🆕',
+    icon: 'edit',
     title: 'Yeni kuaför (Draft)',
     subtitle: 'KYC başvurusu test akışı',
-    bg: '#F59E0B',
-    fg: Colors.textInverse,
   },
   Admin: {
-    emoji: '🛡️',
+    icon: 'shield',
     title: 'Admin olarak gir',
     subtitle: 'KYC, kullanıcı, yorum yönetimi',
-    bg: Colors.text,
-    fg: Colors.textInverse,
   },
 };
 
@@ -58,31 +52,32 @@ export function RoleQuickLogin({ role, loading, onPress }: RoleQuickLoginProps) 
       disabled={loading}
       style={({ pressed }) => [
         styles.card,
-        { backgroundColor: meta.bg },
         pressed && !loading && styles.pressed,
         loading && styles.disabled,
       ]}
       accessibilityRole="button"
       accessibilityLabel={meta.title}
       accessibilityHint={meta.subtitle}
+      accessibilityState={{ disabled: !!loading, busy: !!loading }}
     >
       <View style={styles.iconWrap}>
-        <Text style={styles.icon}>{meta.emoji}</Text>
+        <Icon name={meta.icon} size={24} color={Colors.ink} strokeWidth={1.6} />
       </View>
       <View style={styles.body}>
-        <Text style={[styles.title, { color: meta.fg }]}>{meta.title}</Text>
-        <Text style={[styles.subtitle, { color: meta.fg, opacity: 0.85 }]}>{meta.subtitle}</Text>
+        <Text style={styles.title}>{meta.title}</Text>
+        <Text style={styles.subtitle}>{meta.subtitle}</Text>
       </View>
       {loading ? (
-        <ActivityIndicator color={meta.fg} />
+        <ActivityIndicator color={Colors.ink} />
       ) : (
-        <Text style={[styles.arrow, { color: meta.fg }]}>›</Text>
+        <Icon name="chevronRight" size={20} color={Colors.textMuted} strokeWidth={1.6} />
       )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  // Beyaz zemin + çizgi — degrade/renk-kodlama yok, ayrım ikon + rol adından gelir.
   card: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -90,21 +85,22 @@ const styles = StyleSheet.create({
     padding: Spacing.lg,
     borderRadius: Radius.lg,
     minHeight: 76,
-    ...Shadow.md,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  pressed: { opacity: 0.92, transform: [{ scale: 0.99 }] },
-  disabled: { opacity: 0.7 },
+  // Basılı hâl: opaklık yerine hafif zemin koyulaşması.
+  pressed: { backgroundColor: Colors.surfaceAlt },
+  disabled: { opacity: 0.6 },
   iconWrap: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: Colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  icon: { fontSize: 26 },
   body: { flex: 1 },
-  title: { fontSize: FontSize.md, fontWeight: FontWeight.bold, marginBottom: 2 },
-  subtitle: { fontSize: FontSize.xs, fontWeight: FontWeight.regular },
-  arrow: { fontSize: 28, fontWeight: FontWeight.regular, marginRight: 4 },
+  title: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.ink, marginBottom: 2 },
+  subtitle: { fontSize: FontSize.xs, fontWeight: FontWeight.regular, color: Colors.textSecondary },
 });

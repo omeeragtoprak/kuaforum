@@ -1,4 +1,5 @@
 import { EmptyState } from '@/components/EmptyState';
+import { IconName } from '@/components/Icon';
 import { classifyError } from '@/lib/classify-error';
 
 type ErrorStateProps = {
@@ -12,12 +13,18 @@ type ErrorStateProps = {
   notFoundDescription: string;
   notFoundActionLabel: string;
   onNotFoundAction: () => void;
+  /** @deprecated Yerine `notFoundIcon` kullan. Geriye dönük — EmptyState eski emoji'yi eşler. */
   notFoundEmoji?: string;
+  /** Tercih edilen yol — bkz. Icon.tsx. Verilmezse `notFoundEmoji` (varsayılan 'x' ikonuna eşlenir). */
+  notFoundIcon?: IconName;
 
   /** 'network' (5xx / timeout / DNS / bağlantı yok) durumunun metni — makul bir varsayılanı var. */
   networkTitle?: string;
   networkDescription?: string;
+  /** @deprecated Yerine `networkIcon` kullan. Geriye dönük — EmptyState eski emoji'yi eşler. */
   networkEmoji?: string;
+  /** Tercih edilen yol — bkz. Icon.tsx. Verilmezse `networkEmoji` (varsayılan 'globe' ikonuna eşlenir). */
+  networkIcon?: IconName;
 };
 
 /**
@@ -34,15 +41,18 @@ export function ErrorState({
   notFoundActionLabel,
   onNotFoundAction,
   notFoundEmoji = '🚫',
+  notFoundIcon,
   networkTitle = 'Bağlantı kurulamadı',
   networkDescription = 'Sunucuya ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene.',
   networkEmoji = '📡',
+  networkIcon,
 }: ErrorStateProps) {
   const kind = classifyError(error);
 
   if (kind === 'notFound') {
     return (
       <EmptyState
+        icon={notFoundIcon}
         emoji={notFoundEmoji}
         title={notFoundTitle}
         description={notFoundDescription}
@@ -54,6 +64,7 @@ export function ErrorState({
 
   return (
     <EmptyState
+      icon={networkIcon}
       emoji={networkEmoji}
       title={networkTitle}
       description={networkDescription}

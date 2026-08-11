@@ -19,10 +19,13 @@ export function Chip({ label, selected, onPress, style, accessibilityRole = 'but
   return (
     <Pressable
       onPress={onPress}
+      // Görsel chip kompakt kalır (pill), ama dokunma alanı 44pt asgarisine hitSlop ile
+      // genişletilir — ekranı büyük pill'lerle doldurmadan erişilebilirlik kuralına uyar.
+      hitSlop={{ top: 10, bottom: 10, left: 4, right: 4 }}
       style={({ pressed }) => [
         styles.chip,
         selected && styles.chipSelected,
-        pressed && styles.pressed,
+        pressed && !selected && styles.pressed,
         style,
       ]}
       accessibilityRole={accessibilityRole}
@@ -43,8 +46,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  chipSelected: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  pressed: { opacity: 0.85 },
+  chipSelected: { backgroundColor: Colors.ink, borderColor: Colors.ink },
+  // Seçili chip zaten koyu zeminde; basılıya opaklıkla soldurmak yerine seçili-olmayan
+  // (açık zeminli) chip'te hafif koyulaşma yeterli geri bildirim — Button/Card ile aynı ilke.
+  pressed: { backgroundColor: Colors.border },
   label: { color: Colors.textSecondary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   labelSelected: { color: Colors.textInverse },
 });
