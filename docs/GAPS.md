@@ -291,6 +291,55 @@ kayıt sürtünmesi artar.
 
 ---
 
+## G19. Yetki reddi 400 dönüyor, 403 değil — semantik hata
+
+**Kanıt (canlı, 2026-08-11):** Kuaför sahibi BAŞKA bir salonu değiştirmeye çalıştığında:
+```
+PATCH /v1/owner/barber-shop/{başka-salon-id}
+→ 400 {"title":"Bad Request","detail":"Not owner."}
+```
+Kendi salonunda aynı istek `204`. Yani **yetki kontrolü çalışıyor** — sorun sadece dönen kod.
+
+**Etki:** Düşük (güvenlik açığı DEĞİL, semantik). Ama gerçek sonuçları var:
+- `400` istemciye "gönderdiğin veri bozuk" der; doğrusu "bu kaynağa yetkin yok" (`403`).
+- Mobil istemci 400'ü doğrulama hatası sayıp kullanıcıya yanlış mesaj gösterebilir ("bilgileri kontrol et" gibi) — oysa veri doğru, yetki yok.
+- İzleme/alarm tarafında yetki ihlalleri doğrulama gürültüsünün içinde kaybolur; birinin sistematik olarak başkasının kaynağını denediğini fark edemezsiniz.
+
+**Çözüm:** Domain katmanındaki sahiplik hatalarını `Error.Forbidden` ile üret (bazı yerlerde zaten öyle — `POST /v1/bookings/{id}/complaint` doğru şekilde `403` dönüyor), tutarsız olanları hizala. `Result`→HTTP eşlemesinde `Forbidden` zaten 403'e gidiyor; sorun hatanın `Validation` olarak üretilmesi.
+
+**Efor:** 2-3 saat (hata türü taraması + tutarlılık + testler).
+
+---
+
+## RBAC DENETİMİ — SONUÇ (2026-08-11)
+
+**Genel değerlendirme: RBAC sağlam.** 108 uç envanterlendi, yetki dağılımı:
+
+| Yetki | Uç sayısı |
+|---|---|
+| `(sadece giriş)` | 35 |
+| `Admin` | 26 |
+| `ANONİM` (kasıtlı public) | 21 |
+| `BarberOwner` | 17 |
+| `Stylist` (= Stylist **veya** BarberOwner) | 8 |
+| yetkisiz | 1 (`/v1/barber-shops/search` — kasıtlı, misafir arama) |
+
+**Politika tanımları** (`AuthSetup.cs:48-51`) doğru; `Stylist` politikası `BarberOwner`'ı da kapsıyor — `UserRole.Stylist` hiç atanmadığı için (G7) bu uçların kullanılabilir kalmasını sağlayan bilinçli tasarım.
+
+**Canlı doğrulanan (KANITLANDI):**
+- Yatay yetki: müşteri B, müşteri A'nın randevu detayını göremiyor (`404` — varlığını bile sızdırmıyor), şikayet edemiyor (`403`). Kontrol: A kendi randevusunu görüyor (`200`).
+- Cross-shop: owner başka salonu değiştiremiyor / o salona hizmet ekleyemiyor (`"Not owner."`). Kontrol: kendi salonunda `204`.
+- `POST /v1/auth/logout/all` anonim erişilemiyor (`401`).
+- `GET /v1/payments/mock/complete` Production'da **route hiç map edilmiyor** (`404`) — doğru davranış.
+- `POST /v1/dev/reseed-demo` Admin gerektiriyor (`401`).
+- `POST /v1/auth/dev-login` erişim anahtarı olmadan `403`; anahtar **sabit-zamanlı** karşılaştırılıyor (`DevToolsGate.cs:52`) — zamanlama sızıntısı yok.
+
+**Yanlış alarm notu (yöntem dersi):** İlk tarama uçların çoğunu "yetki YOK" gösterdi. Sebep: yetki **grup seviyesinde** (`MapGroup(...).RequireAuthorization("X")`) tanımlı ve uç satırında görünmüyor. Doğrulanmadan raporlansaydı "90 uç korumasız" gibi tamamen yanlış bir alarm üretilecekti. **Statik taramanın kendisi de doğrulanmalı.**
+
+**Kapsam dışı (sonraki tur):** rol yükseltme sonrası eski token'ın geçerlilik süresi, KYC belge içerik proxy'sinde çapraz erişim, ödeme/iade uçlarında sahiplik.
+
+---
+
 ## Özet Tablo
 
 | # | Başlık | Etki | Efor |
@@ -313,6 +362,7 @@ kayıt sürtünmesi artar.
 | G16 | DTO alan adı değişince gövde sessizce sıfırlanıyor (kalıpsal para riski) | Yüksek → tekil düzeltildi | 2-3 saat (admin-only katı mod) |
 | G17 | Demo verisi bir gecede bayatlıyordu (founder her sabah boş panel) | Yüksek (süreç) | ✅ kapatıldı 2026-08-07 |
 | G18 | Yeni müşteri kaydında isim sorulmuyor — kuaför kimin geldiğini bilmiyor | Orta-Yüksek | 1 gün |
+| G19 | Yetki reddi 400 dönüyor, 403 değil (semantik) | Düşük | 2-3 saat |
 
 ---
 
