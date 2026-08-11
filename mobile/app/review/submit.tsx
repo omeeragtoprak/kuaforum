@@ -4,7 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
-import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { ReviewApi } from '@/api/review';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -47,12 +48,21 @@ export default function ReviewSubmitScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.back}>← Geri</Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Geri dön"
+          >
+            <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+            <Text style={styles.back}>Geri</Text>
           </Pressable>
 
           <View style={styles.header}>
-            <Text style={styles.emoji}>⭐</Text>
+            <View style={styles.iconWrap}>
+              <Icon name="star" size={28} color={Colors.textSecondary} strokeWidth={1.5} />
+            </View>
             <Text style={styles.heading}>Deneyimini değerlendir</Text>
             <Text style={styles.subtitle}>Yorumun başkalarına yardımcı olur.</Text>
           </View>
@@ -91,9 +101,12 @@ export default function ReviewSubmitScreen() {
             hint={`${body.length}/1000`}
           />
 
-          <Text style={styles.helper}>
-            🛡️ Yorumlar moderasyondan geçer. Spam veya küfür içerirse onay beklenir.
-          </Text>
+          <View style={styles.helperRow}>
+            <Icon name="shield" size={13} color={Colors.textMuted} />
+            <Text style={styles.helper}>
+              Yorumlar moderasyondan geçer. Spam veya küfür içerirse onay beklenir.
+            </Text>
+          </View>
 
           <Button
             label="Yorumu gönder"
@@ -109,7 +122,7 @@ export default function ReviewSubmitScreen() {
 }
 
 function ratingLabel(rating: number): string {
-  return ['', 'Çok kötü 😞', 'Kötü 😕', 'Fena değil 🙂', 'İyi 😊', 'Mükemmel 🤩'][rating] ?? '';
+  return ['', 'Çok kötü', 'Kötü', 'Fena değil', 'İyi', 'Mükemmel'][rating] ?? '';
 }
 
 const styles = StyleSheet.create({
@@ -123,11 +136,19 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  backBtn: { paddingVertical: 6, alignSelf: 'flex-start' },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, alignSelf: 'flex-start', marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   header: { alignItems: 'center', paddingVertical: Spacing.md },
-  emoji: { fontSize: 56, marginBottom: Spacing.sm },
-  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center', letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, textAlign: 'center' },
   ratingBlock: { alignItems: 'center', paddingVertical: Spacing.md },
   starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 6 },
@@ -135,5 +156,6 @@ const styles = StyleSheet.create({
   starText: { fontSize: 56, color: Colors.border },
   starActive: { color: Colors.star },
   ratingLabel: { textAlign: 'center', fontSize: FontSize.lg, color: Colors.text, fontWeight: FontWeight.semibold, marginTop: Spacing.md },
-  helper: { fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18 },
+  helperRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  helper: { flex: 1, fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18 },
 });

@@ -5,10 +5,24 @@ import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Radius, Layout } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
 import { formatTime, formatTry, bookingStatusInfo } from '@/lib/format';
+
+/** Durum rozetinin tonuna karşılık gelen kenar rengi — durum yalnız renkle değil
+ *  biçimle (satırın sol kenar çizgisiyle) de kodlanır (kuaför paneli "araç" ilkesi). */
+function toneBorderColor(tone: string): string {
+  switch (tone) {
+    case 'success': return Colors.success;
+    case 'warning': return Colors.warning;
+    case 'error': return Colors.error;
+    case 'info': return Colors.info;
+    case 'brand': return Colors.accent;
+    default: return Colors.borderStrong;
+  }
+}
 
 export default function BarberCalendarScreen() {
   const router = useRouter();
@@ -45,7 +59,7 @@ export default function BarberCalendarScreen() {
           <RefreshControl
             refreshing={query.isFetching && !query.isLoading}
             onRefresh={() => query.refetch()}
-            tintColor="#0EA5E9"
+            tintColor={Colors.ink}
           />
         }
       >
@@ -53,14 +67,14 @@ export default function BarberCalendarScreen() {
           <SkeletonList count={4} render={() => <SkeletonBookingRow />} />
         ) : query.isError ? (
           <EmptyState
-            emoji="⚠️"
+            icon="alert"
             title="Bağlantı hatası"
             description="Sunucuya ulaşılamıyor."
             actionLabel="Tekrar dene"
             onAction={() => query.refetch()}
           />
         ) : days.length === 0 ? (
-          <EmptyState emoji="📅" title="Önümüzdeki 14 gün boş" description="Bu süre içinde randevun yok." />
+          <EmptyState icon="calendar" title="Önümüzdeki 14 gün boş" description="Bu süre içinde randevun yok." />
         ) : (
           days.map(([day, bookings]) => {
             const date = new Date(day);
@@ -91,7 +105,7 @@ export default function BarberCalendarScreen() {
                         accessibilityLabel={`${formatTime(b.scheduledAt)} ${b.items[0]?.serviceName ?? ''} ${status.label}`}
                         style={({ pressed }) => [{ opacity: pressed ? 0.7 : 1 }]}
                       >
-                        <Card style={styles.row}>
+                        <Card style={[styles.row, { borderLeftWidth: 3, borderLeftColor: toneBorderColor(status.tone) }]}>
                           <View style={styles.rowTime}>
                             <Text style={styles.time}>{formatTime(b.scheduledAt)}</Text>
                             <Text style={styles.duration}>
@@ -104,7 +118,10 @@ export default function BarberCalendarScreen() {
                               {b.items.length > 1 ? ` +${b.items.length - 1}` : ''}
                             </Text>
                             {b.customerName ? (
-                              <Text style={styles.customerLine} numberOfLines={1}>👤 {b.customerName}</Text>
+                              <View style={styles.customerRow}>
+                                <Icon name="user" size={11} color={Colors.textSecondary} />
+                                <Text style={styles.customerLine} numberOfLines={1}>{b.customerName}</Text>
+                              </View>
                             ) : null}
                             <Badge label={status.label} tone={status.tone} />
                           </View>
@@ -126,7 +143,7 @@ export default function BarberCalendarScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.lg, paddingBottom: Spacing.md },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 2 },
   scroll: {
     paddingHorizontal: Layout.screenPaddingX,
@@ -147,14 +164,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  dateBadgeToday: { backgroundColor: '#0EA5E9', borderColor: '#0EA5E9' },
-  dateNum: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, lineHeight: 24 },
+  dateBadgeToday: { backgroundColor: Colors.ink, borderColor: Colors.ink },
+  dateNum: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, lineHeight: 24, fontVariant: ['tabular-nums'] },
   dateNumToday: { color: Colors.textInverse },
   dateMonth: {
     fontSize: 10,
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LetterSpacing.label,
     fontWeight: FontWeight.semibold,
   },
   dateMonthToday: { color: Colors.textInverse, opacity: 0.85 },
@@ -163,10 +180,11 @@ const styles = StyleSheet.create({
   bookingsList: { gap: Spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   rowTime: { width: 64 },
-  time: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: '#0EA5E9' },
-  duration: { fontSize: 11, color: Colors.textMuted, marginTop: 2 },
+  time: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.ink, fontVariant: ['tabular-nums'] },
+  duration: { fontSize: 11, color: Colors.textMuted, marginTop: 2, fontVariant: ['tabular-nums'] },
   rowMid: { flex: 1, gap: 4 },
   serviceLine: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium },
-  customerLine: { fontSize: FontSize.xs, color: Colors.textSecondary, marginTop: 2 },
-  amount: { fontSize: FontSize.sm, color: Colors.primary, fontWeight: FontWeight.bold },
+  customerRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+  customerLine: { fontSize: FontSize.xs, color: Colors.textSecondary },
+  amount: { fontSize: FontSize.sm, color: Colors.ink, fontWeight: FontWeight.bold, fontVariant: ['tabular-nums'] },
 });

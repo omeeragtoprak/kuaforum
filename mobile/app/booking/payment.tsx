@@ -4,7 +4,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
-import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Layout } from '@/lib/theme';
 import { BookingApi } from '@/api/booking';
 import { apiClient, extractApiError } from '@/api/client';
 import type { PaymentKind } from '@/api/payment';
@@ -228,7 +229,8 @@ export default function PaymentScreen() {
           accessibilityRole="button"
           accessibilityLabel="Geri dön"
         >
-          <Text style={styles.back}>← Geri</Text>
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
         <Text style={styles.heading}>Ödeme</Text>
       </View>
@@ -260,7 +262,7 @@ export default function PaymentScreen() {
 
           {phase === 'verifying' ? (
             <Card style={styles.verifyingCard}>
-              <ActivityIndicator color={Colors.primary} size="large" />
+              <ActivityIndicator color={Colors.ink} size="large" />
               <Text style={styles.verifyingText}>Ödemen doğrulanıyor…</Text>
             </Card>
           ) : null}
@@ -347,9 +349,9 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.xs,
   },
-  backBtn: { paddingVertical: 6 },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  heading: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  heading: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   countdownWrap: { paddingHorizontal: Layout.screenPaddingX, paddingBottom: Spacing.sm },
   scroll: {
     paddingHorizontal: Layout.screenPaddingX,
