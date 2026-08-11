@@ -26,7 +26,14 @@ public sealed record VerifyOtpResponse(
     string RefreshToken,
     DateTimeOffset AccessExpiresAt,
     DateTimeOffset RefreshExpiresAt,
-    AuthenticatedUserDto User);
+    AuthenticatedUserDto User,
+    /// <summary>
+    /// Bu doğrulama sırasında hesap YENİ mi oluşturuldu? (GAPS G18)
+    /// Mobil, yeni kullanıcıyı isim soran akışa yönlendirmek için buna bakar —
+    /// `User.DisplayName == null` kontrolüne güvenilemez, çünkü mevcut bir
+    /// kullanıcı da ismini hiç girmemiş olabilir ve ona tekrar sormak yanlış olur.
+    /// </summary>
+    bool IsNewUser);
 
 public sealed class VerifyOtpCommandValidator : AbstractValidator<VerifyOtpCommand>
 {
@@ -71,8 +78,16 @@ public sealed class VerifyOtpCommandHandler(
 
         var users = ctx.Set<User>();
         var user = await users.FirstOrDefaultAsync(u => u.PhoneE164 == otp.PhoneE164, cancellationToken);
+        // GAPS G18: bu bayrak yanıtta taşınıyor — mobil yeni kullanıcıyı isim soran
+        // akışa (KVKK rıza ekranı) yönlendiriyor. Önceden hesap isimsiz oluşuyordu ve
+        // kuaför randevu listesinde "kim geliyor" görünmüyordu.
+        var isNewUser = user is null;
         if (user is null)
         {
+            // İsim BURADA sorulmuyor — OTP akışına alan eklemek doğrulama ekranını
+            // ağırlaştırırdı. Bunun yerine `IsNewUser` bayrağı yanıtta taşınıyor ve
+            // mobil, yeni kullanıcıyı zaten geçmek zorunda olduğu KVKK rıza ekranında
+            // isim soruyor (ekstra adım yok). Ad `PATCH /v1/users/me` ile yazılıyor.
             var createResult = User.CreateCustomerByPhone(phoneResult.Value);
             if (createResult.IsFailure)
                 return Result.Failure<VerifyOtpResponse>(createResult.Error);
@@ -119,6 +134,7 @@ public sealed class VerifyOtpCommandHandler(
             rawRefresh,
             accessToken.AccessExpiresAt,
             refreshToken.ExpiresAt,
-            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role)));
+            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role),
+            isNewUser));
     }
 }

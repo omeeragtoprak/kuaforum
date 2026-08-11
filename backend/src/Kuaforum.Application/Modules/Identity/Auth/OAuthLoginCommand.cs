@@ -57,6 +57,10 @@ public sealed class OAuthLoginCommandHandler(
         var ctx = (DbContext)db;
         var users = ctx.Set<User>();
         var user = await users.FirstOrDefaultAsync(u => u.EmailNormalized == email.Normalized, cancellationToken);
+        // GAPS G18: OAuth sağlayıcısı ismi zaten veriyor (aşağıda `identity.DisplayName`
+        // geçiliyor), yani telefon akışındaki "isimsiz kullanıcı" sorunu burada YOK.
+        // Bayrağı yine de doğru taşıyoruz — mobil tarafta tek bir karar noktası olsun.
+        var isNewUser = user is null;
         if (user is null)
         {
             var createResult = User.CreateCustomerByOAuth(email, $"oauth-{request.Provider}", identity.DisplayName);
@@ -106,6 +110,7 @@ public sealed class OAuthLoginCommandHandler(
             rawRefresh,
             accessToken.AccessExpiresAt,
             refreshToken.ExpiresAt,
-            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role)));
+            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role),
+            isNewUser));
     }
 }

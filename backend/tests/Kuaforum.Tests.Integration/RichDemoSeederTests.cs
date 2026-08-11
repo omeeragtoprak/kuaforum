@@ -43,7 +43,7 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory) : IAsync
         using (var scope = factory.Services.CreateScope())
         {
             var seeder = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
-            await seeder.SeedAsync(default);
+            await seeder.SeedAsync(default, SeedNow);
         }
 
         using var db = factory.Services.CreateScope().ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -120,7 +120,7 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory) : IAsync
         using (var scope = factory.Services.CreateScope())
         {
             var seeder = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
-            await seeder.SeedAsync(default);
+            await seeder.SeedAsync(default, SeedNow);
             await seeder.SeedAsync(default); // second run — must be a no-op
         }
 
@@ -196,11 +196,50 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory) : IAsync
     private const string DevLoginOwnerPhone = "+905001000001"; // DevLoginCommand.BarberOwnerDemoPhone ile birebir aynı
 
     /// <summary>
+    /// Seed referans anı: iş saatleri ORTASI (Europe/Istanbul 13:00). Hem geçmiş
+    /// (Completed) hem gelecek (Confirmed/Pending) slot üretilebilsin diye seçildi.
+    /// Not: `SeedAsync` bu değeri girişte `ToUniversalTime()` ile normalize eder —
+    /// yerel offset'li bir değer doğrudan `timestamptz`'e yazılamaz.
+    /// </summary>
+    private static readonly DateTimeOffset SeedNow = BuildSeedNow();
+
+    /// <summary>
+    /// BUGÜNÜN öğle vakti (Europe/Istanbul 13:00). Sabit bir TARİH kullanılamaz: seeder
+    /// randevuları "bugün"e göre yerleştiriyor ve test de "bugün"ü kontrol ediyor; geçmiş
+    /// bir güne sabitlemek ikisini ayrıştırır. Sabitlenen yalnız SAAT — böylece test
+    /// mesai dışında (19:00 sonrası) koşsa da seed öğlen yapılmış gibi davranır ve
+    /// hem geçmiş (Completed) hem gelecek (Pending/Confirmed) slot üretilebilir.
+    /// </summary>
+    private static DateTimeOffset BuildSeedNow()
+    {
+        var tz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
+        var todayLocal = TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, tz).Date;
+        var noon = new DateTime(todayLocal.Year, todayLocal.Month, todayLocal.Day, 13, 0, 0, DateTimeKind.Unspecified);
+        return new DateTimeOffset(noon, tz.GetUtcOffset(noon)).ToUniversalTime();
+    }
+
+    /// <summary>
     /// Regresyon kilidi (elle test bulgusu, 2026-08-06): dev-login "BarberOwner" personasının
     /// salonu ("Modern Stüdyo Kuaför") RichDemoSeeder'ın ürettiği hiçbir randevuya sahip
     /// değildi — panel tamamen boş görünüyordu. Bu test bugün en az bir Completed ve bir
     /// Pending randevu olduğunu, saatlerin iş saatleri içinde kaldığını, faturalama ve KYC
     /// kuyruğunun da dolu olduğunu doğrular.
+    ///
+    /// SAAT SABİTLENDİ (2026-08-11): önceden gerçek `UtcNow` ile koşuyordu ve **mesai
+    /// dışında (19:00 sonrası) düzenli olarak kırılıyordu** — akşam seed edildiğinde
+    /// bugüne ait GELECEK bir slot kalmadığı için Pending/Confirmed randevu üretilemez.
+    /// Bu, seeder'ın kusuru değil bilinçli davranışı: "çakışan/iş saati dışı randevu
+    /// üretmektense eksik üretmek yeğdir" (bkz. RichDemoSeeder `NextSlotIndexAfterNow`).
+    /// Yani KIRILAN TESTTİ, seeder değil.
+    ///
+    /// Artık `nowOverride` ile öğlene sabitleniyor: iddia deterministik olarak
+    /// doğrulanabiliyor. Gerçek-saat davranışı ayrı bir testle zaten kapsanıyor
+    /// (`SeedAsync_AtVariousLocalHours_...` — 03:00/08:00/13:00/18:30/23:00 vakalarını
+    /// koşturup çakışma olmadığını doğruluyor), yani bu değişiklik kapsam kaybı değil.
+    ///
+    /// BİLİNEN VE KABUL EDİLMİŞ DAVRANIŞ: dev ortamı akşam saatlerinde ayağa kaldırılırsa
+    /// kuaförün "Bugün" ekranı daha az randevu gösterir (yalnız geçmiş/Completed). Sabah
+    /// tazeleme (`DemoDataResetter`) bunu ertesi gün düzeltir.
     /// </summary>
     [Fact]
     public async Task SeedAsync_DevLoginOwnerShop_HasTodayBookings_Billing_AndAdminKycQueueIsPopulated()
@@ -227,7 +266,7 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory) : IAsync
         Assert.Equal("Modern Stüdyo Kuaför", devShop.Name);
 
         var istanbulTz = TimeZoneInfo.FindSystemTimeZoneById("Europe/Istanbul");
-        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.UtcNow, istanbulTz).DateTime);
+        var todayLocal = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(SeedNow, istanbulTz).DateTime);
 
         var devBookings = await db.Bookings.AsNoTracking().Where(b => b.BarberShopId == devShop.Id).ToListAsync();
         Assert.NotEmpty(devBookings);

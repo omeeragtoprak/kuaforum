@@ -100,7 +100,8 @@ public sealed class AdminLoginCommandHandler(
             rawRefresh,
             access.AccessExpiresAt,
             refreshToken.ExpiresAt,
-            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role)));
+            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role),
+            false));
     }
 
     private static Result<VerifyOtpResponse> GenericFailure() =>

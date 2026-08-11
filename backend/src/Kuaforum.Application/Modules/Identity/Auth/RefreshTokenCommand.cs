@@ -82,6 +82,7 @@ public sealed class RefreshTokenCommandHandler(
             newRawRefresh,
             newAccess.AccessExpiresAt,
             newRefresh.ExpiresAt,
-            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role)));
+            new AuthenticatedUserDto(user.Id, user.PhoneE164, user.DisplayName, user.Role),
+            false));
     }
 }

@@ -385,7 +385,12 @@ public sealed class RichDemoSeeder(
             }
 
             // 2) Completed (past ~25 gün önce)
-            var completedBooking = MakeDemoBooking(3, now.AddHours(2));
+            // Bu bloktaki tüm placeholder'lar GERÇEK saate bağlı — `now` (enjekte edilebilir)
+            // DEĞİL. Booking.Initiate'in "geçmişte olamaz" guard'ı nowOverride'ı bilmez; test
+            // geçmiş bir an enjekte ettiğinde `now.AddHours(N)` de geçmişte kalıyor ve randevu
+            // SESSİZCE hiç üretilmiyordu (Completed/Cancelled/NoShow eksik kalıyordu).
+            var realNow = DateTimeOffset.UtcNow;
+            var completedBooking = MakeDemoBooking(3, realNow.AddHours(2));
             if (completedBooking is not null)
             {
                 var payment = CreateAndCapturePayment(completedBooking, demoCustomer.Id, newShops[3].Shop.Id);
@@ -403,22 +408,22 @@ public sealed class RichDemoSeeder(
             }
 
             // 3) Cancelled (past ~10 gün önce, owner henüz onaylamadan müşteri vazgeçti)
-            var cancelledBooking = MakeDemoBooking(4, now.AddHours(3));
+            var cancelledBooking = MakeDemoBooking(4, realNow.AddHours(3));
             if (cancelledBooking is not null)
             {
                 cancelledBooking.Cancel(BookingCancellationReason.CustomerRequested);
-                var shift = RealisticSlotUtc(todayLocal.AddDays(-10), 10, newShops[4].Services.Count > 0 ? newShops[4].Services[0].DurationMinutes : 45) - now.AddHours(3);
+                var shift = RealisticSlotUtc(todayLocal.AddDays(-10), 10, newShops[4].Services.Count > 0 ? newShops[4].Services[0].DurationMinutes : 45) - realNow.AddHours(3);
                 BackdateBooking(cancelledBooking, shift, confirmed: false, started: false, completed: false, cancelled: true);
                 bookingsToAdd.Add(cancelledBooking);
             }
 
             // 4) NoShow (past ~15 gün önce) — Confirmed sonrası raw-SQL status flip (mevcut test
             // suite'inin de kullandığı kalıp, MarkNoShow'un canlı "now" guard'ını atlamak için).
-            var noShowBooking = MakeDemoBooking(5, now.AddHours(4));
+            var noShowBooking = MakeDemoBooking(5, realNow.AddHours(4));
             if (noShowBooking is not null)
             {
                 noShowBooking.OwnerConfirm();
-                var shift = RealisticSlotUtc(todayLocal.AddDays(-15), 4, newShops[5].Services.Count > 0 ? newShops[5].Services[0].DurationMinutes : 45) - now.AddHours(4);
+                var shift = RealisticSlotUtc(todayLocal.AddDays(-15), 4, newShops[5].Services.Count > 0 ? newShops[5].Services[0].DurationMinutes : 45) - realNow.AddHours(4);
                 BackdateBooking(noShowBooking, shift, confirmed: true, started: false, completed: false, cancelled: false);
                 bookingsToAdd.Add(noShowBooking);
             }
@@ -468,7 +473,7 @@ public sealed class RichDemoSeeder(
                 var stylist = stylists[i % stylists.Count];
                 var service = services[Rng.Next(services.Count)];
                 var pastDays = -(12 + 7 * i + (dayCursor % 20));
-                var scheduledAtNear = now.AddHours(2 + i);
+                var scheduledAtNear = DateTimeOffset.UtcNow.AddHours(2 + i);
 
                 var bookingResult = Booking.Initiate(
                     customer.Id, shopRow.Id, stylist.Id, scheduledAtNear,
@@ -702,7 +707,16 @@ public sealed class RichDemoSeeder(
                     return result.IsSuccess ? result.Value : null;
                 }
 
-                var placeholderFuture = now.AddHours(1); // Initiate()'in "geçmişte olamaz" guard'ını geçmek için — hepsi aşağıda backdate edilecek.
+                // Initiate()'in "geçmişte olamaz" guard'ını geçmek için geçici bir zaman —
+                // hepsi aşağıda gerçek hedef saate backdate ediliyor.
+                //
+                // DİKKAT: `now` DEĞİL, GERÇEK `DateTimeOffset.UtcNow` temel alınıyor. Guard
+                // enjekte edilen `nowOverride`'ı bilmez, HER ZAMAN gerçek saate bakar. Testler
+                // seed anını sabitlemek için geçmiş bir `nowOverride` verdiğinde (deterministik
+                // olsun diye) `now.AddHours(1)` de geçmişte kalıyor, guard reddediyor ve
+                // Completed randevular SESSİZCE hiç üretilmiyordu — iki seeder testi tam olarak
+                // bu yüzden kırılıyordu ("Completed bulunamadı").
+                var placeholderFuture = DateTimeOffset.UtcNow.AddHours(1);
 
                 // Kusur fix (2026-08-07, RichDemoSeederTests.SeedAsync_AtVariousLocalHours_...
                 // regresyonu): "bugünün" VE gelecek 14 gün + bu hafta/geçen hafta geçmiş
@@ -922,7 +936,7 @@ public sealed class RichDemoSeeder(
                     // todayCompleted1'in yerleştiği slot — bkz. ReserveDevSlot doc'u).
                     var slot = ReserveDevSlot(day, devStylists[stylistIdx % devStylists.Count].Id, 0, duration);
                     if (slot is null) return; // sığmıyor — bu geçmiş kaydı atlanır
-                    var b = MakeDevBooking(stylistIdx, serviceIdx, now.AddHours(1));
+                    var b = MakeDevBooking(stylistIdx, serviceIdx, DateTimeOffset.UtcNow.AddHours(1));
                     if (b is null) return;
                     var payment = CreateAndCapturePayment(b, b.CustomerId, devShop.Id);
                     b.MarkPaymentReceived(payment.Id);
