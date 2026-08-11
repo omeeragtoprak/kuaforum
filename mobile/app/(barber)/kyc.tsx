@@ -6,7 +6,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/Skeleton';
 import { Button } from '@/components/Button';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BarberApi, KycDocumentRequest } from '@/api/barber';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -83,7 +84,7 @@ export default function BarberKycScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="📡"
+          icon="globe"
           title="Bağlantı kurulamadı"
           description="Salon bilgine ulaşılamadı. İnternet bağlantını kontrol edip tekrar dene."
           actionLabel="Tekrar dene"
@@ -97,7 +98,7 @@ export default function BarberKycScreen() {
     return (
       <SafeAreaView style={styles.container} edges={['top']}>
         <EmptyState
-          emoji="🏪"
+          icon="store"
           title="Salon yok"
           description="Henüz bir salonun yok — onboarding akışıyla salonunu oluştur."
           actionLabel="Salon oluştur"
@@ -118,7 +119,10 @@ export default function BarberKycScreen() {
 
         {isApproved ? (
           <View style={styles.statusBoxOk}>
-            <Text style={styles.statusTitleOk}>✅ KYC onaylandı</Text>
+            <View style={styles.statusTitleRow}>
+              <Icon name="check" size={17} color={Colors.success} strokeWidth={2} />
+              <Text style={styles.statusTitleOk}>KYC onaylandı</Text>
+            </View>
             <Text style={styles.statusBody}>
               İşletmen aktif. Müşteriler seni keşfette görebiliyor ve randevu alabiliyor.
               {kyc?.reviewedAt ? `\nOnaylanma: ${formatLocal(kyc.reviewedAt)}` : ''}
@@ -128,9 +132,12 @@ export default function BarberKycScreen() {
 
         {isPending || isUnderReview ? (
           <View style={styles.statusBoxInfo}>
-            <Text style={styles.statusTitleInfo}>
-              {isPending ? '⏳ Başvurun beklemede' : '👁 İncelemede'}
-            </Text>
+            <View style={styles.statusTitleRow}>
+              <Icon name={isPending ? 'clock' : 'info'} size={17} color={Colors.info} />
+              <Text style={styles.statusTitleInfo}>
+                {isPending ? 'Başvurun beklemede' : 'İncelemede'}
+              </Text>
+            </View>
             <Text style={styles.statusBody}>
               {kyc?.documentCount} belge admin onayına gönderildi.
               {kyc?.submittedAt ? `\nGönderilme: ${formatLocal(kyc.submittedAt)}` : ''}
@@ -141,7 +148,10 @@ export default function BarberKycScreen() {
 
         {isRejected ? (
           <View style={styles.statusBoxError}>
-            <Text style={styles.statusTitleError}>❌ Başvurun reddedildi</Text>
+            <View style={styles.statusTitleRow}>
+              <Icon name="x" size={17} color={Colors.error} strokeWidth={2} />
+              <Text style={styles.statusTitleError}>Başvurun reddedildi</Text>
+            </View>
             {kyc?.rejectionReason ? (
               <View style={styles.reasonBox}>
                 <Text style={styles.reasonLabel}>Admin notu:</Text>
@@ -160,7 +170,7 @@ export default function BarberKycScreen() {
             <KycDocumentSection docs={docs} onChange={setDocs} />
             {!canSubmit ? <Text style={styles.hint}>Vergi Levhası ve Kimlik zorunludur.</Text> : null}
             <Button
-              label={isRejected ? '📤 Yeniden gönder' : "📤 KYC'yi gönder"}
+              label={isRejected ? 'Yeniden gönder' : "KYC'yi gönder"}
               onPress={() => submitMut.mutate()}
               disabled={!canSubmit}
               loading={submitMut.isPending}
@@ -189,10 +199,11 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20, marginBottom: Spacing.sm },
   hint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: -Spacing.sm },
 
+  statusTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statusBoxOk: {
     backgroundColor: Colors.successSoft,
     borderRadius: Radius.md,
@@ -236,7 +247,7 @@ const styles = StyleSheet.create({
     color: Colors.error,
     fontWeight: FontWeight.bold,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LetterSpacing.label,
   },
   reasonText: { fontSize: FontSize.sm, color: Colors.text, marginTop: 4, lineHeight: 20 },
 });

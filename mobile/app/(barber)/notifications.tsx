@@ -1,5 +1,6 @@
 import { NotificationsScreen } from '@/screens/NotificationsScreen';
+import { Colors } from '@/lib/theme';
 
 export default function BarberNotifications() {
-  return <NotificationsScreen accent="#0EA5E9" />;
+  return <NotificationsScreen accent={Colors.accent} />;
 }

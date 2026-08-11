@@ -6,7 +6,8 @@ import axios from 'axios';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Screen } from '@/components/Screen';
-import { Colors, FontSize, FontWeight, Layout, Radius, Spacing } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Layout, Radius, Spacing } from '@/lib/theme';
 import { TokenStorage } from '@/lib/secure-storage';
 import { useAuthStore } from '@/store/auth-store';
 import {
@@ -161,10 +162,12 @@ export default function ServerSettingsScreen() {
         <Pressable
           onPress={() => router.back()}
           style={styles.back}
+          hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel="Geri dön"
         >
-          <Text style={styles.backText}>← Geri</Text>
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.backText}>Geri</Text>
         </Pressable>
 
         <Text style={styles.heading}>Sunucu adresi</Text>
@@ -203,10 +206,12 @@ export default function ServerSettingsScreen() {
             accessibilityRole="text"
             accessibilityLabel={testMessage}
           >
-            <Text style={styles.resultText}>
-              {testState === 'success' ? '✅ ' : '⚠️ '}
-              {testMessage}
-            </Text>
+            <Icon
+              name={testState === 'success' ? 'check' : 'alert'}
+              size={15}
+              color={testState === 'success' ? Colors.success : Colors.error}
+            />
+            <Text style={styles.resultText}>{testMessage}</Text>
           </View>
         ) : null}
 
@@ -248,14 +253,18 @@ const styles = StyleSheet.create({
   blockedWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.lg, padding: Spacing.xl },
   blockedText: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center' },
   back: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
     paddingVertical: Spacing.sm,
     alignSelf: 'flex-start',
     marginBottom: Spacing.md,
+    marginLeft: -4,
     minHeight: Layout.tapTargetMin,
     justifyContent: 'center',
   },
-  backText: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  heading: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, marginBottom: 6 },
+  backText: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  heading: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, marginBottom: 6, letterSpacing: LetterSpacing.title },
   helper: {
     fontSize: FontSize.sm,
     color: Colors.textSecondary,
@@ -263,6 +272,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.lg,
   },
   resultBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     borderRadius: Radius.md,
     borderWidth: 1,
     paddingVertical: Spacing.sm,
@@ -272,7 +284,7 @@ const styles = StyleSheet.create({
   },
   resultSuccess: { backgroundColor: Colors.successSoft, borderColor: Colors.success },
   resultError: { backgroundColor: Colors.errorSoft, borderColor: Colors.error },
-  resultText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium },
+  resultText: { flex: 1, fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium },
   actions: { gap: Spacing.md, marginBottom: Spacing.xl },
   shortcutsTitle: {
     fontSize: FontSize.md,
@@ -291,6 +303,6 @@ const styles = StyleSheet.create({
   },
   shortcutPressed: { opacity: 0.85, backgroundColor: Colors.surfaceAlt },
   shortcutLabel: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text },
-  shortcutUrl: { fontSize: FontSize.xs, color: Colors.primary, marginTop: 2 },
+  shortcutUrl: { fontSize: FontSize.xs, color: Colors.ink, marginTop: 2, fontVariant: ['tabular-nums'] },
   shortcutHint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
 });

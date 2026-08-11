@@ -5,8 +5,9 @@ import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { Button } from '@/components/Button';
+import { Icon, IconName } from '@/components/Icon';
 import { SkeletonShopCard } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout, monogramFor } from '@/lib/theme';
 import { apiClient } from '@/api/client';
 import { BarberApi, Stylist } from '@/api/barber';
 import { extractApiError } from '@/api/client';
@@ -60,7 +61,7 @@ export default function BarberProfileScreen() {
   }
 
   const shop = shopQuery.data;
-  const initial = (user?.displayName ?? '✂️').slice(0, 1).toUpperCase();
+  const mono = monogramFor(user?.displayName || 'Kuaför');
   const statusInfo = shop ? statusBadge(shop.status) : null;
 
   return (
@@ -70,8 +71,8 @@ export default function BarberProfileScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{initial}</Text>
+          <View style={[styles.avatar, { backgroundColor: mono.bg }]}>
+            <Text style={[styles.avatarText, { color: mono.fg }]}>{mono.initials}</Text>
           </View>
           <Text style={styles.name}>{user?.displayName ?? 'Kuaför'}</Text>
           <Text style={styles.phone}>{user?.phone ?? '—'}</Text>
@@ -87,7 +88,10 @@ export default function BarberProfileScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={styles.shopName}>{shop.name}</Text>
                 {shop.addressLine1 ? (
-                  <Text style={styles.shopAddress} numberOfLines={2}>📍 {shop.addressLine1}</Text>
+                  <View style={styles.shopAddressRow}>
+                    <Icon name="mapPin" size={12} color={Colors.textMuted} />
+                    <Text style={styles.shopAddress} numberOfLines={2}>{shop.addressLine1}</Text>
+                  </View>
                 ) : null}
               </View>
               {statusInfo ? <Badge label={statusInfo.label} tone={statusInfo.tone as any} /> : null}
@@ -133,22 +137,28 @@ export default function BarberProfileScreen() {
           <>
             <Text style={styles.sectionTitle}>Şu an müsait modu</Text>
             <Card>
-              <Text style={styles.walkInHint}>
-                ⚡ Müşteri keşfette "Şu an boş" filtresi açtığında stilistini görür.
-                Açılan toggle 2 saat sonra otomatik kapanır (sahte vaatleri önler).
-              </Text>
+              <View style={styles.walkInHintRow}>
+                <Icon name="info" size={13} color={Colors.textSecondary} />
+                <Text style={styles.walkInHint}>
+                  Müşteri keşfette "Şu an boş" filtresi açtığında stilistini görür.
+                  Açılan toggle 2 saat sonra otomatik kapanır (sahte vaatleri önler).
+                </Text>
+              </View>
               {stylistsQuery.data.filter((s) => s.isActive).map((s, idx) => (
                 <View key={s.id} style={[styles.walkInRow, idx > 0 && styles.walkInRowBorder]}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.walkInName}>{s.displayName}</Text>
-                    <Text style={styles.walkInStatus}>
-                      {s.walkInAvailable ? '🟢 Şu an müsait' : '⚪ Pasif'}
-                    </Text>
+                    <View style={styles.walkInStatusRow}>
+                      <View style={[styles.walkInDot, s.walkInAvailable && styles.walkInDotActive]} />
+                      <Text style={styles.walkInStatus}>
+                        {s.walkInAvailable ? 'Şu an müsait' : 'Pasif'}
+                      </Text>
+                    </View>
                   </View>
                   <Switch
                     value={s.walkInAvailable}
                     onValueChange={(value) => toggleWalkInMut.mutate({ stylistId: s.id, available: value })}
-                    trackColor={{ true: Colors.success, false: '#E5E7EB' }}
+                    trackColor={{ true: Colors.success, false: Colors.border }}
                     accessibilityLabel={`${s.displayName} şu an müsait toggle`}
                   />
                 </View>
@@ -159,26 +169,26 @@ export default function BarberProfileScreen() {
 
         <Text style={styles.sectionTitle}>Yönetim</Text>
         <Card padded={false}>
-          <ListRow icon="📋" label="KYC Doğrulama" hint="Belge gönder" onPress={() => router.push('/(barber)/kyc')} />
+          <ListRow icon="document" label="KYC Doğrulama" hint="Belge gönder" onPress={() => router.push('/(barber)/kyc')} />
           <Divider />
-          <ListRow icon="🕐" label="Müsaitlik" hint="Saat & izin" onPress={() => router.push('/(barber)/availability')} />
+          <ListRow icon="clock" label="Müsaitlik" hint="Saat & izin" onPress={() => router.push('/(barber)/availability')} />
           <Divider />
-          <ListRow icon="👥" label="Stilistler" hint="Düzenle" onPress={() => router.push('/(barber)/availability')} />
+          <ListRow icon="users" label="Stilistler" hint="Düzenle" onPress={() => router.push('/(barber)/availability')} />
           <Divider />
-          <ListRow icon="✂️" label="Hizmetler" hint="CRUD" onPress={() => router.push('/(barber)/services')} />
+          <ListRow icon="scissors" label="Hizmetler" hint="CRUD" onPress={() => router.push('/(barber)/services')} />
           <Divider />
-          <ListRow icon="💳" label="Randevu Ayarları" hint="Kapora & limitler" onPress={() => router.push('/(barber)/booking-settings')} />
+          <ListRow icon="creditCard" label="Randevu Ayarları" hint="Kapora & limitler" onPress={() => router.push('/(barber)/booking-settings')} />
           <Divider />
-          <ListRow icon="💬" label="Yorumlar" hint="Görüntüle & cevapla" onPress={() => router.push('/(barber)/reviews')} />
+          <ListRow icon="document" label="Yorumlar" hint="Görüntüle & cevapla" onPress={() => router.push('/(barber)/reviews')} />
         </Card>
 
         <Text style={styles.sectionTitle}>Hesap</Text>
         <Card padded={false}>
-          <ListRow icon="🔔" label="Bildirimler" hint="Yakında" />
+          <ListRow icon="bell" label="Bildirimler" hint="Yakında" />
           <Divider />
-          <ListRow icon="💬" label="Destek" hint="Yakında" />
+          <ListRow icon="document" label="Destek" hint="Yakında" />
           <Divider />
-          <ListRow icon="🏷️" label="Sürüm" value="0.0.1" />
+          <ListRow icon="info" label="Sürüm" value="0.0.1" />
         </Card>
 
         <View style={styles.actions}>
@@ -191,15 +201,17 @@ export default function BarberProfileScreen() {
   );
 }
 
-function ListRow({ icon, label, value, hint, onPress }: { icon: string; label: string; value?: string; hint?: string; onPress?: () => void }) {
+function ListRow({ icon, label, value, hint, onPress }: { icon: IconName; label: string; value?: string; hint?: string; onPress?: () => void }) {
   const content = (
     <View style={styles.listRow}>
-      <Text style={styles.listIcon}>{icon}</Text>
+      <View style={styles.listIconWrap}>
+        <Icon name={icon} size={17} color={Colors.textSecondary} />
+      </View>
       <Text style={styles.listLabel}>{label}</Text>
       <View style={{ flex: 1 }} />
       {value ? <Text style={styles.listValue}>{value}</Text> : null}
       {hint ? <Text style={styles.listHint}>{hint}</Text> : null}
-      {onPress ? <Text style={styles.listChevron}>›</Text> : null}
+      {onPress ? <Icon name="chevronRight" size={16} color={Colors.textMuted} /> : null}
     </View>
   );
   if (onPress) {
@@ -239,19 +251,18 @@ const styles = StyleSheet.create({
     width: 88,
     height: 88,
     borderRadius: Radius.full,
-    backgroundColor: '#0EA5E9',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing.md,
   },
-  avatarText: { color: Colors.textInverse, fontSize: 38, fontWeight: FontWeight.bold },
+  avatarText: { fontSize: 32, fontWeight: FontWeight.bold },
   name: { fontSize: FontSize.xl, fontWeight: FontWeight.semibold, color: Colors.text },
   phone: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4 },
   sectionTitle: {
     fontSize: FontSize.xs,
     color: Colors.textMuted,
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: LetterSpacing.label,
     marginTop: Spacing.lg,
     marginBottom: Spacing.sm,
     paddingHorizontal: Spacing.xs,
@@ -259,7 +270,8 @@ const styles = StyleSheet.create({
   },
   shopHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: Spacing.sm },
   shopName: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
-  shopAddress: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },
+  shopAddressRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  shopAddress: { flex: 1, fontSize: FontSize.xs, color: Colors.textMuted },
   metaRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   shopDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
   muted: { fontSize: FontSize.sm, color: Colors.textMuted },
@@ -267,11 +279,12 @@ const styles = StyleSheet.create({
   emptyDesc: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 4, lineHeight: 20 },
   smallHint: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: 6 },
 
+  walkInHintRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, marginBottom: Spacing.sm },
   walkInHint: {
+    flex: 1,
     fontSize: FontSize.xs,
     color: Colors.textSecondary,
     lineHeight: 16,
-    marginBottom: Spacing.sm,
   },
   walkInRow: {
     flexDirection: 'row',
@@ -284,7 +297,10 @@ const styles = StyleSheet.create({
     borderTopColor: Colors.divider,
   },
   walkInName: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
-  walkInStatus: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
+  walkInStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  walkInDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: Colors.borderStrong },
+  walkInDotActive: { backgroundColor: Colors.success },
+  walkInStatus: { fontSize: FontSize.xs, color: Colors.textMuted },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -293,11 +309,10 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     minHeight: 52,
   },
-  listIcon: { fontSize: 20, width: 24, textAlign: 'center' },
+  listIconWrap: { width: 24, alignItems: 'center' },
   listLabel: { fontSize: FontSize.md, color: Colors.text, fontWeight: FontWeight.medium },
   listValue: { fontSize: FontSize.sm, color: Colors.textSecondary },
   listHint: { fontSize: FontSize.xs, color: Colors.textMuted },
-  listChevron: { fontSize: 18, color: Colors.textMuted, marginLeft: 4 },
   divider: { height: 1, backgroundColor: Colors.divider, marginLeft: 56 },
   actions: { gap: Spacing.sm, marginTop: Spacing.xl },
   footer: { fontSize: FontSize.xs, color: Colors.textMuted, textAlign: 'center', marginTop: Spacing.xl },
