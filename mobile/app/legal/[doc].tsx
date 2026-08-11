@@ -3,10 +3,11 @@ import { View, Text, StyleSheet, ScrollView, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useQuery } from '@tanstack/react-query';
-import { Colors, FontSize, FontWeight, Spacing, Radius, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Radius, Layout } from '@/lib/theme';
 import { LegalApi, LegalDocSlug } from '@/api/legal';
 import { extractApiError } from '@/api/client';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { Skeleton } from '@/components/Skeleton';
 
 const VALID_SLUGS: LegalDocSlug[] = ['aydinlatma', 'kullanim-kosullari'];
@@ -77,13 +78,14 @@ export default function LegalDocScreen() {
           accessibilityLabel="Geri"
           hitSlop={8}
         >
-          <Text style={styles.back}>← Geri</Text>
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
       </View>
 
       {!isValidSlug ? (
         <EmptyState
-          emoji="⚠️"
+          icon="alert"
           title="Belge bulunamadı"
           description="Bu bağlantı geçersiz görünüyor."
         />
@@ -101,7 +103,7 @@ export default function LegalDocScreen() {
         </View>
       ) : query.isError ? (
         <EmptyState
-          emoji="⚠️"
+          icon="alert"
           title="Belge yüklenemedi"
           description={extractApiError(query.error)}
           actionLabel="Tekrar dene"
@@ -128,7 +130,8 @@ export default function LegalDocScreen() {
             if (block.type === 'warning') {
               return (
                 <View key={i} style={styles.warningBox} accessibilityRole="text">
-                  <Text style={styles.warningText}>⚠️ {block.text}</Text>
+                  <Icon name="alert" size={16} color={Colors.warning} strokeWidth={1.8} />
+                  <Text style={styles.warningText}>{block.text}</Text>
                 </View>
               );
             }
@@ -147,8 +150,12 @@ export default function LegalDocScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.sm },
-  backBtn: { alignSelf: 'flex-start', paddingVertical: Spacing.sm, minHeight: Layout.tapTargetMin, justifyContent: 'center' },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  backBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    alignSelf: 'flex-start', paddingVertical: Spacing.sm, marginLeft: -4,
+    minHeight: Layout.tapTargetMin, justifyContent: 'center',
+  },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   scroll: {
     paddingHorizontal: Layout.screenPaddingX,
     paddingTop: Spacing.sm,
@@ -163,6 +170,7 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.bold,
     color: Colors.text,
     marginBottom: Spacing.md,
+    letterSpacing: LetterSpacing.title,
   },
   h2: {
     fontSize: FontSize.lg,
@@ -178,6 +186,9 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.sm,
   },
   warningBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
     backgroundColor: Colors.warningSoft,
     borderRadius: Radius.md,
     borderWidth: 1,
@@ -186,6 +197,7 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.md,
   },
   warningText: {
+    flex: 1,
     fontSize: FontSize.sm,
     color: Colors.text,
     lineHeight: 20,

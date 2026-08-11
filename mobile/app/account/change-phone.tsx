@@ -5,7 +5,8 @@ import { useRouter } from 'expo-router';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
-import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -69,12 +70,18 @@ export default function ChangePhoneScreen() {
           <Pressable
             onPress={() => (step === 'enter-code' ? setStep('enter-phone') : router.back())}
             style={styles.backBtn}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Geri dön"
           >
-            <Text style={styles.back}>← Geri</Text>
+            <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+            <Text style={styles.back}>Geri</Text>
           </Pressable>
 
           <View style={styles.header}>
-            <Text style={styles.emoji}>📱</Text>
+            <View style={styles.iconWrap}>
+              <Icon name="phone" size={26} color={Colors.textSecondary} strokeWidth={1.5} />
+            </View>
             <Text style={styles.heading}>
               {step === 'enter-phone' ? 'Telefon numaranı değiştir' : 'Doğrulama kodu'}
             </Text>
@@ -104,9 +111,12 @@ export default function ChangePhoneScreen() {
                 disabled={!phoneValid}
                 size="lg"
               />
-              <Text style={styles.helper}>
-                🔒 Eski numarayla giriş şu an aktif. Yeni numara doğrulanana kadar değişmez.
-              </Text>
+              <View style={styles.helperRow}>
+                <Icon name="lock" size={13} color={Colors.textMuted} />
+                <Text style={styles.helper}>
+                  Eski numarayla giriş şu an aktif. Yeni numara doğrulanana kadar değişmez.
+                </Text>
+              </View>
             </>
           ) : (
             <>
@@ -133,8 +143,10 @@ export default function ChangePhoneScreen() {
                   setCode('');
                 }}
                 accessibilityRole="button"
+                style={styles.resendRow}
               >
-                <Text style={styles.resend}>← Numara hatalı mı? Tekrar gir</Text>
+                <Icon name="chevronLeft" size={14} color={Colors.accent} strokeWidth={2} />
+                <Text style={styles.resend}>Numara hatalı mı? Tekrar gir</Text>
               </Pressable>
             </>
           )}
@@ -155,12 +167,22 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  backBtn: { paddingVertical: 6, alignSelf: 'flex-start' },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, alignSelf: 'flex-start', marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   header: { alignItems: 'center', paddingVertical: Spacing.md },
-  emoji: { fontSize: 56, marginBottom: Spacing.sm },
-  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center', letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, textAlign: 'center', lineHeight: 20 },
-  helper: { fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18, textAlign: 'center' },
-  resend: { fontSize: FontSize.sm, color: Colors.primary, textAlign: 'center', fontWeight: FontWeight.semibold, paddingVertical: Spacing.md },
+  helperRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6, justifyContent: 'center' },
+  helper: { flex: 1, fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18, textAlign: 'center' },
+  resendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: Spacing.md },
+  resend: { fontSize: FontSize.sm, color: Colors.accent, fontWeight: FontWeight.semibold },
 });

@@ -4,8 +4,9 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { SkeletonList, SkeletonBookingRow } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Layout } from '@/lib/theme';
 import { AuthApi, Consent, ConsentPurposeKey } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -97,8 +98,15 @@ export default function ConsentsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.back}>← Geri</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Geri dön"
+        >
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
         <Text style={styles.title}>Gizlilik & Rızalar</Text>
         <Text style={styles.subtitle}>
@@ -114,7 +122,7 @@ export default function ConsentsScreen() {
           <RefreshControl
             refreshing={consentsQuery.isFetching && !consentsQuery.isLoading}
             onRefresh={() => consentsQuery.refetch()}
-            tintColor={Colors.primary}
+            tintColor={Colors.ink}
           />
         }
       >
@@ -126,7 +134,7 @@ export default function ConsentsScreen() {
           <SkeletonList count={4} render={() => <SkeletonBookingRow />} />
         ) : consentsQuery.isError ? (
           <EmptyState
-            emoji="⚠️"
+            icon="alert"
             title="Bağlantı hatası"
             description="Rızalar yüklenemedi."
             actionLabel="Tekrar dene"
@@ -155,7 +163,7 @@ export default function ConsentsScreen() {
                     value={granted}
                     onValueChange={(v) => handleToggle(c ?? { purpose: key, granted: false, version: '1.0', grantedAt: '', revokedAt: null }, v)}
                     disabled={updateMut.isPending}
-                    trackColor={{ true: Colors.success, false: '#E5E7EB' }}
+                    trackColor={{ true: Colors.success, false: Colors.border }}
                   />
                 </View>
               </Card>
@@ -170,9 +178,9 @@ export default function ConsentsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
-  backBtn: { alignSelf: 'flex-start', paddingVertical: 4 },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 4, marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, lineHeight: 20 },
   scroll: {
     paddingHorizontal: Layout.screenPaddingX,

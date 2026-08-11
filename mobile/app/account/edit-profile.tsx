@@ -5,7 +5,8 @@ import { useRouter } from 'expo-router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
-import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -75,12 +76,21 @@ export default function EditProfileScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          <Pressable onPress={() => router.back()} style={styles.backBtn}>
-            <Text style={styles.back}>← Geri</Text>
+          <Pressable
+            onPress={() => router.back()}
+            style={styles.backBtn}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel="Geri dön"
+          >
+            <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+            <Text style={styles.back}>Geri</Text>
           </Pressable>
 
           <View style={styles.header}>
-            <Text style={styles.emoji}>✏️</Text>
+            <View style={styles.iconWrap}>
+              <Icon name="edit" size={26} color={Colors.textSecondary} strokeWidth={1.5} />
+            </View>
             <Text style={styles.heading}>Profilini düzenle</Text>
             <Text style={styles.subtitle}>
               İsim ve avatar görselin kuaförün seni tanıması için kullanılır.
@@ -110,10 +120,13 @@ export default function EditProfileScreen() {
             error={!urlValid ? 'https:// veya http:// ile başlamalı' : undefined}
           />
 
-          <Text style={styles.helper}>
-            🔒 Telefon numaranı buradan değiştiremezsin. Telefon değişikliği için
-            "Telefon değiştir" akışı V1.5'te eklenecek.
-          </Text>
+          <View style={styles.helperRow}>
+            <Icon name="lock" size={13} color={Colors.textMuted} />
+            <Text style={styles.helper}>
+              Telefon numaranı buradan değiştiremezsin. Telefon değişikliği için
+              "Telefon değiştir" akışı V1.5'te eklenecek.
+            </Text>
+          </View>
 
           <Button
             label="Kaydet"
@@ -139,11 +152,20 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
   },
-  backBtn: { paddingVertical: 6, alignSelf: 'flex-start' },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 6, alignSelf: 'flex-start', marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
   header: { alignItems: 'center', paddingVertical: Spacing.md },
-  emoji: { fontSize: 56, marginBottom: Spacing.sm },
-  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing.md,
+  },
+  heading: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center', letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, textAlign: 'center', lineHeight: 20 },
-  helper: { fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18 },
+  helperRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  helper: { flex: 1, fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18 },
 });

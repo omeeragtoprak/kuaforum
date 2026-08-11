@@ -5,8 +5,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
 import { Badge } from '@/components/Badge';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 import { SkeletonList, SkeletonBookingRow } from '@/components/Skeleton';
-import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
+import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { AuthApi, Session } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
@@ -42,8 +43,15 @@ export default function SessionsScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Pressable onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.back}>← Geri</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={8}
+          accessibilityRole="button"
+          accessibilityLabel="Geri dön"
+        >
+          <Icon name="chevronLeft" size={18} color={Colors.ink} strokeWidth={2} />
+          <Text style={styles.back}>Geri</Text>
         </Pressable>
         <Text style={styles.title}>Aktif oturumlar</Text>
         <Text style={styles.subtitle}>
@@ -58,7 +66,7 @@ export default function SessionsScreen() {
           <RefreshControl
             refreshing={sessionsQuery.isFetching && !sessionsQuery.isLoading}
             onRefresh={() => sessionsQuery.refetch()}
-            tintColor={Colors.primary}
+            tintColor={Colors.ink}
           />
         }
       >
@@ -66,14 +74,14 @@ export default function SessionsScreen() {
           <SkeletonList count={3} render={() => <SkeletonBookingRow />} />
         ) : sessionsQuery.isError ? (
           <EmptyState
-            emoji="⚠️"
+            icon="alert"
             title="Bağlantı hatası"
             description="Oturumlar yüklenemedi."
             actionLabel="Tekrar dene"
             onAction={() => sessionsQuery.refetch()}
           />
         ) : (sessionsQuery.data ?? []).length === 0 ? (
-          <EmptyState emoji="🔒" title="Aktif oturum yok" description="Şu an hiçbir cihaz hesabına bağlı değil." />
+          <EmptyState icon="lock" title="Aktif oturum yok" description="Şu an hiçbir cihaz hesabına bağlı değil." />
         ) : (
           (sessionsQuery.data ?? []).map((s) => (
             <Card key={s.id} style={{ gap: Spacing.sm }}>
@@ -125,9 +133,9 @@ function formatLocal(iso: string): string {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: { paddingHorizontal: Layout.screenPaddingX, paddingTop: Spacing.md, paddingBottom: Spacing.sm },
-  backBtn: { alignSelf: 'flex-start', paddingVertical: 4 },
-  back: { color: Colors.primary, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
-  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6 },
+  backBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, alignSelf: 'flex-start', paddingVertical: 4, marginLeft: -4 },
+  back: { color: Colors.ink, fontSize: FontSize.sm, fontWeight: FontWeight.medium },
+  title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 6, letterSpacing: LetterSpacing.title },
   subtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginTop: 6, lineHeight: 20 },
   scroll: {
     paddingHorizontal: Layout.screenPaddingX,
