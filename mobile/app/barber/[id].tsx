@@ -304,11 +304,21 @@ export default function BarberDetailScreen() {
         ) : null}
 
         {summary && (reviewsQuery.data?.items?.length ?? 0) > 0 ? (
-          <Section title={`Yorumlar (${summary.count})`} subtitle={`Ortalama ${summary.average.toFixed(1)} ★`}>
+          <Section title={`Yorumlar (${summary.count})`} subtitle={`Ortalama ${summary.average.toFixed(1)} / 5`}>
             {(reviewsQuery.data?.items ?? []).map((r) => (
               <Card key={r.id} style={{ gap: 6 }}>
                 <View style={styles.reviewHead}>
-                  <Text style={styles.reviewStars}>{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}</Text>
+                  <View style={styles.reviewStarsRow}>
+                    {[1, 2, 3, 4, 5].map((s) => (
+                      <Icon
+                        key={s}
+                        name={s <= r.rating ? 'starFilled' : 'star'}
+                        size={14}
+                        color={s <= r.rating ? Colors.star : Colors.border}
+                        strokeWidth={1.5}
+                      />
+                    ))}
+                  </View>
                   <Text style={styles.reviewDate}>
                     {new Date(r.createdAt).toLocaleDateString('tr-TR', { day: '2-digit', month: 'short', year: 'numeric' })}
                   </Text>
@@ -463,7 +473,7 @@ const styles = StyleSheet.create({
   slotText: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.semibold },
   slotTextSelected: { color: Colors.textInverse },
   reviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  reviewStars: { fontSize: FontSize.md, color: Colors.star, letterSpacing: 2 },
+  reviewStarsRow: { flexDirection: 'row', gap: 2 },
   reviewDate: { fontSize: FontSize.xs, color: Colors.textMuted },
   reviewBody: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },
   replyBox: {

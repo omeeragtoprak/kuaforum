@@ -1,5 +1,6 @@
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { Card } from '@/components/Card';
+import { Icon } from '@/components/Icon';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/lib/theme';
 
 type AutoConfirmSectionProps = {
@@ -30,7 +31,7 @@ export function AutoConfirmSection({ autoConfirmEnabled, onToggle, depositEnable
           <Switch
             value={autoConfirmEnabled}
             onValueChange={onToggle}
-            trackColor={{ true: Colors.success, false: '#E5E7EB' }}
+            trackColor={{ true: Colors.success, false: Colors.switchTrackOff }}
             accessibilityRole="switch"
             accessibilityLabel="Randevuları otomatik onayla"
             accessibilityState={{ checked: autoConfirmEnabled }}
@@ -39,8 +40,9 @@ export function AutoConfirmSection({ autoConfirmEnabled, onToggle, depositEnable
 
         {autoConfirmEnabled && depositEnabled ? (
           <View style={styles.noticeBox} accessibilityRole="text">
+            <Icon name="info" size={14} color={Colors.info} />
             <Text style={styles.noticeText}>
-              ℹ️ Kapora açık olduğu için otomatik onay ödemeyi atlamaz: randevu, müşteri ödemeyi
+              Kapora açık olduğu için otomatik onay ödemeyi atlamaz: randevu, müşteri ödemeyi
               tamamlayana kadar yine bekler. Ödeme geldiği an senin onayını beklemeden kesinleşir.
             </Text>
           </View>
@@ -65,11 +67,14 @@ const styles = StyleSheet.create({
   rowLabel: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.text },
   rowHint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4, lineHeight: 16 },
   noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
     backgroundColor: Colors.infoSoft,
     borderRadius: Radius.md,
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.info,
   },
-  noticeText: { fontSize: FontSize.xs, color: Colors.text, lineHeight: 18 },
+  noticeText: { flex: 1, fontSize: FontSize.xs, color: Colors.text, lineHeight: 18 },
 });

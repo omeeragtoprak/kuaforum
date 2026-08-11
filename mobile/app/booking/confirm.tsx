@@ -144,7 +144,7 @@ export default function ConfirmBookingScreen() {
         // status'a göre belirlenir (isBookingConfirmed her iki serileştirme biçimini de kapsar).
         const alreadyConfirmed = isBookingConfirmed(booking.status);
         Alert.alert(
-          alreadyConfirmed ? '✅ Randevun kesinleşti!' : '✅ Randevu talebin alındı',
+          alreadyConfirmed ? 'Randevun kesinleşti!' : 'Randevu talebin alındı',
           resolveBookingPromise({ autoConfirmEnabled: booking.autoConfirmEnabled, requiresPayment: false }) + conflictSuffix,
           [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
         );

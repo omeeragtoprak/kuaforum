@@ -4,6 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
+import { Icon } from '@/components/Icon';
 import { Colors, FontSize, FontWeight, Spacing, Layout } from '@/lib/theme';
 import { BarberApi } from '@/api/barber';
 import { extractApiError } from '@/api/client';
@@ -155,12 +156,15 @@ export function KycDocumentPicker({ documentType, required, value, onUploaded, o
         // "şekil" zaten sabit. ActivityIndicator + metin zaten tutarlı bir yükleme
         // göstergesi (düz metin DEĞİL); bu yüzden aynen korunuyor.
         <View style={styles.centerRow}>
-          <ActivityIndicator color={Colors.primary} />
+          <ActivityIndicator color={Colors.ink} />
           <Text style={styles.hint}>Yükleniyor…</Text>
         </View>
       ) : value ? (
         <View style={styles.row}>
-          <Text style={styles.fileName} numberOfLines={1}>📎 {value.fileName}</Text>
+          <View style={styles.fileNameRow}>
+            <Icon name="document" size={15} color={Colors.textSecondary} />
+            <Text style={styles.fileName} numberOfLines={1}>{value.fileName}</Text>
+          </View>
           <View style={styles.actions}>
             <Button label="Değiştir" variant="outline" size="sm" fullWidth={false} onPress={onCleared} style={styles.actionBtn} />
             {onRemoveCard ? (
@@ -170,11 +174,40 @@ export function KycDocumentPicker({ documentType, required, value, onUploaded, o
         </View>
       ) : (
         <>
-          {errorMsg ? <Text style={styles.error}>⚠️ {errorMsg} — tekrar dene.</Text> : null}
+          {errorMsg ? (
+            <View style={styles.errorRow}>
+              <Icon name="alert" size={14} color={Colors.error} />
+              <Text style={styles.error}>{errorMsg} — tekrar dene.</Text>
+            </View>
+          ) : null}
           <View style={styles.row}>
-            <Button label="📷 Kamera" variant="outline" size="sm" fullWidth={false} onPress={pickFromCamera} style={styles.actionBtn} />
-            <Button label="🖼️ Galeri" variant="outline" size="sm" fullWidth={false} onPress={pickFromGallery} style={styles.actionBtn} />
-            <Button label="📄 PDF" variant="outline" size="sm" fullWidth={false} onPress={pickPdf} style={styles.actionBtn} />
+            <Button
+              label="Kamera"
+              icon={<Icon name="camera" size={16} color={Colors.ink} />}
+              variant="outline"
+              size="sm"
+              fullWidth={false}
+              onPress={pickFromCamera}
+              style={styles.actionBtn}
+            />
+            <Button
+              label="Galeri"
+              icon={<Icon name="image" size={16} color={Colors.ink} />}
+              variant="outline"
+              size="sm"
+              fullWidth={false}
+              onPress={pickFromGallery}
+              style={styles.actionBtn}
+            />
+            <Button
+              label="PDF"
+              icon={<Icon name="document" size={16} color={Colors.ink} />}
+              variant="outline"
+              size="sm"
+              fullWidth={false}
+              onPress={pickPdf}
+              style={styles.actionBtn}
+            />
           </View>
         </>
       )}
@@ -191,7 +224,9 @@ const styles = StyleSheet.create({
   centerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm, minHeight: Layout.tapTargetMin },
   actions: { flexDirection: 'row', gap: Spacing.sm },
   actionBtn: { flex: 1, minHeight: Layout.tapTargetMin },
+  fileNameRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   fileName: { flex: 1, fontSize: FontSize.sm, color: Colors.text },
   hint: { fontSize: FontSize.sm, color: Colors.textSecondary },
-  error: { fontSize: FontSize.xs, color: Colors.error, lineHeight: 18 },
+  errorRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
+  error: { flex: 1, fontSize: FontSize.xs, color: Colors.error, lineHeight: 18 },
 });

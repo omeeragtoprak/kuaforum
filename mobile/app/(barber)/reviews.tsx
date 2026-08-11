@@ -18,6 +18,24 @@ import { ReviewApi, Review } from '@/api/review';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
 
+/** Yuvarlanmış/tam puanı 5 ikonluk bir sırada gösterir — üç yerde (özet, kart, yanıt modalı)
+ *  tekrarlanan `'★'.repeat(n)` metin kalıbının yerini alır. */
+function StarBar({ rating, size = 14 }: { rating: number; size?: number }) {
+  return (
+    <View style={styles.starsRow}>
+      {[1, 2, 3, 4, 5].map((s) => (
+        <Icon
+          key={s}
+          name={s <= rating ? 'starFilled' : 'star'}
+          size={size}
+          color={s <= rating ? Colors.star : Colors.border}
+          strokeWidth={1.5}
+        />
+      ))}
+    </View>
+  );
+}
+
 export default function BarberReviewsScreen() {
   const router = useRouter();
   const qc = useQueryClient();
@@ -65,7 +83,7 @@ export default function BarberReviewsScreen() {
         <Text style={styles.title}>Yorumlar</Text>
         {summary ? (
           <View style={styles.summaryRow}>
-            <Text style={styles.stars}>{'★'.repeat(Math.round(summary.average))}{'☆'.repeat(5 - Math.round(summary.average))}</Text>
+            <StarBar rating={Math.round(summary.average)} size={16} />
             <Text style={styles.summaryText}>
               {summary.count > 0 ? `${summary.average.toFixed(1)} · ${summary.count} yorum` : 'Henüz yorum yok'}
             </Text>
@@ -126,7 +144,7 @@ export default function BarberReviewsScreen() {
           <Card style={{ gap: Spacing.sm }}>
             <View style={styles.reviewHead}>
               <View>
-                <Text style={styles.stars}>{'★'.repeat(item.rating)}{'☆'.repeat(5 - item.rating)}</Text>
+                <StarBar rating={item.rating} />
                 <Text style={styles.dateText}>{new Date(item.createdAt).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</Text>
               </View>
               <Text style={styles.ratingValue}>{item.rating}/5</Text>
@@ -175,7 +193,7 @@ export default function BarberReviewsScreen() {
             <Text style={styles.modalTitle}>Yorumu yanıtla</Text>
             {replyTarget ? (
               <View style={styles.modalContext}>
-                <Text style={styles.stars}>{'★'.repeat(replyTarget.rating)}{'☆'.repeat(5 - replyTarget.rating)}</Text>
+                <StarBar rating={replyTarget.rating} />
                 <Text style={styles.modalContextBody} numberOfLines={3}>
                   {replyTarget.body ?? '(metin yok)'}
                 </Text>
@@ -235,7 +253,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
   },
   reviewHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  stars: { fontSize: 18, color: Colors.star, letterSpacing: 2 },
+  starsRow: { flexDirection: 'row', gap: 2 },
   ratingValue: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 2 },
   dateText: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },
   body: { fontSize: FontSize.sm, color: Colors.text, lineHeight: 20 },

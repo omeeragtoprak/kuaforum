@@ -73,6 +73,12 @@ export const Colors = {
   star: '#E0A32E',
   overlay: 'rgba(22, 24, 28, 0.42)',
 
+  // --- Switch (Switch bileşeninin native `trackColor.false`'u) — 3 ekranda ham hex
+  //     '#E5E7EB' olarak tekrarlanıyordu (booking-policy anahtarları). Kapalı bir
+  //     kontrolün nötr zemini; border tonlarından ayrı tutuluyor çünkü anlamı
+  //     "çizgi" değil "dolgu" — ileride tek yerden değiştirilebilsin diye buraya taşındı. ---
+  switchTrackOff: '#E5E7EB',
+
   /** @deprecated Rol degradeleri kaldırıldı — "Vitrin"de degrade yok. */
   roleCustomer: ['#16181C', '#16181C'] as const,
   /** @deprecated */

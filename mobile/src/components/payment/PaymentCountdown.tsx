@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Button } from '@/components/Button';
+import { Icon } from '@/components/Icon';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/lib/theme';
 
 type PaymentCountdownProps = {
@@ -36,7 +37,10 @@ export function PaymentCountdown({ expiresAt }: PaymentCountdownProps) {
         accessible
         accessibilityLabel="Ödeme süresi doldu — randevu otomatik iptal edilmiş olabilir"
       >
-        <Text style={styles.expiredText}>⏰ Süre doldu — randevu otomatik iptal edilmiş olabilir</Text>
+        <View style={styles.textRow}>
+          <Icon name="clock" size={15} color={Colors.error} strokeWidth={1.8} />
+          <Text style={styles.expiredText}>Süre doldu — randevu otomatik iptal edilmiş olabilir</Text>
+        </View>
         <Button
           label="Randevularım"
           variant="outline"
@@ -54,7 +58,10 @@ export function PaymentCountdown({ expiresAt }: PaymentCountdownProps) {
       accessible
       accessibilityLabel={`Bu randevu için ödeme süresi: ${remainingMin} dakika kaldı`}
     >
-      <Text style={styles.text}>⏱ Bu randevu için ödeme süresi: {remainingMin} dk</Text>
+      <View style={styles.textRow}>
+        <Icon name="clock" size={15} color={Colors.info} strokeWidth={1.8} />
+        <Text style={styles.text}>Bu randevu için ödeme süresi: {remainingMin} dk</Text>
+      </View>
     </View>
   );
 }
@@ -70,6 +77,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
     backgroundColor: Colors.infoSoft,
   },
+  textRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 },
   text: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.info, flexShrink: 1 },
   expired: { backgroundColor: Colors.errorSoft },
   expiredText: { fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.error, flexShrink: 1 },

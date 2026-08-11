@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
+import { Icon } from '@/components/Icon';
 import { Colors, FontSize, FontWeight, Spacing } from '@/lib/theme';
 import { formatTry } from '@/lib/format';
 import type { PaymentKind } from '@/api/payment';
@@ -28,7 +29,10 @@ export function MockCheckoutCard({
 }: MockCheckoutCardProps) {
   return (
     <Card style={{ gap: Spacing.md }}>
-      <Text style={styles.title}>🧪 Test ödemesi</Text>
+      <View style={styles.titleRow}>
+        <Icon name="flask" size={16} color={Colors.warning} />
+        <Text style={styles.title}>Test ödemesi</Text>
+      </View>
       <Text style={styles.helper}>
         Bu ortamda gerçek ödeme sağlayıcısı bağlı değil — aşağıdaki buton ödemeyi başarıyla
         tamamlanmış gibi simüle eder.
@@ -51,6 +55,7 @@ export function MockCheckoutCard({
 }
 
 const styles = StyleSheet.create({
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   title: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
   helper: { fontSize: FontSize.sm, color: Colors.textSecondary, lineHeight: 20 },
   amountRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },

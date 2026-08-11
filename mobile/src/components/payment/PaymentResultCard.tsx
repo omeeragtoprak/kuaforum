@@ -1,10 +1,14 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { Card } from '@/components/Card';
 import { Button } from '@/components/Button';
-import { Colors, FontSize, FontWeight, Spacing } from '@/lib/theme';
+import { Icon, IconName } from '@/components/Icon';
+import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/lib/theme';
 
 type PaymentResultCardProps = {
-  icon: string;
+  icon: IconName;
+  /** Varsayılan Colors.textSecondary (nötr). Terminal fazın anlamına göre çağıran verir
+   *  (ör. success → Colors.success, error/cancelled → Colors.error). */
+  iconColor?: string;
   title: string;
   message: string;
   primaryLabel: string;
@@ -20,6 +24,7 @@ type PaymentResultCardProps = {
  */
 export function PaymentResultCard({
   icon,
+  iconColor = Colors.textSecondary,
   title,
   message,
   primaryLabel,
@@ -29,9 +34,9 @@ export function PaymentResultCard({
 }: PaymentResultCardProps) {
   return (
     <Card style={styles.card}>
-      <Text style={styles.icon} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-        {icon}
-      </Text>
+      <View style={styles.iconWrap} accessible={false}>
+        <Icon name={icon} size={28} color={iconColor} strokeWidth={1.5} />
+      </View>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.message}>{message}</Text>
       <View style={styles.actions}>
@@ -46,7 +51,14 @@ export function PaymentResultCard({
 
 const styles = StyleSheet.create({
   card: { gap: Spacing.md, alignItems: 'center' },
-  icon: { fontSize: 56 },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { fontSize: FontSize.xl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
   message: { fontSize: FontSize.sm, color: Colors.textSecondary, textAlign: 'center', lineHeight: 20 },
   actions: { width: '100%', gap: Spacing.sm },

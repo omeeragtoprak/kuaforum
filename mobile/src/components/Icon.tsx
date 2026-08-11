@@ -22,7 +22,8 @@ export type IconName =
   | 'scissors' | 'clock' | 'mapPin' | 'star' | 'chevronRight' | 'chevronLeft'
   | 'check' | 'x' | 'plus' | 'settings' | 'logout' | 'shield' | 'creditCard'
   | 'phone' | 'alert' | 'info' | 'refresh' | 'store' | 'users' | 'wallet'
-  | 'lock' | 'document' | 'flag' | 'globe' | 'edit';
+  | 'lock' | 'document' | 'flag' | 'globe' | 'edit'
+  | 'camera' | 'image' | 'flask' | 'play' | 'checkCircle' | 'starFilled';
 
 type Props = {
   name: IconName;
@@ -67,6 +68,16 @@ export function Icon({ name, size = 22, color = Colors.textSecondary, strokeWidt
       {name === 'flag' && <Path {...p} d="M5 21V4.5h9l-1 3h6l-1.5 4.5L19 16h-9v5" />}
       {name === 'globe' && (<><Circle {...p} cx="12" cy="12" r="8.5" /><Path {...p} d="M3.5 12h17M12 3.5c2.2 2.4 3.3 5.4 3.3 8.5s-1.1 6.1-3.3 8.5c-2.2-2.4-3.3-5.4-3.3-8.5S9.8 5.9 12 3.5" /></>)}
       {name === 'edit' && <Path {...p} d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17zM14.5 6.5l3 3" />}
+      {name === 'camera' && (<><Rect {...p} x="3" y="7" width="18" height="12.5" rx="2.5" /><Path {...p} d="M8.3 7 9.8 4.5h4.4L15.7 7" /><Circle {...p} cx="12" cy="13.2" r="3.4" /></>)}
+      {name === 'image' && (<><Rect {...p} x="3" y="4.5" width="18" height="15" rx="2" /><Circle {...p} cx="8.5" cy="9.5" r="1.5" /><Path {...p} d="M3.8 17.5 9 12l3.5 3.5 2.5-2.5 5.2 5" /></>)}
+      {name === 'flask' && (<><Path {...p} d="M9.5 3h5M10.2 3v6.3l-5 8.3a1.8 1.8 0 0 0 1.5 2.7h10.6a1.8 1.8 0 0 0 1.5-2.7l-5-8.3V3" /><Path {...p} d="M7.8 14.5h8.4" /></>)}
+      {name === 'play' && <Path {...p} d="M7.5 5.3v13.4a1 1 0 0 0 1.5.87l11-6.7a1 1 0 0 0 0-1.74l-11-6.7a1 1 0 0 0-1.5.87Z" />}
+      {name === 'checkCircle' && (<><Circle {...p} cx="12" cy="12" r="8.5" /><Path {...p} d="m8 12.3 2.6 2.6 5.4-5.8" /></>)}
+      {name === 'starFilled' /* İSTİSNA: tek dolgu (fill) kullanan ikon. Değerlendirme/puanlama
+        seçicisinde "seçili" ile "seçilmemiş" yıldızın stroke kalınlığıyla ayırt edilmesi küçük
+        boyutta okunmuyordu; dolgu/dolgusuz kontrastı buradaki tek gerçek ihtiyaç. Diğer tüm
+        ikonlar stroke tabanlı kalır. */
+        && <Path stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" fill={color} d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.8l5.9-.9z" />}
     </Svg>
   );
 }

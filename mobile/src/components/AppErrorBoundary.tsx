@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/lib/theme';
 import { ErrorReporter } from '@/lib/error-reporter';
+import { Icon } from '@/components/Icon';
 
 type Props = { children: React.ReactNode };
 type State = { error: Error | null };
@@ -36,7 +37,12 @@ export class AppErrorBoundary extends React.Component<Props, State> {
       return (
         <View style={styles.container}>
           <ScrollView contentContainerStyle={styles.scroll}>
-            <Text style={styles.emoji}>😟</Text>
+            {/* EmptyState'in nötr (textSecondary/surfaceAlt) ikon kabından kasıtlı sapma:
+                bu ekran gerçek bir çökmeyi bildiriyor, "kayıt yok" gibi sakin bir durum değil —
+                aşağıdaki errorBox zaten aynı error/errorSoft tonunu kullanıyor, tutarlılık için. */}
+            <View style={styles.iconWrap} accessible={false}>
+              <Icon name="alert" size={28} color={Colors.error} strokeWidth={1.5} />
+            </View>
             <Text style={styles.title}>Bir aksilik oldu</Text>
             <Text style={styles.subtitle}>
               Uygulama beklenmedik bir hatayla karşılaştı. "Tekrar dene"ye basabilir veya uygulamayı yeniden başlatabilirsin.
@@ -66,7 +72,14 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     alignItems: 'center',
   },
-  emoji: { fontSize: 56 },
+  iconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.errorSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, textAlign: 'center' },
   subtitle: { fontSize: FontSize.md, color: Colors.textSecondary, textAlign: 'center', lineHeight: 22 },
   errorBox: {
@@ -79,7 +92,7 @@ const styles = StyleSheet.create({
   errorLabel: { fontSize: FontSize.xs, color: Colors.error, fontWeight: FontWeight.bold, letterSpacing: 0.5 },
   errorText: { fontSize: FontSize.sm, color: Colors.text, fontFamily: 'Courier' },
   btn: {
-    backgroundColor: Colors.primary,
+    backgroundColor: Colors.ink,
     borderRadius: Radius.md,
     paddingVertical: Spacing.md,
     paddingHorizontal: Spacing.xl,

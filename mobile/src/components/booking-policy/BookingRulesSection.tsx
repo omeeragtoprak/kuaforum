@@ -88,7 +88,7 @@ export function BookingRulesSection({
             <Switch
               value={minDaysEnabled}
               onValueChange={onToggleMinDays}
-              trackColor={{ true: Colors.success, false: '#E5E7EB' }}
+              trackColor={{ true: Colors.success, false: Colors.switchTrackOff }}
               accessibilityRole="switch"
               accessibilityLabel="Randevular arası minimum gün sınırı"
               accessibilityState={{ checked: minDaysEnabled }}
@@ -119,7 +119,7 @@ export function BookingRulesSection({
             <Switch
               value={maxMonthlyEnabled}
               onValueChange={onToggleMaxMonthly}
-              trackColor={{ true: Colors.success, false: '#E5E7EB' }}
+              trackColor={{ true: Colors.success, false: Colors.switchTrackOff }}
               accessibilityRole="switch"
               accessibilityLabel="Müşteri başına aylık randevu limiti"
               accessibilityState={{ checked: maxMonthlyEnabled }}

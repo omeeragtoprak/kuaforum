@@ -1,6 +1,7 @@
 import { StyleSheet, Switch, Text, View } from 'react-native';
 import { Card } from '@/components/Card';
 import { Input } from '@/components/Input';
+import { Icon } from '@/components/Icon';
 import { Colors, FontSize, FontWeight, Radius, Spacing } from '@/lib/theme';
 import { DepositPercentBounds, formatPercent } from '@/lib/booking-policy';
 
@@ -40,7 +41,7 @@ export function DepositSection({
           <Switch
             value={depositEnabled}
             onValueChange={onToggleDeposit}
-            trackColor={{ true: Colors.success, false: '#E5E7EB' }}
+            trackColor={{ true: Colors.success, false: Colors.switchTrackOff }}
             accessibilityRole="switch"
             accessibilityLabel="Kapora ödemesi"
             accessibilityState={{ checked: depositEnabled }}
@@ -63,8 +64,9 @@ export function DepositSection({
 
         {showMasterSwitchNotice ? (
           <View style={styles.noticeBox} accessibilityRole="text">
+            <Icon name="info" size={14} color={Colors.warning} />
             <Text style={styles.noticeText}>
-              ℹ️ Online ödeme platform genelinde henüz kapalı — ayarın kaydedildi, ödeme açıldığında otomatik devreye girecek.
+              Online ödeme platform genelinde henüz kapalı — ayarın kaydedildi, ödeme açıldığında otomatik devreye girecek.
             </Text>
           </View>
         ) : null}
@@ -89,11 +91,14 @@ const styles = StyleSheet.create({
   rowHint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4, lineHeight: 16 },
   unitText: { fontSize: FontSize.md, color: Colors.textMuted, fontWeight: FontWeight.semibold, paddingHorizontal: 4 },
   noticeBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
     backgroundColor: Colors.warningSoft,
     borderRadius: Radius.md,
     padding: Spacing.md,
     borderWidth: 1,
     borderColor: Colors.warning,
   },
-  noticeText: { fontSize: FontSize.xs, color: Colors.text, lineHeight: 18 },
+  noticeText: { flex: 1, fontSize: FontSize.xs, color: Colors.text, lineHeight: 18 },
 });

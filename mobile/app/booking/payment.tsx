@@ -269,7 +269,8 @@ export default function PaymentScreen() {
 
           {phase === 'success' ? (
             <PaymentResultCard
-              icon="✅"
+              icon="check"
+              iconColor={Colors.success}
               title="Randevun onaylandı"
               message={
                 kind === 'Deposit' && !!remaining && remaining > 0
@@ -286,7 +287,8 @@ export default function PaymentScreen() {
               kasıtlı olarak AYRIŞTIRIYOR; "Randevun onaylandı" burada asla söylenmez. */}
           {phase === 'paidPendingApproval' ? (
             <PaymentResultCard
-              icon="⏳"
+              icon="clock"
+              iconColor={Colors.info}
               title="Ödemen alındı"
               message={
                 `Talebin kuaföre iletildi. Kuaför onayladığında randevun kesinleşir ve bildirim alırsın.` +
@@ -302,7 +304,8 @@ export default function PaymentScreen() {
 
           {phase === 'cancelled' ? (
             <PaymentResultCard
-              icon="🚫"
+              icon="x"
+              iconColor={Colors.error}
               title="Ödeme iptal edildi"
               message="Ödemeyi tamamlamadan çıktın. Randevun ödeme bekliyor durumunda kalabilir."
               primaryLabel="Tekrar dene"
@@ -314,7 +317,8 @@ export default function PaymentScreen() {
 
           {phase === 'pendingWebhook' ? (
             <PaymentResultCard
-              icon="⏳"
+              icon="clock"
+              iconColor={Colors.info}
               title="Ödemen işleniyor"
               message="Ödemenin backend'e yansıması biraz sürebilir. Yansıdıktan sonra talebin kuaföre iletilir; kuaför onayladığında bildirim alacaksın. Durumu Randevu detayından kontrol edebilirsin."
               primaryLabel="Randevuya git"
@@ -324,7 +328,8 @@ export default function PaymentScreen() {
 
           {phase === 'error' ? (
             <PaymentResultCard
-              icon="⚠️"
+              icon="alert"
+              iconColor={Colors.error}
               title="Bir şeyler ters gitti"
               message={errorMessage ?? 'Beklenmeyen bir hata oluştu.'}
               primaryLabel={canRetryCheckout ? 'Tekrar dene' : 'Randevularıma dön'}

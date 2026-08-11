@@ -1,10 +1,11 @@
 import { Tabs } from 'expo-router';
-import { Text, View, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { Colors, FontSize, FontWeight } from '@/lib/theme';
+import { Icon, IconName } from '@/components/Icon';
 import { useUnreadNotifications } from '@/hooks/useUnreadNotifications';
 
-function TabIcon({ icon, color }: { icon: string; color: string }) {
-  return <Text style={{ fontSize: 22, color }}>{icon}</Text>;
+function TabIcon({ name, color }: { name: IconName; color: string }) {
+  return <Icon name={name} size={22} color={color} strokeWidth={1.8} />;
 }
 
 function NotificationsTabIcon({ color }: { color: string }) {
@@ -12,7 +13,7 @@ function NotificationsTabIcon({ color }: { color: string }) {
   const unread = data ?? 0;
   return (
     <View style={{ width: 32, alignItems: 'center' }}>
-      <Text style={{ fontSize: 22, color }}>🔔</Text>
+      <Icon name="bell" size={22} color={color} strokeWidth={1.8} />
       {unread > 0 ? (
         <View style={badgeStyles.badge}>
           <Text style={badgeStyles.badgeText}>{unread > 9 ? '9+' : String(unread)}</Text>
@@ -27,7 +28,7 @@ export default function BarberLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: '#0EA5E9',
+        tabBarActiveTintColor: Colors.ink,
         tabBarInactiveTintColor: Colors.textMuted,
         tabBarStyle: {
           backgroundColor: Colors.surface,
@@ -43,21 +44,21 @@ export default function BarberLayout() {
         name="today"
         options={{
           title: 'Bugün',
-          tabBarIcon: ({ color }) => <TabIcon icon="📋" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="document" color={color} />,
         }}
       />
       <Tabs.Screen
         name="calendar"
         options={{
           title: 'Takvim',
-          tabBarIcon: ({ color }) => <TabIcon icon="📅" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="calendar" color={color} />,
         }}
       />
       <Tabs.Screen
         name="services"
         options={{
           title: 'Hizmetler',
-          tabBarIcon: ({ color }) => <TabIcon icon="✂️" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="scissors" color={color} />,
         }}
       />
       <Tabs.Screen
@@ -71,7 +72,7 @@ export default function BarberLayout() {
         name="profile"
         options={{
           title: 'Profil',
-          tabBarIcon: ({ color }) => <TabIcon icon="👤" color={color} />,
+          tabBarIcon: ({ color }) => <TabIcon name="user" color={color} />,
         }}
       />
       <Tabs.Screen name="kyc" options={{ href: null }} />
@@ -91,13 +92,13 @@ const badgeStyles = StyleSheet.create({
     height: 18,
     paddingHorizontal: 4,
     borderRadius: 9,
-    backgroundColor: '#EF4444',
+    backgroundColor: Colors.error,
     alignItems: 'center',
     justifyContent: 'center',
   },
   badgeText: {
     fontSize: 10,
-    color: '#fff',
+    color: Colors.textInverse,
     fontWeight: FontWeight.bold,
   },
 });

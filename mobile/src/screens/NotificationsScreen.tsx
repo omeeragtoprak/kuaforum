@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Card } from '@/components/Card';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon, IconName } from '@/components/Icon';
 import { SkeletonList, SkeletonBookingRow } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, Spacing, Layout, Radius } from '@/lib/theme';
 import { NotificationApi, NotificationFeedItem } from '@/api/notification';
@@ -21,15 +22,29 @@ function formatRelative(iso: string): string {
   return d.toLocaleDateString('tr-TR', { day: '2-digit', month: 'short' });
 }
 
-function templateEmoji(key: string): string {
-  if (key.startsWith('booking.confirmed')) return '✅';
-  if (key.startsWith('booking.cancelled')) return '❌';
-  if (key.startsWith('booking.started')) return '▶️';
-  if (key.startsWith('booking.completed')) return '🏁';
-  if (key.startsWith('booking.no_show')) return '⚠️';
-  if (key.startsWith('payment')) return '💳';
-  if (key.startsWith('review')) return '⭐';
-  return '🔔';
+function templateIcon(key: string): IconName {
+  if (key.startsWith('booking.confirmed')) return 'check';
+  if (key.startsWith('booking.cancelled')) return 'x';
+  if (key.startsWith('booking.started')) return 'play';
+  if (key.startsWith('booking.completed')) return 'checkCircle';
+  if (key.startsWith('booking.no_show')) return 'alert';
+  if (key.startsWith('payment')) return 'creditCard';
+  if (key.startsWith('review')) return 'star';
+  return 'bell';
+}
+
+/** İkon rengi bildirim türünün anlamını taşır (iptal=error, tamamlandı/onaylandı=success,
+ *  ödeme/başladı=info, no-show=warning) — bu renk YALNIZ rozet/ikonda kalır, konu/gövde
+ *  metnine uygulanmaz (metin her zaman nötr Colors.text/textSecondary). */
+function templateIconColor(key: string): string {
+  if (key.startsWith('booking.confirmed')) return Colors.success;
+  if (key.startsWith('booking.cancelled')) return Colors.error;
+  if (key.startsWith('booking.started')) return Colors.info;
+  if (key.startsWith('booking.completed')) return Colors.success;
+  if (key.startsWith('booking.no_show')) return Colors.warning;
+  if (key.startsWith('payment')) return Colors.info;
+  if (key.startsWith('review')) return Colors.star;
+  return Colors.textSecondary;
 }
 
 export function NotificationsScreen({ accent }: { accent: string }) {
@@ -101,14 +116,14 @@ export function NotificationsScreen({ accent }: { accent: string }) {
             <SkeletonList count={4} render={() => <SkeletonBookingRow />} />
           ) : query.isError ? (
             <EmptyState
-              emoji="⚠️"
+              icon="alert"
               title="Bağlantı hatası"
               description="Bildirimler yüklenemedi."
               actionLabel="Tekrar dene"
               onAction={() => query.refetch()}
             />
           ) : (
-            <EmptyState emoji="🔔" title="Bildirim yok" description="Yeni bir aktivite olduğunda burada görünecek." />
+            <EmptyState icon="bell" title="Bildirim yok" description="Yeni bir aktivite olduğunda burada görünecek." />
           )
         }
         renderItem={({ item }) => (
@@ -144,8 +159,8 @@ function NotificationRow({
       style={({ pressed }) => [pressed && { opacity: 0.7 }]}
     >
       <Card style={!item.isRead ? { ...styles.row, borderColor: accent, borderWidth: 1.5 } : styles.row}>
-        <View style={styles.emojiBadge}>
-          <Text style={styles.emoji}>{templateEmoji(item.templateKey)}</Text>
+        <View style={styles.iconBadge}>
+          <Icon name={templateIcon(item.templateKey)} size={20} color={templateIconColor(item.templateKey)} strokeWidth={1.6} />
           {!item.isRead ? <View style={[styles.dot, { backgroundColor: accent }]} /> : null}
         </View>
         <View style={{ flex: 1, gap: 4 }}>
@@ -195,16 +210,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: Spacing.md,
   },
-  emojiBadge: {
+  iconBadge: {
     width: 44,
     height: 44,
     borderRadius: Radius.lg,
-    backgroundColor: Colors.background,
+    backgroundColor: Colors.surfaceAlt,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
-  emoji: { fontSize: 22 },
   dot: {
     position: 'absolute',
     top: 0,

@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors, FontSize, FontWeight, Radius, Spacing, Layout } from '@/lib/theme';
 import { normalizeTr } from '@/lib/format';
 import { EmptyState } from '@/components/EmptyState';
+import { Icon } from '@/components/Icon';
 
 export type GeoPickerItem = { id: string; name: string };
 
@@ -42,7 +43,7 @@ export function GeoPickerModal({ visible, title, items, loading, selectedId, onC
           <View style={{ width: 50 }} />
         </View>
         <View style={styles.searchBox}>
-          <Text style={styles.searchIcon}>🔍</Text>
+          <Icon name="search" size={16} color={Colors.textMuted} />
           <TextInput
             value={query}
             onChangeText={setQuery}
@@ -54,7 +55,7 @@ export function GeoPickerModal({ visible, title, items, loading, selectedId, onC
           />
           {query ? (
             <Pressable onPress={() => setQuery('')} hitSlop={8} accessibilityRole="button" accessibilityLabel="Aramayı temizle">
-              <Text style={styles.clearIcon}>✕</Text>
+              <Icon name="x" size={16} color={Colors.textMuted} />
             </Pressable>
           ) : null}
         </View>
@@ -66,7 +67,7 @@ export function GeoPickerModal({ visible, title, items, loading, selectedId, onC
           ItemSeparatorComponent={() => <View style={{ height: 4 }} />}
           ListEmptyComponent={
             loading ? null : (
-              <EmptyState emoji="🔍" title={emptyLabel} />
+              <EmptyState icon="search" title={emptyLabel} />
             )
           }
           renderItem={({ item }) => {
@@ -80,7 +81,7 @@ export function GeoPickerModal({ visible, title, items, loading, selectedId, onC
                 accessibilityLabel={item.name}
               >
                 <Text style={[styles.rowText, active && styles.rowTextActive]}>{item.name}</Text>
-                {active ? <Text style={styles.check}>✓</Text> : null}
+                {active ? <Icon name="check" size={18} color={Colors.ink} strokeWidth={2} /> : null}
               </Pressable>
             );
           }}
@@ -97,7 +98,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Layout.screenPaddingX, paddingVertical: Spacing.md,
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
-  close: { fontSize: FontSize.md, color: Colors.primary, fontWeight: FontWeight.semibold },
+  close: { fontSize: FontSize.md, color: Colors.ink, fontWeight: FontWeight.semibold },
   title: { fontSize: FontSize.lg, fontWeight: FontWeight.bold, color: Colors.text },
   searchBox: {
     flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.surface,
@@ -105,18 +106,15 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.border,
     marginHorizontal: Layout.screenPaddingX, marginVertical: Spacing.md, gap: 8,
   },
-  searchIcon: { fontSize: 16 },
   searchInput: { flex: 1, fontSize: FontSize.md, color: Colors.text, paddingVertical: 10 },
-  clearIcon: { color: Colors.textMuted, fontSize: 16, paddingHorizontal: 4 },
   list: { paddingHorizontal: Layout.screenPaddingX, paddingBottom: Spacing.xl },
   row: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     backgroundColor: Colors.surface, borderRadius: Radius.md, padding: Spacing.md,
     borderWidth: 1, borderColor: Colors.border, minHeight: Layout.tapTargetMin,
   },
-  rowActive: { borderColor: Colors.primary, backgroundColor: Colors.primarySoft },
+  rowActive: { borderColor: Colors.ink, backgroundColor: Colors.surfaceAlt },
   rowPressed: { opacity: 0.85 },
   rowText: { fontSize: FontSize.md, fontWeight: FontWeight.medium, color: Colors.text },
-  rowTextActive: { color: Colors.primary, fontWeight: FontWeight.semibold },
-  check: { color: Colors.primary, fontWeight: FontWeight.bold },
+  rowTextActive: { color: Colors.ink, fontWeight: FontWeight.semibold },
 });

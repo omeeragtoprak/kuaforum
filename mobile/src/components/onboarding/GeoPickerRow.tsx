@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, Pressable, ActivityIndicator } from 'react-native';
 import { Colors, FontSize, FontWeight, Spacing, Radius } from '@/lib/theme';
+import { Icon } from '@/components/Icon';
 
 export type GeoPickerRowStatus = 'idle' | 'loading' | 'ready' | 'error';
 
@@ -22,7 +23,10 @@ export function GeoPickerRow({ label, value, placeholder, status, onPress, onRet
       <Text style={styles.label}>{label}</Text>
       {status === 'error' ? (
         <Pressable onPress={onRetry} style={styles.row} accessibilityRole="button" accessibilityLabel={`${label} yüklenemedi, tekrar dene`}>
-          <Text style={styles.error}>⚠️ Yüklenemedi — tekrar dene</Text>
+          <View style={styles.errorRow}>
+            <Icon name="alert" size={14} color={Colors.error} />
+            <Text style={styles.error}>Yüklenemedi — tekrar dene</Text>
+          </View>
         </Pressable>
       ) : (
         <Pressable
@@ -33,7 +37,7 @@ export function GeoPickerRow({ label, value, placeholder, status, onPress, onRet
           accessibilityLabel={value ? `${label}: ${value}` : placeholder}
         >
           <Text style={value ? styles.value : styles.placeholder}>{value ?? placeholder}</Text>
-          {status === 'loading' ? <ActivityIndicator size="small" color={Colors.primary} /> : <Text style={styles.chevron}>›</Text>}
+          {status === 'loading' ? <ActivityIndicator size="small" color={Colors.ink} /> : <Text style={styles.chevron}>›</Text>}
         </Pressable>
       )}
       {hint ? <Text style={styles.hint}>{hint}</Text> : null}
@@ -53,6 +57,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.85 },
   value: { fontSize: FontSize.md, color: Colors.text },
   placeholder: { fontSize: FontSize.md, color: Colors.textMuted },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   error: { fontSize: FontSize.sm, color: Colors.error, fontWeight: FontWeight.medium },
   chevron: { fontSize: 20, color: Colors.textMuted },
   hint: { fontSize: FontSize.xs, color: Colors.textMuted, marginTop: 4 },

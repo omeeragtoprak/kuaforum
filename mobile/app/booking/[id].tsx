@@ -186,12 +186,12 @@ export default function BookingDetailScreen() {
     // sadece kullanıcıya beklenen iade oranını göstermek için; asıl hesap backend'de.
     const previewPct = previewRefundPercent(query.data.scheduledAt, isBarber);
     const previewLine = isBarber
-      ? '✅ Kuaför iptali → müşteri %100 iade alır'
+      ? 'Kuaför iptali → müşteri %100 iade alır'
       : previewPct === 100
-        ? '✅ Şu an iptal edersen tam iade alırsın (24+ saat var)'
+        ? 'Şu an iptal edersen tam iade alırsın (24+ saat var)'
         : previewPct === 50
-          ? '⚠️ Şu an iptal edersen yarım iade alırsın (12-24 saat var)'
-          : '❌ Şu an iptal edersen iade yok (12 saatten az)';
+          ? 'Şu an iptal edersen yarım iade alırsın (12-24 saat var)'
+          : 'Şu an iptal edersen iade yok (12 saatten az)';
 
     Alert.alert(
       'Randevuyu iptal et',

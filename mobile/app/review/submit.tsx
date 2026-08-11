@@ -25,7 +25,7 @@ export default function ReviewSubmitScreen() {
       await ReviewApi.submit(bookingId!, rating, body || undefined);
       Haptics.success();
       Alert.alert(
-        '🙏 Yorumun alındı',
+        'Yorumun alındı',
         'Yorumun inceleniyor. Onaylanınca profilde görünür.',
         [{ text: 'Tamam', onPress: () => router.replace('/(tabs)/bookings') }],
       );
@@ -79,9 +79,12 @@ export default function ReviewSubmitScreen() {
                   accessibilityLabel={`${s} yıldız`}
                   accessibilityState={{ selected: rating === s }}
                 >
-                  <Text style={[styles.starText, s <= rating && styles.starActive]}>
-                    {s <= rating ? '★' : '☆'}
-                  </Text>
+                  <Icon
+                    name={s <= rating ? 'starFilled' : 'star'}
+                    size={40}
+                    color={s <= rating ? Colors.star : Colors.border}
+                    strokeWidth={1.5}
+                  />
                 </Pressable>
               ))}
             </View>
@@ -153,8 +156,6 @@ const styles = StyleSheet.create({
   ratingBlock: { alignItems: 'center', paddingVertical: Spacing.md },
   starsRow: { flexDirection: 'row', justifyContent: 'center', gap: 6 },
   starBtn: { padding: 4 },
-  starText: { fontSize: 56, color: Colors.border },
-  starActive: { color: Colors.star },
   ratingLabel: { textAlign: 'center', fontSize: FontSize.lg, color: Colors.text, fontWeight: FontWeight.semibold, marginTop: Spacing.md },
   helperRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 6 },
   helper: { flex: 1, fontSize: FontSize.xs, color: Colors.textMuted, lineHeight: 18 },

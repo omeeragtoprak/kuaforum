@@ -54,7 +54,7 @@ export default function EditProfileScreen() {
           displayName: displayName.trim() || null,
         });
       }
-      Alert.alert('✅ Kaydedildi', 'Profil bilgilerin güncellendi.', [
+      Alert.alert('Kaydedildi', 'Profil bilgilerin güncellendi.', [
         { text: 'Tamam', onPress: () => router.back() },
       ]);
     },

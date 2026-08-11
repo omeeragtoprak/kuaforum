@@ -143,7 +143,7 @@ function BarberCard({ barber, onPress }: { barber: BarberSearchResult; onPress: 
           <View style={styles.ratingRow}>
             {hasRating ? (
               <>
-                <Text style={styles.ratingStars}>★</Text>
+                <Icon name="star" size={13} color={Colors.star} />
                 <Text style={styles.ratingValue}>{barber.ratingAverage!.toFixed(1)}</Text>
                 <Text style={styles.ratingCount}>({barber.ratingCount})</Text>
               </>
@@ -310,7 +310,6 @@ const styles = StyleSheet.create({
   monogramText: { fontSize: FontSize.sm, fontWeight: FontWeight.bold },
   shopName: { fontSize: FontSize.lg, fontWeight: FontWeight.semibold, color: Colors.text },
   ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4, flexWrap: 'wrap' },
-  ratingStars: { fontSize: 13, color: Colors.star },
   ratingValue: { fontSize: FontSize.xs, color: Colors.text, fontWeight: FontWeight.bold },
   ratingCount: { fontSize: FontSize.xs, color: Colors.textMuted },
   ratingDot: { fontSize: FontSize.xs, color: Colors.textMuted, marginHorizontal: 2 },

@@ -48,7 +48,7 @@ export default function ChangePhoneScreen() {
       Haptics.success();
       qc.invalidateQueries({ queryKey: ['my-profile'] });
       Alert.alert(
-        '✅ Telefon güncellendi',
+        'Telefon güncellendi',
         'Yeni telefon numaran aktif. Bir sonraki girişten itibaren bu numarayla giriş yapacaksın.',
         [{ text: 'Tamam', onPress: () => router.back() }],
       );
