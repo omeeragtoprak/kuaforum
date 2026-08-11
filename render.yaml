@@ -1,0 +1,90 @@
+# Render Blueprint — Kuaforum backend (ücretsiz katman, kartsız)
+#
+# NEDEN BU DOSYA VAR: Render panelinde onlarca alanı elle doldurmak yerine, bu
+# dosya repo'da durduğu için "New → Blueprint" ile tek adımda servis kurulur.
+# Founder'ın yapması gereken tek şey: repo'yu seçmek ve `sync: false` işaretli
+# gizli değerleri panele yapıştırmak (aşağıda hangi değerin nasıl üretileceği yazılı).
+#
+# Veritabanı burada TANIMLI DEĞİL — Postgres+PostGIS Neon'da duruyor
+# (bkz. docs/DEPLOY-FREE-TIER.md). Render'ın kendi ücretsiz Postgres'i PostGIS
+# desteklemiyor ve 30 gün sonra siliniyor; Neon süresiz ve PostGIS'li.
+#
+# ÜCRETSİZ KATMAN SINIRI: `plan: free` servis 15 dk trafiksiz kalınca uykuya
+# geçer, sonraki ilk istek ~50 sn sürer. Bu bilinen ve kabul edilen bir kusur.
+
+services:
+  - type: web
+    name: kuaforum-api
+    runtime: docker
+
+    # Dockerfile backend/ dizinini context olarak bekliyor (dosyanın başındaki
+    # yoruma bak) — dockerContext'i backend'e sabitlemek şart, aksi halde
+    # `COPY src/...` satırları repo kökünden çözülmeye çalışır ve build patlar.
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+
+    region: frankfurt          # Neon projesi de eu-central-1 (Frankfurt) — aynı bölge, düşük gecikme
+    plan: free
+    branch: main
+    autoDeployTrigger: commit  # main'e her push sonrası otomatik yeni sürüm
+
+    # Uygulama /health ucunu zaten sunuyor; Render bunu canlılık kontrolü olarak
+    # kullanır. /health/ready DEĞİL — ready, Neon uykudayken degraded dönebilir
+    # ve Render servisi gereksiz yere yeniden başlatır.
+    healthCheckPath: /health
+
+    envVars:
+      # --- Çalışma ortamı -----------------------------------------------------
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+
+      # PORT'u Render kendisi enjekte eder; docker-entrypoint.sh ASPNETCORE_URLS'i
+      # ondan türetiyor. Burada sabitlemeye ÇALIŞMA — Render'ın değeriyle çakışır.
+
+      # --- Zorunlu gizli değerler (panelden girilecek) ------------------------
+      # ConnectionStrings__Postgres: Neon **direct** (pooler'sız) bağlantı dizesi.
+      #   POOLED OLANI KULLANMA: Hangfire LISTEN/NOTIFY kullanıyor, PgBouncer'ın
+      #   transaction-mode havuzlamasıyla temelde uyumsuz (bkz. DEPLOY-FREE-TIER § 4).
+      #   Biçim: Host=...;Port=5432;Database=...;Username=...;Password=...;
+      #          SSL Mode=Require;Trust Server Certificate=true;Pooling=true;Maximum Pool Size=10
+      - key: ConnectionStrings__Postgres
+        sync: false
+
+      # openssl rand -base64 48
+      - key: Jwt__SigningKey
+        sync: false
+      # openssl rand -base64 32
+      - key: Otp__Pepper
+        sync: false
+      # openssl rand -base64 32
+      - key: Encryption__Key
+        sync: false
+
+      # --- Redis: BİLEREK VERİLMİYOR -----------------------------------------
+      # ConnectionStrings__Redis boş bırakıldığında uygulama in-memory karşılıklara
+      # düşer ve boot'ta bir kez WARNING yazar. Çift rezervasyon koruması Redis'e
+      # DEĞİL, PostgreSQL EXCLUDE constraint'ine dayanıyor (Neon'da fiilen test
+      # edildi) — yani bu düşüş güvenlik kaybı değil, yalnız hızlı-yol kaybı.
+
+      # --- Arka plan işleri ---------------------------------------------------
+      # Hangfire varsayılan 15 sn'de bir yokluyor; bu Neon compute'unu hiç uyutmaz
+      # ve ücretsiz 100 CU-saat/ay bütçesini ~2 haftada tüketebilir. 120 sn'ye
+      # çekmek randevu hatırlatmalarının hassasiyetini pratikte etkilemiyor.
+      - key: Hangfire__QueuePollIntervalSeconds
+        value: "120"
+
+      # --- Test kolaylıkları (founder kararına bağlı) ------------------------
+      # Founder telefondan test ediyor ve rol bazlı hızlı-giriş kullanıyor.
+      # DevTools__Enabled=true bu ucu açar; AccessKey ise onu paylaşılan bir
+      # secret'la korur. AccessKey VERİLMEZSE uç tamamen anonim açılır ve boot'ta
+      # kritik bir WARNING yazılır — internete açık bir ortamda AccessKey ŞART.
+      # openssl rand -hex 16
+      - key: DevTools__Enabled
+        value: "true"
+      - key: DevTools__AccessKey
+        sync: false
+
+      # Demo veri Neon'a BİR KEZ yüklendi (81 il, 22 salon, 67 randevu). Tekrar
+      # seed etmeye gerek yok; true yaparsan her deploy'da tazeleme mantığı çalışır.
+      - key: Seed__RichDemo
+        value: "false"
