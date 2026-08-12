@@ -1,4 +1,5 @@
 import { View, Text, StyleSheet, FlatList, RefreshControl, Alert, Linking, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card } from '@/components/Card';
@@ -9,6 +10,8 @@ import { Icon } from '@/components/Icon';
 import { SkeletonBookingRow, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Layout, Radius } from '@/lib/theme';
 import { BookingApi, Booking } from '@/api/booking';
+import { BarberApi } from '@/api/barber';
+import { resolveOnboardingStep } from '@/lib/onboarding';
 import { extractApiError } from '@/api/client';
 import { Haptics } from '@/lib/haptics';
 import {
@@ -28,6 +31,16 @@ export default function BarberTodayScreen() {
     queryKey: ['owner-bookings-today'],
     queryFn: () => BookingApi.getOwnerBookings(today.toISOString(), tomorrow.toISOString()),
   });
+
+  const router = useRouter();
+
+  // Salonun kurulum durumu. NEDEN BURADA: Draft (henüz sihirbaz bitmemiş) veya PendingKyc
+  // (onay bekliyor) bir salonun sahibi bu ekrana düştüğünde 0 randevu / ₺0 ciro görüyordu ve
+  // EKRANDA DURUMU AÇIKLAYAN HİÇBİR ŞEY YOKTU — emülatörde "Yeni kuaför (Draft)" hızlı
+  // girişiyle yakalandı. Sihirbaza dönmenin bir yolu da yoktu: `resolveOnboardingStep`
+  // yalnız onboarding ekranının KENDİ içinde çağrılıyordu, yani oraya zaten gitmiş olmak
+  // gerekiyordu. Sonuç: yeni kaydolan her kuaför boş bir panele çarpıp tıkanıyordu.
+  const shopQuery = useQuery({ queryKey: ['my-shop'], queryFn: () => BarberApi.getMyShop() });
 
   const statsQuery = useQuery({
     queryKey: ['owner-dashboard-stats'],
@@ -66,6 +79,77 @@ export default function BarberTodayScreen() {
     .reduce((sum, b) => sum + (b.totalAmountMinor || 0), 0);
   const upcomingCount = list.filter((b) => isBookingUpcoming(b.status)).length;
 
+  /**
+   * Salon kurulumu bitmemiş/onay bekliyorsa gösterilecek durum kartı.
+   *
+   * Ürün ilkesi (docs): sistem KARAR VERMEZ, KÖRLÜĞÜ GİDERİR. Bu yüzden kullanıcıyı
+   * zorla sihirbaza YÖNLENDİRMİYORUZ (paneli gezebilir, hizmetlerine bakabilir);
+   * yalnız durumu söyleyip yolu gösteriyoruz. Kart, istatistiklerin ÜSTÜNDE durur —
+   * "0 randevu" rakamını görmeden önce NEDEN 0 olduğunu okusun.
+   *
+   * `resolveOnboardingStep` Draft dışındaki her statüde 'done' döner; PendingKyc'i
+   * ondan ayırmak için status'e ayrıca bakılıyor (backend int veya string gönderebilir,
+   * onboarding.ts'teki DRAFT_VALUES ile aynı savunma).
+   */
+  const shop = shopQuery.data ?? null;
+  const setupNotice = (() => {
+    if (shopQuery.isLoading || shopQuery.isError) return null;
+
+    if (!shop) {
+      return {
+        icon: 'store' as const,
+        tone: Colors.accent,
+        title: 'Salonunu oluştur',
+        body: 'Randevu alabilmen için önce salon bilgilerini girmen gerekiyor.',
+        cta: true,
+        onPress: () => router.push('/onboarding/shop'),
+      };
+    }
+
+    const step = resolveOnboardingStep({ status: shop.status, addressLine1: shop.addressLine1 });
+    if (step !== 'done') {
+      const what = step === 1 ? 'salon bilgilerin' : step === 2 ? 'adresin' : 'belgelerin';
+      return {
+        icon: 'store' as const,
+        tone: Colors.accent,
+        title: 'Kurulumun yarım kaldı',
+        body: `Sırada ${what} var. Tamamlayınca başvurun incelemeye alınır.`,
+        cta: true,
+        onPress: () => router.push('/onboarding/shop'),
+      };
+    }
+
+    // String()'e çevrilerek karşılaştırılıyor: tip number diyor ama backend
+    // JsonStringEnumConverter ile 'PendingKyc' de gönderebiliyor (onboarding.ts'teki
+    // DRAFT_VALUES ile aynı savunma). Tek dalda ikisini birden kapsar.
+    const statusKey = String(shop.status);
+    const isPendingKyc = statusKey === '1' || statusKey === 'PendingKyc';
+    if (isPendingKyc) {
+      return {
+        icon: 'clock' as const,
+        tone: Colors.warning,
+        title: 'Başvurun inceleniyor',
+        body: 'Onaylanınca salonun listelenmeye ve randevu almaya başlar.',
+        cta: true,
+        onPress: () => router.push('/(barber)/kyc'),
+      };
+    }
+
+    const isSuspended = statusKey === '3' || statusKey === 'Suspended';
+    if (isSuspended) {
+      return {
+        icon: 'alert' as const,
+        tone: Colors.error,
+        title: 'Salonun askıya alındı',
+        body: 'Yeni randevu alamazsın. Ayrıntı için destekle iletişime geç.',
+        cta: false,
+        onPress: () => {},
+      };
+    }
+
+    return null;
+  })();
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
@@ -73,6 +157,24 @@ export default function BarberTodayScreen() {
           {today.toLocaleDateString('tr-TR', { weekday: 'long', day: '2-digit', month: 'long' })}
         </Text>
         <Text style={styles.title}>Bugün</Text>
+
+        {setupNotice ? (
+          <Pressable
+            style={styles.setupCard}
+            onPress={setupNotice.onPress}
+            accessibilityRole="button"
+            accessibilityLabel={`${setupNotice.title}. ${setupNotice.body}`}
+          >
+            <View style={styles.setupIcon}>
+              <Icon name={setupNotice.icon} size={20} color={setupNotice.tone} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.setupTitle}>{setupNotice.title}</Text>
+              <Text style={styles.setupBody}>{setupNotice.body}</Text>
+            </View>
+            {setupNotice.cta ? <Icon name="chevronRight" size={18} color={Colors.textMuted} /> : null}
+          </Pressable>
+        ) : null}
 
         <View style={styles.statsRow}>
           <View style={styles.statBox}>
@@ -316,6 +418,35 @@ const styles = StyleSheet.create({
     fontWeight: FontWeight.bold,
   },
   title: { fontSize: FontSize.xxl, fontWeight: FontWeight.bold, color: Colors.text, marginTop: 4 },
+  setupCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    backgroundColor: Colors.surfaceAlt,
+    borderRadius: Radius.lg,
+    padding: Spacing.lg,
+    marginBottom: Spacing.md,
+  },
+  setupIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.full,
+    backgroundColor: Colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  setupTitle: {
+    fontSize: FontSize.md,
+    fontWeight: FontWeight.semibold,
+    color: Colors.ink,
+    letterSpacing: LetterSpacing.title,
+  },
+  setupBody: {
+    fontSize: FontSize.sm,
+    color: Colors.textSecondary,
+    marginTop: 2,
+    lineHeight: 18,
+  },
   statsRow: { flexDirection: 'row', gap: Spacing.sm, marginTop: Spacing.md },
   statBox: {
     flex: 1,
