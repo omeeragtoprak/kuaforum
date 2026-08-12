@@ -42,6 +42,42 @@ export function resolvePostAuthRoute(user: ConsentGateUser, redirectTo?: string 
  * mutlak-olmayan path'ler (`/` ile başlayan, `//` ile başlamayan) kabul edilir; aksi
  * halde `null` — çağıran taraf varsayılan rotaya düşer.
  */
+/**
+ * `"/booking/confirm?a=1&b=2"` gibi bir path'i expo-router'ın NESNE Href formuna çevirir.
+ *
+ * NEDEN GEREKLİ (emülatör bulgusu, 2026-08-12): misafir slot seçip giriş yaptığında
+ * randevu onay ekranı `RangeError: Invalid time value` ile ÇÖKÜYORDU — ekran
+ * `formatDateTime(params.scheduledAt!)` çağırıyor, ama `scheduledAt` gelmiyordu.
+ * Sorunun kaynağı `router.replace(<string>)`: query string'i taşıyan tek parçalı bir
+ * path verildiğinde parametreler ekrana güvenilir biçimde ULAŞMIYORDU. Nesne formu
+ * (`{ pathname, params }`) expo-router'ın parametreleri doğrudan aldığı yoldur ve
+ * string ayrıştırmasına hiç güvenmez.
+ *
+ * Query'si olmayan path'ler olduğu gibi döner (gereksiz nesne sarmalaması yok).
+ */
+export function toHref(path: string): string | { pathname: string; params: Record<string, string> } {
+  const qIndex = path.indexOf('?');
+  if (qIndex === -1) return path;
+
+  const pathname = path.slice(0, qIndex);
+  const params: Record<string, string> = {};
+  for (const pair of path.slice(qIndex + 1).split('&')) {
+    if (!pair) continue;
+    const eq = pair.indexOf('=');
+    // '=' yoksa değeri boş kabul et; anahtar/değer ayrı ayrı decode edilir.
+    const rawKey = eq === -1 ? pair : pair.slice(0, eq);
+    const rawVal = eq === -1 ? '' : pair.slice(eq + 1);
+    try {
+      params[decodeURIComponent(rawKey)] = decodeURIComponent(rawVal);
+    } catch {
+      // Bozuk yüzde-kodlaması: ham haliyle taşı, ÇÖKME. Eksik/garip bir parametre
+      // yüzünden navigasyonun tamamen başarısız olması kullanıcı için daha kötü.
+      params[rawKey] = rawVal;
+    }
+  }
+  return { pathname, params };
+}
+
 export function sanitizeRedirectTo(value?: string | null): string | null {
   if (!value) return null;
   if (!value.startsWith('/') || value.startsWith('//')) return null;

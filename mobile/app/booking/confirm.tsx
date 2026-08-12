@@ -8,6 +8,7 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { Icon, IconName } from '@/components/Icon';
 import { AuthPrompt } from '@/components/AuthPrompt';
+import { EmptyState } from '@/components/EmptyState';
 import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout } from '@/lib/theme';
 import { BookingApi, ConflictingBooking } from '@/api/booking';
 import { PaymentApi, PaymentKind, InitiatePaymentResponse } from '@/api/payment';
@@ -83,6 +84,27 @@ export default function ConfirmBookingScreen() {
         description="Randevunu kaydedip sana hatırlatma gönderebilmemiz için hesabın olması yeterli."
         redirectTo={redirectTo}
       />
+    );
+  }
+
+  // SAVUNMA (emülatör bulgusu, 2026-08-12): bu ekran zorunlu parametreleri `!` ile
+  // non-null varsayıyordu (`formatDateTime(params.scheduledAt!)`). Parametre eksik
+  // geldiğinde `new Date(undefined)` → Invalid Date → Intl `RangeError` FIRLATIYOR ve
+  // ekran komple AppErrorBoundary'ye düşüyordu — kullanıcı randevusunu tamamlayamıyor,
+  // üstelik NEDEN olduğunu da göremiyordu. Kök neden ayrıca düzeltildi (bkz. `toHref`,
+  // consent-gate.ts), ama bu ekranın eksik veriyle ÇÖKMEMESİ ayrı bir güvencedir:
+  // deep-link, eski bir bildirim ya da geri tuşu da buraya eksik param'la getirebilir.
+  if (!params.barberShopId || !params.scheduledAt || !params.scheduledEndsAt) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: Colors.background }} edges={['top']}>
+        <EmptyState
+          icon="calendar"
+          title="Randevu bilgileri eksik"
+          description="Bu bağlantı eksik ya da eskimiş görünüyor. Salonu açıp saati yeniden seçebilirsin."
+          actionLabel="Salonlara dön"
+          onAction={() => router.replace('/(tabs)' as never)}
+        />
+      </SafeAreaView>
     );
   }
 

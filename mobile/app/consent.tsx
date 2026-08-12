@@ -10,7 +10,7 @@ import { Colors, FontSize, FontWeight, LetterSpacing, Spacing, Radius, Layout } 
 import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
-import { resolvePostAuthRoute, sanitizeRedirectTo } from '@/lib/consent-gate';
+import { resolvePostAuthRoute, sanitizeRedirectTo, toHref } from '@/lib/consent-gate';
 import { Haptics } from '@/lib/haptics';
 
 /**
@@ -42,7 +42,7 @@ export default function ConsentScreen() {
       // I-1 (güvenlik review) — `user` null fallback dalı resolvePostAuthRoute'tan
       // GEÇMİYOR, o yüzden open-redirect sanitizer'ı burada ayrıca uygulanır.
       router.replace(
-        (user ? resolvePostAuthRoute(user, redirectTo) : (sanitizeRedirectTo(redirectTo) ?? '/(tabs)')) as never,
+        toHref(user ? resolvePostAuthRoute(user, redirectTo) : (sanitizeRedirectTo(redirectTo) ?? '/(tabs)')) as never,
       );
     },
     onError: () => {

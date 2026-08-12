@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useAuthStore } from '@/store/auth-store';
 import { usePushNotifications } from '@/hooks/usePushNotifications';
 import { AppErrorBoundary } from '@/components/AppErrorBoundary';
-import { isGuestAccessibleRoute, resolvePostAuthRoute } from '@/lib/consent-gate';
+import { isGuestAccessibleRoute, resolvePostAuthRoute, toHref } from '@/lib/consent-gate';
 import { bootstrapApiBaseUrl } from '@/api/client';
 import { Colors } from '@/lib/theme';
 
@@ -70,12 +70,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       // M-1 (review) — resolvePostAuthRoute üzerinden gidilir ki bu reactive fallback,
       // otp.tsx'in explicit navigasyonuyla yarışsa bile (hangisi önce çalışırsa çalışsın)
       // aynı `redirectTo`'yu /consent'in query'sine taşısın, kaybolmasın.
-      if (!inConsentRoute && !inLegalRoute) router.replace(resolvePostAuthRoute(user, redirectTo) as never);
+      if (!inConsentRoute && !inLegalRoute) router.replace(toHref(resolvePostAuthRoute(user, redirectTo)) as never);
       return;
     }
 
     if (inAuthGroup || inConsentRoute) {
-      router.replace(resolvePostAuthRoute(user, redirectTo) as never);
+      router.replace(toHref(resolvePostAuthRoute(user, redirectTo)) as never);
       return;
     }
 

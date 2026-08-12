@@ -10,7 +10,7 @@ import { Colors, FontSize, FontWeight, Layout, LetterSpacing, Radius, Spacing } 
 import { AuthApi } from '@/api/auth';
 import { extractApiError, getApiBaseUrl } from '@/api/client';
 import { useAuthStore } from '@/store/auth-store';
-import { resolvePostAuthRoute } from '@/lib/consent-gate';
+import { resolvePostAuthRoute, toHref } from '@/lib/consent-gate';
 import { formatPhoneTr, isValidTrMobile, phoneToE164 } from '@/lib/format';
 import { isTestBuild } from '@/lib/runtime-base-url';
 
@@ -65,7 +65,7 @@ export default function LoginScreen() {
       // profili çeker, aynı gate helper (AuthGate'in de kullandığı) hedefi belirler.
       await useAuthStore.getState().hydrate();
       const freshUser = useAuthStore.getState().user;
-      if (freshUser) router.replace(resolvePostAuthRoute(freshUser, redirectTo) as never);
+      if (freshUser) router.replace(toHref(resolvePostAuthRoute(freshUser, redirectTo)) as never);
     } catch (err) {
       Alert.alert('Hızlı giriş başarısız', extractApiError(err));
     } finally {

@@ -77,8 +77,27 @@ export function formatTryFrom(minor: number): string {
   return `${formatTry(minor)}${turkishAblativeSuffix(major)}`;
 }
 
-export function formatDateTime(iso: string | Date): string {
+/**
+ * Geçersiz tarihte ÇÖKMEZ. `Intl.DateTimeFormat.format()` bir Invalid Date aldığında
+ * `RangeError: Invalid time value` FIRLATIR ve render sırasında bu, ekranı komple
+ * AppErrorBoundary'ye düşürür.
+ *
+ * Emülatörde tam olarak bu yaşandı (2026-08-12): misafir slot seçip giriş yapınca
+ * randevu onay ekranı `formatDateTime(params.scheduledAt!)` çağırıyordu; parametre
+ * yönlendirme sırasında kaybolduğu için `new Date(undefined)` → Invalid Date → RangeError
+ * → beyaz hata ekranı. Kullanıcı randevusunu tamamlayamıyordu.
+ *
+ * Bir tarihin okunamaması, EKRANIN ÇÖKMESİ için geçerli bir sebep değildir — eksik veri
+ * görünür ama zararsız bir tire ile gösterilir, çağıran taraf isterse ayrıca kontrol eder.
+ */
+function isValidDate(d: Date): boolean {
+  return !Number.isNaN(d.getTime());
+}
+
+export function formatDateTime(iso: string | Date | null | undefined): string {
+  if (iso === null || iso === undefined || iso === '') return '—';
   const d = typeof iso === 'string' ? new Date(iso) : iso;
+  if (!isValidDate(d)) return '—';
   return new Intl.DateTimeFormat('tr-TR', {
     day: '2-digit',
     month: 'short',
@@ -88,8 +107,11 @@ export function formatDateTime(iso: string | Date): string {
   }).format(d);
 }
 
-export function formatTime(iso: string | Date): string {
+/** formatDateTime ile aynı savunma — kuaför panelinde saat sütunu bunu kullanıyor. */
+export function formatTime(iso: string | Date | null | undefined): string {
+  if (iso === null || iso === undefined || iso === '') return '—';
   const d = typeof iso === 'string' ? new Date(iso) : iso;
+  if (!isValidDate(d)) return '—';
   return new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit' }).format(d);
 }
 

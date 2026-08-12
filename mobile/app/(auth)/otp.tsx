@@ -9,7 +9,7 @@ import { AuthApi } from '@/api/auth';
 import { extractApiError } from '@/api/client';
 import { maskPhone } from '@/lib/format';
 import { useAuthStore } from '@/store/auth-store';
-import { resolvePostAuthRoute } from '@/lib/consent-gate';
+import { resolvePostAuthRoute, toHref } from '@/lib/consent-gate';
 
 const CODE_LEN = 6;
 
@@ -48,7 +48,7 @@ export default function OtpScreen() {
       const freshUser = useAuthStore.getState().user;
       // RFC-010 — misafir randevu kapısı: login.tsx'ten taşınan redirectTo varsa (ve
       // consent gerekmiyorsa) kullanıcı seçimlerini koruyarak oraya döner.
-      if (freshUser) router.replace(resolvePostAuthRoute(freshUser, params.redirectTo) as never);
+      if (freshUser) router.replace(toHref(resolvePostAuthRoute(freshUser, params.redirectTo)) as never);
     } catch (err) {
       Alert.alert('Hata', extractApiError(err));
       setCode('');
