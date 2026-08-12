@@ -395,6 +395,9 @@ sabitliyormuş. Testler gerekçeleriyle güncellendi.
 | G18 | Yeni müşteri kaydında isim sorulmuyor — kuaför kimin geldiğini bilmiyor | Orta-Yüksek | 1 gün |
 | G19 | Yetki reddi 400 dönüyor, 403 değil + **24 uç hata durumunda 500 dönüyordu** | Düşük → **Yüksek** | ✅ kapatıldı 2026-08-11 |
 | G20 | Kullanıcı görünen adını boşaltabiliyor (`""` → `null`, 204) — ürün kararı bekliyor | Düşük-Orta | 1 saat (karar sonrası) |
+| G21 | Demo tazeleme admin'i siliyor, geri getirmiyor (her reseed'de elle müdahale) | Orta | 2-3 saat |
+| G22 | "Admin olarak gir" mobilde olmayan paneli vadediyor | Düşük | 30 dk (metin) |
+| G23 | 16 KB sayfa uyumsuzluğu — Play Store engeli (Expo SDK yükseltmesi) | Orta → yayın öncesi Yüksek | 1 sprint |
 
 ---
 
@@ -423,6 +426,67 @@ kalitesi sorunu.
 Nerede yakalandı: `ErrorStatusMappingTests.Validation_failure_returns_400_and_never_500`
 yazılırken — boş isimle 400 bekleniyordu, 204 geldi. Test kesin bir doğrulama hatasıyla
 (81 karakter) kuruldu, boş-isim varsayımı yapılmadı.
+
+---
+
+## G21. Demo tazeleme admin kullanıcısını siliyor, geri getirmiyor — zincir kopuyor
+
+**Kanıt (canlı + emülatör, 2026-08-12):** `POST /v1/dev/reseed-demo` başarıyla çalıştı
+(200, "Demo verisi tazelendi"). Hemen ardından APK'da "Admin olarak gir":
+```
+404 {"title":"not_found","detail":"Admin kullanıcısı bulunamadı. AdminSeeder çalıştırılmalı."}
+```
+
+**Zincir:** reseed → `DemoDataResetter` `users` tablosunu TRUNCATE eder → `AdminSeeder`
+yeniden çalışır ama `Seed:Admin:Email`/`Password` env'leri **yoksa admin YARATMAZ** (bilinçli:
+"Set Seed__Admin__Email and Seed__Admin__Password env vars once to bootstrap"). Sonuç: demo
+tazelendikçe admin kalıcı olarak kayboluyor.
+
+**Neden fark edilmemişti:** yerel Development'ta bu env'ler `appsettings.Development.json`'da
+var. Sorun yalnız uzak test ortamında, yalnız reseed'den SONRA görünüyor — ve reseed'in kendisi
+bugün ilk kez çalışabildi (bkz. `DevTools:AllowDemoReset`).
+
+**Geçici çözüm uygulandı:** Render'a `Seed__Admin__Email` + `Seed__Admin__Password` eklendi,
+deploy sonrası admin girişi doğrulandı (200). Şifre Render dashboard'unda; kimseyle
+paylaşılmadı.
+
+**Kalıcı çözüm önerisi:** reseed ucu, TRUNCATE öncesi mevcut admin'in e-postasını okuyup
+seed sonrası aynı hesabı yeniden kurmalı — ya da admin bootstrap'ı `Seed:Admin:*` yerine
+`DevTools:Enabled` ortamlarında sabit bir demo admin'e bağlanmalı. Aksi halde her reseed'de
+aynı elle müdahale gerekir.
+
+---
+
+## G22. "Admin olarak gir" mobilde olmayan bir panel vadediyor
+
+**Kanıt (emülatör, 2026-08-12):** Giriş ekranındaki kart "Admin olarak gir — **KYC, kullanıcı,
+yorum yönetimi**" diyor. Giriş çalışıyor (profil "Founder / Yönetici" gösteriyor), ama
+kullanıcı müşteri sekmelerine (Keşfet/Ara/Randevular/Bildirim/Profil) düşüyor. Mobilde admin
+paneli **yok** — bu işler `web-admin`'de.
+
+**Etki:** Düşük ama kafa karıştırıcı; test eden kişi "admin paneli açılmadı, bozuk" sanıyor.
+
+**Çözüm seçenekleri:** (a) kart açıklamasını dürüstleştir ("Yönetici hesabıyla gir — yönetim
+paneli web'de"), (b) girişten sonra web-admin adresini gösteren bir bilgi kartı, (c) mobilde
+minimum admin görünümü (kapsam artışı, V1.5).
+
+---
+
+## G23. Uygulama 16 KB sayfa boyutuyla uyumlu değil — Play Store engeli
+
+**Kanıt (emülatör, Android 15+, 2026-08-12):** Uygulama açılışında sistem diyaloğu:
+"This app isn't 16 KB compatible. ELF alignment check failed." Hizalanmamış kütüphaneler:
+`libhermes.so`, `libreanimated.so`, `librnscreens.so`, `libexpo-modules-core.so`,
+`libreact_codegen_rnsvg.so` ve ~8 tanesi daha.
+
+**Etki:** Şu an yalnız uyarı; uygulama "page size compatible mode"da çalışıyor. Ama Google
+Play, 16 KB hizalamayı yeni/güncellenen uygulamalar için zorunlu kılma yönünde ilerliyor
+[unverified 2026-08-12 — tam yürürlük tarihi doğrulanmadı, Play Console duyurusundan teyit
+edilmeli]. Zorunlu olduğunda mevcut bağımlılıklarla store'a çıkılamaz.
+
+**Çözüm:** Expo SDK'yı 16 KB destekli sürüme yükselt (SDK 52 → 54+); bu RN ve tüm native
+bağımlılıkları birlikte taşır. Test build'i için engel DEĞİL, store yayınından önce
+yapılmalı — sürüm yükseltmesi kendi başına bir sprint işidir, son haftaya bırakılmamalı.
 
 ---
 
