@@ -256,7 +256,13 @@ public sealed class RichDemoSeederTests(IntegrationTestFactory factory) : IAsync
             await adminSeeder.SeedAsync(default);
 
             var seeder = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
-            await seeder.SeedAsync(default);
+            // SeedNow GEÇİRİLMELİ. Aşağıdaki `todayLocal` zaten SeedNow'dan (bugünün öğleni)
+            // türetiliyor; seeder'ı gerçek saatle çalıştırmak ikisini ayrıştırıyordu. Somut
+            // kırılma: test akşam koşulduğunda (ör. 22:38) bugünün 09:00-19:00 slotlarının
+            // TAMAMI geçmişte kalıyor, seeder "şimdiden sonraki ilk slot" kursörüyle bugüne
+            // Pending/Confirmed yerleştiremiyor ve `Assert.Contains(Pending)` düşüyordu —
+            // seeder'ın kusuru değil, testin seeder'a yanlış "şimdi" vermesiydi.
+            await seeder.SeedAsync(default, SeedNow);
         }
 
         using var db = factory.Services.CreateScope().ServiceProvider.GetRequiredService<ApplicationDbContext>();
