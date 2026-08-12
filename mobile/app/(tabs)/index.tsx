@@ -17,7 +17,7 @@ import { GeographyApi, City } from '@/api/geography';
 import { BarberApi, BarberSearchResult } from '@/api/barber';
 import { useAuthStore } from '@/store/auth-store';
 import { useDiscoveryStore, DEFAULT_CITY_PLATE, DEFAULT_CITY_NAME } from '@/store/discovery-store';
-import { normalizeTr, formatTry, salonGenderLabel, salonGenderTone } from '@/lib/format';
+import { normalizeTr, formatTry, salonGenderLabel, salonGenderTone, formatTryFrom} from '@/lib/format';
 
 type GenderFilter = 'all' | 'unisex' | 'female' | 'male' | 'walkin';
 
@@ -218,7 +218,7 @@ function ShopCard({ barber, onPress }: { barber: BarberSearchResult; onPress: ()
           <Text style={styles.stat}>{barber.serviceCount}</Text>
         </View>
         {barber.minPriceMinor != null ? (
-          <Text style={styles.price}>{formatTry(barber.minPriceMinor)}'den</Text>
+          <Text style={styles.price}>{formatTryFrom(barber.minPriceMinor)}</Text>
         ) : null}
       </View>
 

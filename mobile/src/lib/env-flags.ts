@@ -15,3 +15,22 @@
  * bu dosya normal şekilde inline edilir, ekstra bir şey gerekmez.
  */
 export const TEST_LOGIN_FLAG_RAW: string | undefined = process.env.EXPO_PUBLIC_ENABLE_TEST_LOGIN;
+
+/**
+ * Hızlı-giriş (dev-login) için paylaşılan secret. `X-Dev-Access-Key` header'ı olarak
+ * YALNIZ `/v1/auth/dev-login` isteğinde gönderilir.
+ *
+ * NEDEN GEREKLİ: dev-login uç noktası AllowAnonymous'tur ve gövdesinde yalnız bir rol adı
+ * ister — Admin dahil. İnternete açık bir ortamda (Render) korumasız bırakılamaz, bu yüzden
+ * sunucu `DevTools:AccessKey` ile bir paylaşılan secret ister (bkz.
+ * backend/src/Kuaforum.Api/Configuration/DevToolsGate.cs). Header gönderilmediğinde sunucu
+ * 403 döner — APK'da hızlı girişin "Geçersiz veya eksik X-Dev-Access-Key" ile düşmesinin
+ * sebebi tam olarak buydu: sunucu tarafı doğru kuruluydu, istemci header'ı hiç göndermiyordu.
+ *
+ * GÜVENLİK SINIRI: değer derleme anında bundle'a GÖMÜLÜR (EXPO_PUBLIC_* inline edilir), yani
+ * APK'yı eline geçiren biri okuyabilir. Bu bilinçli bir kabul — anahtar yalnız test
+ * build'lerine verilir ve koruduğu ortamda gerçek kullanıcı verisi yoktur. Store build'inde
+ * EXPO_PUBLIC_ENABLE_TEST_LOGIN kapalı olduğu için hızlı giriş ekranı hiç render edilmez ve
+ * bu anahtar da build'e verilmez.
+ */
+export const DEV_ACCESS_KEY_RAW: string | undefined = process.env.EXPO_PUBLIC_DEV_ACCESS_KEY;

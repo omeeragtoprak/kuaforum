@@ -30,17 +30,32 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$REPO_ROOT"
 
 # --- Sunucu adresi -----------------------------------------------------------
-if [[ $# -ge 1 ]]; then
-  LAN_IP="$1"
+# İki biçim kabul edilir:
+#   ./build-test-apk.sh                                  → LAN IP otomatik bulunur (yalnız aynı ağda çalışır)
+#   ./build-test-apk.sh 192.168.1.11                     → LAN IP elle
+#   ./build-test-apk.sh https://xxx.trycloudflare.com    → TÜNEL (her ağdan çalışır, mobil veride de)
+#
+# Tünel neden gerekiyor: LAN IP yalnız telefon aynı Wi-Fi'daysa çalışır. Founder
+# başka bir ağdayken veya mobil veriyle test etmek istediğinde uygulama ölür.
+# `cloudflared tunnel --url http://localhost:5100` hesap gerektirmeden HTTPS bir
+# adres verir; o adresi buraya geçirmek yeterli.
+if [[ $# -ge 1 && "$1" == http* ]]; then
+  API_BASE_URL="${1%/}"          # sondaki / temizlenir
+  VERIFY_NEEDLE="$(printf '%s' "$API_BASE_URL" | sed -E 's#^https?://##')"
+elif [[ $# -ge 1 ]]; then
+  API_BASE_URL="http://$1:5100"
+  VERIFY_NEEDLE="$1"
 else
   LAN_IP="$(ipconfig getifaddr en0 2>/dev/null || true)"
   if [[ -z "$LAN_IP" ]]; then
     echo "HATA: LAN IP bulunamadı (en0 kapalı olabilir). Adresi elle ver:" >&2
     echo "  ./build-test-apk.sh 192.168.1.11" >&2
+    echo "  ./build-test-apk.sh https://xxx.trycloudflare.com" >&2
     exit 1
   fi
+  API_BASE_URL="http://${LAN_IP}:5100"
+  VERIFY_NEEDLE="$LAN_IP"
 fi
-API_BASE_URL="http://${LAN_IP}:5100"
 
 # --- Java --------------------------------------------------------------------
 if [[ -z "${JAVA_HOME:-}" ]] || [[ ! -x "${JAVA_HOME}/bin/java" ]]; then
@@ -78,6 +93,33 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export EXPO_PUBLIC_ENABLE_TEST_LOGIN=1
 export EXPO_PUBLIC_API_BASE_URL="$API_BASE_URL"
 
+# Hızlı giriş (dev-login) paylaşılan secret'ı. Sunucu bu ucu `DevTools:AccessKey` ile
+# koruyor; header gönderilmezse 403 "Geçersiz veya eksik X-Dev-Access-Key" döner ve
+# APK'daki 5 rol hızlı-girişinin TAMAMI çalışmaz (emülatörde bu şekilde yakalandı —
+# sunucu doğru kuruluydu, istemci header'ı hiç göndermiyordu).
+#
+# Değer burada SABİT YAZILMAZ. İki kaynaktan gelir:
+#   1) Ortamda zaten EXPO_PUBLIC_DEV_ACCESS_KEY varsa o kullanılır.
+#   2) Yoksa ve RENDER_API_KEY verilmişse, Render'ın env-vars API'sinden çekilir —
+#      böylece anahtar repoda da, komut geçmişinde de durmaz.
+# Hiçbiri yoksa derleme SÜRER ama uyarı verir: uzak sunucuya karşı hızlı giriş çalışmaz
+# (yerel Development sunucusu AccessKey istemediği için orada sorun olmaz).
+if [ -z "${EXPO_PUBLIC_DEV_ACCESS_KEY:-}" ] && [ -n "${RENDER_API_KEY:-}" ]; then
+  EXPO_PUBLIC_DEV_ACCESS_KEY=$(
+    curl -s -H "Authorization: Bearer $RENDER_API_KEY" \
+      "https://api.render.com/v1/services/${RENDER_SERVICE_ID:-srv-d9tfcu6417fc73e9lbhg}/env-vars?limit=50" \
+    | python3 -c "import json,sys; print(next((e.get('envVar',e).get('value','') for e in json.load(sys.stdin) if e.get('envVar',e).get('key')=='DevTools__AccessKey'), ''))"
+  )
+  export EXPO_PUBLIC_DEV_ACCESS_KEY
+fi
+
+if [ -n "${EXPO_PUBLIC_DEV_ACCESS_KEY:-}" ]; then
+  export EXPO_PUBLIC_DEV_ACCESS_KEY
+  echo "▸ Hızlı giriş   : anahtar var (${#EXPO_PUBLIC_DEV_ACCESS_KEY} karakter)"
+else
+  echo "▸ Hızlı giriş   : UYARI — anahtar YOK, uzak sunucuda hızlı giriş 403 verecek"
+fi
+
 echo "▸ Sunucu adresi : $API_BASE_URL"
 echo "▸ JAVA_HOME     : $JAVA_HOME"
 echo "▸ ANDROID_HOME  : $ANDROID_HOME"
@@ -105,7 +147,7 @@ cp "$SRC_APK" "$OUT_APK"
 #
 # Hermes, içinde Türkçe karakter/emoji geçen string'leri UTF-16 saklıyor; bu yüzden
 # düz `strings` yetmez, iki kodlamayı da aramak gerekiyor.
-python3 - "$OUT_APK" "$LAN_IP" <<'PY'
+python3 - "$OUT_APK" "$VERIFY_NEEDLE" <<'PY'
 import sys, zipfile
 apk, ip = sys.argv[1], sys.argv[2]
 with zipfile.ZipFile(apk) as z:

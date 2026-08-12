@@ -12,7 +12,7 @@ import { EmptyState } from '@/components/EmptyState';
 import { SkeletonShopCard, SkeletonList } from '@/components/Skeleton';
 import { Colors, FontSize, FontWeight, LetterSpacing, Radius, Spacing, Layout, monogramFor } from '@/lib/theme';
 import { BarberApi, BarberSearchResult } from '@/api/barber';
-import { formatTry, salonGenderLabel, salonGenderTone } from '@/lib/format';
+import { formatTry, salonGenderLabel, salonGenderTone, formatTryFrom} from '@/lib/format';
 
 type GenderFilter = 'all' | 'unisex' | 'female' | 'male' | 'walkin';
 type RatingFilter = null | 3 | 4 | 4.5;
@@ -175,7 +175,7 @@ function BarberCard({ barber, onPress }: { barber: BarberSearchResult; onPress: 
           <Text style={styles.stat}>{barber.serviceCount}</Text>
         </View>
         {barber.minPriceMinor != null ? (
-          <Text style={styles.price}>{formatTry(barber.minPriceMinor)}'den</Text>
+          <Text style={styles.price}>{formatTryFrom(barber.minPriceMinor)}</Text>
         ) : null}
       </View>
 

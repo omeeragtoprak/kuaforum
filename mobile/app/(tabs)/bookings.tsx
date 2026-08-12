@@ -53,7 +53,7 @@ export default function BookingsScreen() {
   if (!isAuthenticated) {
     return (
       <AuthPrompt
-        description="Randevularını görmek için giriş yapman gerekiyor."
+        description="Geçmiş ve yaklaşan randevuların hesabına bağlı tutulur."
         redirectTo="/(tabs)/bookings"
       />
     );

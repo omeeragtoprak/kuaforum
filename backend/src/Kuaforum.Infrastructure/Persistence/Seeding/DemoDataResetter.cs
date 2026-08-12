@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
@@ -20,20 +21,27 @@ namespace Kuaforum.Infrastructure.Persistence.Seeding;
 /// seeder zincirini (AdminSeeder → PlatformSettingsSeeder → DemoBarberSeeder → ... →
 /// RichDemoSeeder → SubscriptionPlanSeeder) sıfırdan, bu kez "şimdi"ye göre yeniden çalıştırır.
 ///
-/// PRODUCTION GARANTİSİ (üç bağımsız katman — herhangi biri tek başına yeterli):
-/// 1) <see cref="ResetAsync"/> enjekte edilen <see cref="IHostEnvironment"/>.IsProduction()
-///    ise throw eder — bu sınıf HANGİ çağıran taraftan (bug, yanlış wiring, gelecekte eklenen
-///    yeni bir çağrı noktası) gelirse gelsin Production'da asla TRUNCATE ÇALIŞTIRMAZ.
+/// PRODUCTION KORUMALARI (2026-08-12'de GÜNCELLENDİ — eskiden "üç bağımsız katman, herhangi
+/// biri tek başına yeterli" yazıyordu; artık öyle DEĞİL, aşağıdaki gerçek durumu okuyun):
+/// 1) <see cref="ResetAsync"/>, <see cref="IHostEnvironment"/>.IsProduction() ise throw eder —
+///    ANCAK <c>DevTools:AllowDemoReset=true</c> ile açıkça delinebilir. Bayrak varsayılan
+///    KAPALI ve açıkken her çağrıda <c>LogCritical</c> yazılır. Gerekçesi ResetAsync içinde.
 /// 2) Tek gerçek çağıran <see cref="DependencyInjection.SeedReferenceDataAsync"/>, kendi
 ///    <c>isProduction</c> parametresiyle (Program.cs'te <c>app.Environment.IsProduction()</c>)
-///    bu sınıfı hiç DEVREYE SOKMAZ.
-/// 3) Dev-only endpoint (<c>DevEndpoints.MapDevEndpoints</c>) route'u
-///    <c>env.IsDevelopment()</c> değilken hiç map EDİLMEZ (AuthEndpoints "dev-login" ile
-///    birebir aynı kalıp) — Production'da bu path fiziksel olarak yok, 404.
-/// appsettings.Production.json'da ayrıca Seed:RichDemo/Demo/ComprehensiveDemo hepsi false
-/// (bkz. o dosya) — otomatik tazeleme yolu zaten seedRichDemo=false iken hiç tetiklenmez.
+///    bu sınıfı boot yolunda DEVREYE SOKMAZ. Ama reseed endpoint'i o parametreyi bilerek
+///    <c>false</c> geçer (elle tetiklenen tazeleme) — yani bu katman da mutlak değildir.
+/// 3) Dev endpoint'leri (<c>DevEndpoints.MapDevEndpoints</c>) <c>env.IsDevelopment()</c>
+///    değilken YALNIZ <c>DevTools:Enabled=true</c> ise map edilir (bkz. DevToolsGate), ayrıca
+///    <c>RequireAuthorization("Admin")</c> + <c>X-Dev-Access-Key</c> ister.
+///
+/// Yani gerçek durum: Production'da TRUNCATE için ÜÇ ayarın birlikte açık olması gerekir
+/// (DevTools:Enabled + DevTools:AllowDemoReset + Seed:RichDemo) VE çağıranın Admin token'ı
+/// ile paylaşılan secret'ı olması gerekir. Bu bilinçli bir "test ortamı" yapılandırmasıdır;
+/// gerçek kullanıcı verisi barındıran bir kurulumda bu bayraklar ASLA açılmaz.
+/// appsettings.Production.json'da Seed:RichDemo/Demo/ComprehensiveDemo hepsi false
+/// (bkz. o dosya) — otomatik tazeleme yolu seedRichDemo=false iken hiç tetiklenmez.
 /// </summary>
-public sealed class DemoDataResetter(ApplicationDbContext db, IHostEnvironment env, ILogger<DemoDataResetter> logger)
+public sealed class DemoDataResetter(ApplicationDbContext db, IHostEnvironment env, IConfiguration config, ILogger<DemoDataResetter> logger)
 {
     // RichDemoSeeder.DevLoginOwnerPhone / DevLoginCommand.BarberOwnerDemoPhone ile birebir aynı.
     private const string DevLoginOwnerPhone = "+905001000001";
@@ -94,9 +102,35 @@ public sealed class DemoDataResetter(ApplicationDbContext db, IHostEnvironment e
     /// </summary>
     public async Task ResetAsync(CancellationToken ct = default)
     {
-        if (env.IsProduction())
+        // Production'da varsayılan olarak YASAK — bu koruma kasıtlıdır ve kaldırılmadı.
+        //
+        // Tek istisna: `DevTools:AllowDemoReset=true`. Neden gerekli oldu (2026-08-12):
+        // founder'ın test ortamı (Render + Neon) ASPNETCORE_ENVIRONMENT=Production ile
+        // çalışıyor — çünkü Production'a özgü fail-fast secret kontrollerinin de aktif
+        // olması isteniyor. Ama içindeki veri tamamen demo; gerçek kullanıcı yok. Demo
+        // randevuları bir gecede bayatlıyor (G17) ve tazelenemeyince kuaför paneli her
+        // sabah BOŞ açılıyor — emülatörde bugün tam olarak bu görüldü (haftalık ciro
+        // ₺4.200 dolu, "Bugün" sekmesi boş).
+        //
+        // Alternatif olarak ortamı "Staging" yapmak DEĞERLENDİRİLDİ ve REDDEDİLDİ: bu,
+        // appsettings.Production.json'ı ve Production secret fail-fast'ini birlikte
+        // devre dışı bırakırdı — yani tek bir görünmez ayarla üç davranış birden
+        // değişirdi. Açık ve tek amaçlı bir bayrak, denetlenebilir olduğu için tercih
+        // edildi: varsayılan KAPALI, açıldığında her çağrıda kritik uyarı loglanır.
+        //
+        // GERÇEK VERİSİ OLAN BİR ORTAMDA BU BAYRAK ASLA AÇILMAZ — tüm kullanıcı,
+        // randevu, ödeme ve fatura verisini TRUNCATE eder.
+        var allowInProduction = config.GetValue<bool>("DevTools:AllowDemoReset");
+        if (env.IsProduction() && !allowInProduction)
             throw new InvalidOperationException(
-                "DemoDataResetter.ResetAsync Production ortamında asla çalıştırılamaz (bkz. sınıf XML doc'u).");
+                "DemoDataResetter.ResetAsync Production ortamında çalıştırılamaz. Yalnız demo verisi " +
+                "barındıran bir test ortamıysa DevTools:AllowDemoReset=true ile açıkça izin verin " +
+                "(bkz. sınıf XML doc'u ve bu metottaki gerekçe).");
+
+        if (env.IsProduction())
+            logger.LogCritical(
+                "DemoDataResetter: Production ortamında TRUNCATE çalıştırılıyor — DevTools:AllowDemoReset " +
+                "açık. Bu ortamda gerçek kullanıcı verisi VARSA bu işlem onu siler.");
 
         logger.LogWarning("DemoDataResetter: demo verisi TRUNCATE ediliyor (Environment={Env}).", env.EnvironmentName);
 

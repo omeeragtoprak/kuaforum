@@ -80,7 +80,7 @@ export default function ConfirmBookingScreen() {
     });
     return (
       <AuthPrompt
-        description="Randevu almak için giriş yapman veya kayıt olman gerekiyor."
+        description="Randevunu kaydedip sana hatırlatma gönderebilmemiz için hesabın olması yeterli."
         redirectTo={redirectTo}
       />
     );

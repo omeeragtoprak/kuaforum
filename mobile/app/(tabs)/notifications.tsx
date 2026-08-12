@@ -11,7 +11,7 @@ export default function CustomerNotifications() {
   if (!isAuthenticated) {
     return (
       <AuthPrompt
-        description="Bildirimlerini görmek için giriş yapman gerekiyor."
+        description="Randevu onayları, hatırlatmalar ve salon duyuruları burada görünür."
         redirectTo="/(tabs)/notifications"
       />
     );

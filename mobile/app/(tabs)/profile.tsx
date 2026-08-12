@@ -130,7 +130,7 @@ export default function ProfileScreen() {
   if (!isAuthenticated) {
     return (
       <AuthPrompt
-        description="Profilini görmek ve hesap ayarlarını yönetmek için giriş yapman gerekiyor."
+        description="Kayıtlı bilgilerin, tercihlerin ve hesap ayarların burada."
         redirectTo="/(tabs)/profile"
       />
     );

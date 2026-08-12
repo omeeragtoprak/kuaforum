@@ -3,6 +3,7 @@ using Kuaforum.Domain.Modules.Booking;
 using Kuaforum.Infrastructure.Persistence;
 using Kuaforum.Infrastructure.Persistence.Seeding;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -34,6 +35,57 @@ public sealed class DemoDataResetterTests(IntegrationTestFactory factory)
         public IFileProvider ContentRootFileProvider { get; set; } = null!;
     }
 
+    /// <summary>Hiçbir DevTools bayrağı set EDİLMEMİŞ yapılandırma — üretimdeki varsayılan.</summary>
+    private static IConfiguration EmptyConfig() =>
+        new ConfigurationBuilder().Build();
+
+    /// <summary>Tek bir anahtarı set eden minimal yapılandırma.</summary>
+    private static IConfiguration ConfigWith(string key, string value) =>
+        new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { [key] = value })
+            .Build();
+
+    /// <summary>
+    /// DevTools:AllowDemoReset bayrağının VARSAYILAN KAPALI olduğunu ve yalnız AÇIKÇA
+    /// true yapıldığında Production korumasını deldiğini sabitler.
+    ///
+    /// Neden ayrı test: bu bayrak (2026-08-12) founder'ın Render test ortamı için eklendi —
+    /// orası ASPNETCORE_ENVIRONMENT=Production ile çalışıyor ama içindeki veri tamamen demo.
+    /// Bayrağın sessizce açık gelmesi, gerçek verisi olan bir kurulumda TÜM kullanıcı/randevu/
+    /// ödeme verisinin TRUNCATE edilmesi demek olurdu. "Varsayılan kapalı" tam olarak bu
+    /// yüzden test edilir — yorumla garanti edilmez.
+    /// </summary>
+    [Fact]
+    public async Task Production_reset_stays_blocked_unless_AllowDemoReset_is_explicitly_true()
+    {
+        await factory.ResetDatabaseAsync();
+        using (var scope = factory.Services.CreateScope())
+        {
+            var seeder = scope.ServiceProvider.GetRequiredService<RichDemoSeeder>();
+            await seeder.SeedAsync(default);
+        }
+
+        using var db = factory.Services.CreateScope().ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var usersBefore = await db.Users.AsNoTracking().CountAsync();
+        Assert.True(usersBefore > 0);
+
+        // (a) Bayrak hiç yok → engelli.
+        var noFlag = new DemoDataResetter(db, new FakeHostEnvironment(Environments.Production), EmptyConfig(), NullLogger<DemoDataResetter>.Instance);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => noFlag.ResetAsync());
+
+        // (b) Bayrak açıkça false → yine engelli.
+        var falseFlag = new DemoDataResetter(db, new FakeHostEnvironment(Environments.Production), ConfigWith("DevTools:AllowDemoReset", "false"), NullLogger<DemoDataResetter>.Instance);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => falseFlag.ResetAsync());
+
+        // Hiçbir veri kaybolmamalı.
+        Assert.Equal(usersBefore, await db.Users.AsNoTracking().CountAsync());
+
+        // (c) Bayrak açıkça true → izin verilir ve TRUNCATE gerçekten çalışır.
+        var allowed = new DemoDataResetter(db, new FakeHostEnvironment(Environments.Production), ConfigWith("DevTools:AllowDemoReset", "true"), NullLogger<DemoDataResetter>.Instance);
+        await allowed.ResetAsync();
+        Assert.Equal(0, await db.Users.AsNoTracking().CountAsync());
+    }
+
     /// <summary>
     /// Task madde 1 talebi: "yalnız Development'ta erişilebilir olsun, Production'da
     /// var olmasın/çalışmasın" — bu test DemoDataResetter.ResetAsync'in ÇAĞIRAN TARAF NE
@@ -60,7 +112,7 @@ public sealed class DemoDataResetterTests(IntegrationTestFactory factory)
         Assert.True(userCountBefore > 0);
         Assert.True(bookingCountBefore > 0);
 
-        var prodResetter = new DemoDataResetter(db, new FakeHostEnvironment(Environments.Production), NullLogger<DemoDataResetter>.Instance);
+        var prodResetter = new DemoDataResetter(db, new FakeHostEnvironment(Environments.Production), EmptyConfig(), NullLogger<DemoDataResetter>.Instance);
 
         var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => prodResetter.ResetAsync());
         Assert.Contains("Production", ex.Message);
@@ -88,7 +140,7 @@ public sealed class DemoDataResetterTests(IntegrationTestFactory factory)
         var cityCountBefore = await db.Cities.AsNoTracking().CountAsync();
         Assert.True(cityCountBefore >= 81); // 81 il — coğrafya seed'i
 
-        var resetter = new DemoDataResetter(db, new FakeHostEnvironment(Environments.Development), NullLogger<DemoDataResetter>.Instance);
+        var resetter = new DemoDataResetter(db, new FakeHostEnvironment(Environments.Development), EmptyConfig(), NullLogger<DemoDataResetter>.Instance);
         await resetter.ResetAsync();
 
         Assert.Equal(0, await db.Users.AsNoTracking().CountAsync());

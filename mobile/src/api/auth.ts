@@ -1,5 +1,6 @@
 import { apiClient } from './client';
 import { TokenStorage } from '@/lib/secure-storage';
+import { DEV_ACCESS_KEY_RAW } from '@/lib/env-flags';
 
 export type SendOtpResponse = {
   otpId: string;
@@ -42,11 +43,20 @@ export const AuthApi = {
 
   async devLogin(role: 'Customer' | 'CustomerFresh' | 'BarberOwner' | 'BarberOwnerDraft' | 'Admin'): Promise<VerifyOtpResponse> {
     const deviceFingerprint = await TokenStorage.getDeviceFingerprint();
-    const res = await apiClient.post<VerifyOtpResponse>('/v1/auth/dev-login', {
-      role,
-      deviceFingerprint,
-      deviceName: 'Expo Dev Quick Login',
-    });
+    // X-Dev-Access-Key: sunucu bu ucu paylaşılan bir secret'la koruyor (DevToolsGate).
+    // Header'sız istek 403 "Geçersiz veya eksik X-Dev-Access-Key" ile döner. Anahtar
+    // tanımsızsa header hiç eklenmez — yerel Development'ta sunucu AccessKey istemediği
+    // için (CheckAccessKey no-op) akış sürtünmesiz kalır.
+    const devKey = DEV_ACCESS_KEY_RAW;
+    const res = await apiClient.post<VerifyOtpResponse>(
+      '/v1/auth/dev-login',
+      {
+        role,
+        deviceFingerprint,
+        deviceName: 'Expo Dev Quick Login',
+      },
+      devKey ? { headers: { 'X-Dev-Access-Key': devKey } } : undefined,
+    );
     if (res.data.accessToken && res.data.refreshToken) {
       await TokenStorage.setAccessToken(res.data.accessToken);
       await TokenStorage.setRefreshToken(res.data.refreshToken);

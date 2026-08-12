@@ -8,6 +8,75 @@ export function formatTry(minor: number): string {
   }).format(major);
 }
 
+/**
+ * Bir TL tutarına Türkçe AYRILMA HÂLİ eki ("...-dan/-den/-tan/-ten") ekler.
+ * Örn. `formatTryFrom(9000)` → "₺90'dan", `formatTryFrom(17000)` → "₺170'ten".
+ *
+ * NEDEN GEREKLİ: keşfet ve arama kartlarında "en düşük fiyat" etiketi sabit `'den`
+ * ile yazılıyordu. Emülatörde "₺90'den" görüldü — doğrusu "₺90'dan". Türkçede ek,
+ * sayının OKUNUŞUNA göre değişir; rakamın kendisine bakmak yetmez:
+ *   90  "doksan"  → kalın ünlü, yumuşak ünsüz → 'dan
+ *   80  "seksen"  → ince ünlü,  yumuşak ünsüz → 'den
+ *   170 "yetmiş"  → ince ünlü,  SERT ünsüz (ş) → 'ten
+ *   40  "kırk"    → kalın ünlü, SERT ünsüz (k) → 'tan
+ *
+ * Ek iki kurala birden bağlıdır: (1) son hecenin ünlüsü kalın/ince (büyük ünlü uyumu),
+ * (2) son sesin sert/yumuşak olması (ünsüz benzeşmesi — sert ünsüzden sonra d→t).
+ * Bu yüzden tabloda her sayı sözcüğü için ekin tamamı tutulur; kural türetmeye
+ * çalışmak "yetmiş"/"altmış" gibi sert-ünsüzlü sözcüklerde hataya açıktır.
+ *
+ * Belirleyici, tutarın SON OKUNAN sözcüğüdür: 1.250 → "bin iki yüz elli" → "elli" → 'den.
+ * Sondaki sıfırlar basamağı yukarı taşır: 1.200 → "...iki yüz" → "yüz" → 'den.
+ */
+const NUMBER_WORD_SUFFIX: Record<number, string> = {
+  0: "'dan",   // sıfır  — kalın
+  1: "'den",   // bir
+  2: "'den",   // iki
+  3: "'ten",   // üç     — ç sert
+  4: "'ten",   // dört   — t sert
+  5: "'ten",   // beş    — ş sert
+  6: "'dan",   // altı   — kalın
+  7: "'den",   // yedi
+  8: "'den",   // sekiz
+  9: "'dan",   // dokuz  — kalın
+  10: "'dan",  // on
+  20: "'den",  // yirmi
+  30: "'dan",  // otuz
+  40: "'tan",  // kırk   — k sert + kalın
+  50: "'den",  // elli
+  60: "'tan",  // altmış — ş sert + kalın
+  70: "'ten",  // yetmiş — ş sert + ince
+  80: "'den",  // seksen
+  90: "'dan",  // doksan
+  100: "'den", // yüz
+  1000: "'den",// bin
+  1000000: "'dan", // milyon
+};
+
+export function turkishAblativeSuffix(value: number): string {
+  const n = Math.abs(Math.trunc(value));
+  if (n === 0) return NUMBER_WORD_SUFFIX[0];
+
+  // Son okunan sözcüğü bul: sondan başlayarak ilk SIFIR OLMAYAN basamak grubunu al.
+  const ones = n % 10;
+  if (ones !== 0) return NUMBER_WORD_SUFFIX[ones];
+
+  const tens = n % 100;
+  if (tens !== 0) return NUMBER_WORD_SUFFIX[tens];
+
+  const hundreds = n % 1000;
+  if (hundreds !== 0) return NUMBER_WORD_SUFFIX[100];
+
+  // Binler ve üzeri: milyon katları "milyon", geri kalanı "bin" ile biter.
+  return n % 1_000_000 === 0 ? NUMBER_WORD_SUFFIX[1_000_000] : NUMBER_WORD_SUFFIX[1000];
+}
+
+/** "₺90'dan" — kuruş cinsinden tutarı biçimlendirip doğru ayrılma ekini ekler. */
+export function formatTryFrom(minor: number): string {
+  const major = Math.round(minor / 100);
+  return `${formatTry(minor)}${turkishAblativeSuffix(major)}`;
+}
+
 export function formatDateTime(iso: string | Date): string {
   const d = typeof iso === 'string' ? new Date(iso) : iso;
   return new Intl.DateTimeFormat('tr-TR', {
